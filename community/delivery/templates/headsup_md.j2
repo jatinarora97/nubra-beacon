@@ -1,0 +1,47 @@
+# ⚡ Community heads-up · {{ window }}
+{% if is_ops_only %}
+_No new action items this hour — ops summary below._
+{% else %}
+## Actions ({{ actions|length }}) — sorted by weight
+{% for a in actions %}
+### {{ a.icon }} {{ a.kind_label }} · priority {{ a.priority }}{% if a.boost_note %} ({{ a.boost_note }}){% endif %}
+
+> {{ a.title }}
+
+- insight: {{ a.insight }}
+- age: {{ a.age }}{% if a.timing %} · timing: **{{ a.timing }}**{% endif +%}
+{% if a.url %}
+- thread: {{ a.url }}
+{% endif %}
+{% if a.brand_reply %}
+
+**Brand draft:** {{ a.brand_reply }}
+
+**Rep draft:** {{ a.rep_reply }}
+
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if nubra_watch %}
+## 🟠 Nubra watch — routed to support, do NOT engage from marketing{{ mention }}
+{% for n in nubra_watch %}
+- “{{ n.summary }}” · {{ n.source }}{% if n.url %} · {{ n.url }}{% endif %}
+{% endfor %}
+{% endif %}
+{% if rising_topics %}
+## 📈 Newly rising topics
+{% for t in rising_topics %}
+- **{{ t.label or t.topic_key }}** — {{ t.count }} items today{% if t.velocity_z %} · z={{ "%.1f"|format(t.velocity_z) }}{% elif t.cold_start %} · (cold-start: by volume){% endif %}
+{% endfor %}
+{% endif %}
+
+---
+## 📊 Last hour · ops summary
+{% for line in ops_lines %}
+{{ line }}
+{% endfor %}
+{% if x_live_note %}
+> ⚠️ **X/Twitter:** {{ x_live_note }}
+{% endif %}
+
+_Local build: on prod this message goes to Slack + email._

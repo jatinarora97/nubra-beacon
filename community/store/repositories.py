@@ -28,8 +28,8 @@ def advance_state(stage: str, source: str, *, watermark: datetime | None = None,
         INSERT INTO pipeline_state (stage, source, watermark, cursor, last_success_at,
                                     last_error, last_error_at, items_last_run)
         VALUES (%(stage)s, %(source)s, %(wm)s, %(cursor)s,
-                CASE WHEN %(error)s IS NULL THEN now() END,
-                %(error)s, CASE WHEN %(error)s IS NOT NULL THEN now() END, %(items)s)
+                CASE WHEN %(error)s::text IS NULL THEN now() END,
+                %(error)s::text, CASE WHEN %(error)s::text IS NOT NULL THEN now() END, %(items)s)
         ON CONFLICT (stage, source) DO UPDATE SET
             watermark       = COALESCE(EXCLUDED.watermark, pipeline_state.watermark),
             cursor          = COALESCE(EXCLUDED.cursor, pipeline_state.cursor),

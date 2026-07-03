@@ -61,12 +61,15 @@ def run_local(skip_ingest: bool = False, skip_enrich: bool = False) -> None:
     enrich via Haiku (sync), aggregate, score, drafts+compliance, then write the
     heads-up + daily roundup as markdown into out/messages/."""
     settings.out_dir.mkdir(parents=True, exist_ok=True)
+    # Local-run stage kwargs: backfilled CSV data is days old, so scoring needs a
+    # wide lookback (prod default is the recent window).
+    stage_kwargs: dict[str, dict] = {"score": {"lookback_hours": 24 * 14}}
     all_stats: dict[str, dict] = {}
     for name in STAGES:
         if (name == "ingest" and skip_ingest) or (name == "enrich" and skip_enrich):
             typer.echo(f"[{name}] skipped by flag")
             continue
-        all_stats[name] = _run_stage(name)
+        all_stats[name] = _run_stage(name, **stage_kwargs.get(name, {}))
 
     from community.delivery import render
 

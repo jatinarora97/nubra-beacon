@@ -1,0 +1,69 @@
+# 📡 Community Roundup — {{ date }}
+
+> {{ payload.headline }}
+
+_grounding: **{{ payload.grounding }}**{% if payload.grounding == "assumed-v0" %} — drafts cite our assumed catalog; marketing's vetted cut swaps in later{% endif %}_
+
+## 1 · Trending topics
+{% if payload.trending %}{% for t in payload.trending %}
+- **{{ t.label or t.topic_key }}** — {{ t.count }} item{{ "s" if t.count != 1 else "" }}{{ " · z=%.1f"|format(t.velocity_z) if t.velocity_z else "" }}{{ " · %d sources"|format(t.spread) if t.spread and t.spread > 1 else "" }}
+{% endfor %}{% else %}_none today_{% endif %}
+
+## 2 · Broker issues
+{% if payload.broker_issues %}{% for i in payload.broker_issues %}
+- **{{ i.broker }}** · {{ i.issue_key }} — {{ i.count }} complaint{{ "s" if i.count != 1 else "" }}{{ " · severity %.1f"|format(i.severity) if i.severity else "" }}
+{% endfor %}{% else %}_none today_{% endif %}
+
+## 3 · Feature requests
+{% if payload.feature_requests %}{% for f in payload.feature_requests %}
+- {{ f.label }} — {{ f.count }} mention{{ "s" if f.count != 1 else "" }}
+{% endfor %}{% else %}_none today_{% endif %}
+
+## 4+5 · Opportunities (rep + brand drafts)
+{% if payload.opportunities %}{% for o in payload.opportunities %}
+### priority {{ o.priority }} · {{ o.source }}{{ " · %s"|format(o.url) if o.url else "" }}
+
+
+- insight: `{{ o.matched_insight }}`
+{% if o.recommended_timing %}
+- when: **{{ o.recommended_timing.action }}** {{ o.recommended_timing.window }} — {{ o.recommended_timing.why }}
+{% endif %}
+{% if o.brand_reply %}
+
+**🏢 Brand:** {{ o.brand_reply }}
+
+**🧑 Rep:** {{ o.rep_reply }}
+
+{% else %}
+
+_no drafts (below draft threshold or dropped by compliance gate)_
+
+{% endif %}
+{% endfor %}
+{% else %}
+_none today_
+{% endif %}
+
+## 6 · Content proposals (top {{ payload.content_proposals|length }})
+{% if payload.content_proposals %}{% for c in payload.content_proposals %}
+### #{{ c.rank }} · {{ c.format }}
+- **Hook:** {{ c.hook }}
+- **Outline:** {{ c.outline | join(" → ") }}
+- **Why:** {{ c.why }}
+- **Window:** {{ c.recommended_timing.window if c.recommended_timing and c.recommended_timing.window else "flexible" }}
+{% endfor %}{% else %}_none today_{% endif %}
+
+## 🟠 Nubra watch
+{% if payload.nubra_watch %}{% for n in payload.nubra_watch %}
+- “{{ n.summary }}” · {{ n.source }}{{ " · %s"|format(n.url) if n.url else "" }}
+{% endfor %}{% else %}_no Nubra mentions in the last 24h_{% endif %}
+
+## 🔊 Rising voices
+{% if payload.rising_voices %}{% for v in payload.rising_voices %}
+- {{ v.handle }} ({{ v.source }}) — voice {{ "%.0f"|format(v.voice_score) }}{{ " ⚠️ flagged" if v.authenticity_flag else "" }}
+{% endfor %}{% else %}_not enough history yet_{% endif %}
+
+---
+_stats: {{ payload.stats }}_
+
+_Local build: on prod this goes to Slack + email._

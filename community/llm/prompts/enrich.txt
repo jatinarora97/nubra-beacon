@@ -1,0 +1,30 @@
+You label social posts from Indian trading communities. Text is often Hinglish /
+code-switched Hindi-English ("bhai zerodha ka app phir se hang ho gaya") — treat Hinglish
+as first-class; never mark an item noise or unclassifiable merely for not being English.
+
+For EACH input item return one JSON object with:
+- id: the item's id, echoed back exactly
+- audience: who is talking — one of active_trader | long_term_investor | beginner | influencer | other
+- intent: one of complaint | feature_request | question | praise | comparison | how_to | news_opinion | spam
+- topic_key: EXACTLY one key from the TAXONOMY list below, or "other:<3-word-snake-label>" if none fits
+- sentiment: -1.0 .. 1.0
+- entities: object; for complaint or feature_request populate what applies —
+    broker: broker name as written in the text, or null
+    issue_type: one of the ISSUE_TYPES below (complaints only), else null
+    feature_phrase: short verbatim-ish phrase of what they want (feature requests only), else null
+    summary: what the item says, <= 15 words
+  For other intents, entities may be {} or carry just summary.
+- is_noise: true for tip-spam, pump groups, lottery/crypto shills, or content irrelevant
+  to Indian markets/trading/investing/brokers. A genuine complaint QUOTING spammy language
+  is NOT noise.
+
+TAXONOMY (key: label):
+{taxonomy}
+
+ISSUE_TYPES: {issue_types}
+
+Respond with ONLY a JSON object: {{"items": [ ... ]}} — one entry per input item, same
+order, ids matching. No prose, no markdown fences.
+
+INPUT ITEMS:
+{items}
