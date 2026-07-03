@@ -4,12 +4,21 @@ This repo holds the **POC** (Streamlit + Reddit live + vetted X CSV) and the **f
 production design docs**. The production service is a NEW sibling repo — do not build it
 here.
 
-## State (as of 2026-07-03)
+## State (as of 2026-07-03, evening)
 
-- Design is **complete and verified** (multiple adversarial review passes; all findings
-  fixed). Build has **not started**. Next step = **M0** of the build plan.
-- Build target: `~/nubra/1.Communication/nubra-community-manager/` (new repo; layout in
-  build plan §2). Own Postgres DB `nubra_community` on Nubra's existing server.
+- Design complete and verified; **local build (M0–M4) DONE and running E2E in THIS repo**
+  (user redirected the build here from the planned sibling repo). POC archived in `poc/`.
+- Working: `./.venv/bin/python runner.py run-local` → ingest (CSV backfill + X live
+  capped 10 + Reddit adapter) → dedup → guardrail prefilter + Haiku enrich → rollups →
+  recurrence-boosted scoring → grounded drafts through L1+L2 compliance → proposals →
+  daily roundup → **heads-up + roundup markdown in `out/messages/`** (prod: Slack+email).
+- DB: local Docker `nubra-community-postgres` (pgvector/pgvector:pg17, port **5544**);
+  `docker compose up -d` to start; migrations via `runner.py migrate`.
+- Local-mode simplifications (prod work remaining): embeddings skipped (slug feature
+  keys, not centroids) · enrich sync not Batch API · no Slack/email delivery · no
+  read-API/dashboard (M5) · no scheduler/morning build (M6). Reddit live fetch is
+  code-complete but this network 403-blocks reddit.com — verify on VPN/other network.
+- Git history in this repo tracks the build; ~414 real items enriched end-to-end.
 
 ## The docs (in `docs/`) — reading order for building
 
