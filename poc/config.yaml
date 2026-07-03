@@ -1,0 +1,63 @@
+# Active config (gitignore-safe to keep local). Modest defaults — live scrape is slow.
+reddit:
+  subreddits:
+    - IndiaAlgoTrading
+    - IndianStreetBets
+  listings: [hot]
+  days: 7                 # keep only posts (and their comments) from the last N days; 0 = no limit
+  limit_per_listing: 5
+  fetch_comments: true
+  comment_limit: 8
+
+twitter:
+  # via twitterapi.io (key in .env). High-engagement India F&O/algo/broker tweets.
+  days: 7
+  lang: en
+  max_tweets: 600          # HARD budget guard (~$0.09 at $0.15/1k) — never overspend
+  pages_per_query: 8
+  # leave the lists empty to use the built-in India F&O default query set, or fill them:
+  cashtags: []             # e.g. ["$NIFTY", "$BANKNIFTY"]
+  hashtags: []             # e.g. ["#FnO", "#optionselling", "#algotrading"]
+  keywords: []             # e.g. ["kite api", "banknifty expiry", "openalgo"]
+  handles: []              # e.g. ["@zerodhaonline"] — broker/finfluencer/algo-dev accounts
+  include_replies: false
+
+prefilter:
+  keywords:
+    - nifty
+    - banknifty
+    - sensex
+    - finnifty
+    - expiry
+    - straddle
+    - strangle
+    - iron condor
+    - option
+    - "f&o"
+    - futures
+    - algo
+    - backtest
+    - kite api
+    - kiteconnect
+    - openalgo
+    - api trading
+    - automate
+    - python
+    - strike
+    - premium
+    - theta
+    - delta hedge
+    - broker
+    - order
+    - trade
+  min_chars: 20
+
+audience_weights:
+  dev: 1.5
+  algo: 1.4
+  serious: 1.0
+  retail: 0.6
+
+trend:
+  top_n: 10
+  baseline_days: 7

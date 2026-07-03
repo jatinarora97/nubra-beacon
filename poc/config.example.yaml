@@ -1,0 +1,77 @@
+# Social Pulse config. Copy to config.yaml and edit.
+
+reddit:
+  # Curated Indian-market subs. The dashboard offers a grouped checkbox picker
+  # (F&O · Algo/Dev/API · Investing · Brokers · Macro) sourced from
+  # social_pulse/sources/reddit.py:SUB_GROUPS — incl. broker/platform communities
+  # (Zerodha, dhanhq, smallcase, Upstox, groww). This list seeds the default ticks.
+  subreddits:
+    - IndiaInvestments      # serious / long-term
+    - IndianStreetBets      # retail + F&O heavy
+    - IndianStockMarket
+    - IndiaAlgoTrading      # API / algo / dev — our core audience
+    - DalalStreetTalks
+    - NSEbets
+    - IndiaOptionsSelling   # options strategy
+  listings: [hot, rising]   # 'rising' velocity is itself a pulse signal; add 'new' for freshness
+  days: 7                   # scrape AND working-set window (posts + their comments); 0 = no limit
+  limit_per_listing: 15     # posts per sort per sub (keep modest — live scrape is slow)
+  fetch_comments: true
+  comment_limit: 15
+
+twitter:
+  # via twitterapi.io (key in .env as TWITTERAPI_IO_KEY). Interim: a vetted CSV at
+  # data/twitter_pulse.csv that Streamlit reads — refresh with `python fetch_twitter_csv.py`.
+  days: 7
+  lang: en
+  max_tweets: 600          # HARD budget guard for the live fetch (~$0.09 at $0.15/1k)
+  pages_per_query: 8
+  cashtags: []             # e.g. ["$NIFTY", "$BANKNIFTY"]
+  hashtags: []             # e.g. ["#FnO", "#optionselling", "#algotrading"]
+  keywords: []             # e.g. ["kite api", "banknifty expiry", "openalgo"]
+  handles: []              # e.g. ["@zerodhaonline"] — broker/finfluencer/algo-dev accounts
+  include_replies: false   # leave lists empty → built-in India F&O default query set
+
+telegram:
+  # PUBLIC channels only. Seed list; expand from forwards/mentions.
+  channels: []                   # e.g. ["@somepublicchannel"]
+  messages_per_channel: 100
+
+# Cheap keyword gate — drops ~70% of junk before any LLM spend.
+prefilter:
+  keywords:
+    - nifty
+    - banknifty
+    - sensex
+    - finnifty
+    - expiry
+    - straddle
+    - strangle
+    - iron condor
+    - option
+    - "f&o"
+    - futures
+    - algo
+    - backtest
+    - kite api
+    - kiteconnect
+    - openalgo
+    - api trading
+    - automate
+    - python
+    - strike
+    - premium
+    - theta
+    - delta hedge
+  min_chars: 20
+
+# Audience weights for trend ranking (our focus order).
+audience_weights:
+  dev: 1.5
+  algo: 1.4
+  serious: 1.0
+  retail: 0.6
+
+trend:
+  top_n: 10
+  baseline_days: 7

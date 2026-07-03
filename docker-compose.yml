@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: nubra-community-postgres
+    environment:
+      POSTGRES_USER: community
+      POSTGRES_PASSWORD: community
+      POSTGRES_DB: nubra_community
+    ports:
+      - "5544:5432"
+    volumes:
+      - nubra_community_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U community -d nubra_community"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  nubra_community_pgdata:

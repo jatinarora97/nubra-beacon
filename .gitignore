@@ -1,0 +1,11 @@
+.env
+.venv/
+pulse.db
+tg.session*
+__pycache__/
+*.pyc
+.venv/
+__pycache__/
+out/
+*.log
+.DS_Store

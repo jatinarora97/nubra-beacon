@@ -1,0 +1,49 @@
+# Source registry (LLD-02 §1.3) — local build values.
+# All crons in IST on prod; locally stages run via `runner.py run-local`.
+sources:
+  twitter:
+    enabled: true
+    live_fetch: true            # local: try live, but hard-capped — API credits are scarce
+    x_live_cap: 10              # stop after 10 live items (user decision 2026-07-03); flagged in ops summary
+    csv_backfill: data/twitter_pulse.csv
+    queries:
+      - "(zerodha OR groww OR upstox OR dhan OR \"angel one\" OR nubra) lang:en"
+    budget:
+      max_items_per_run: 1500
+      max_usd_per_day: 5.00     # config — start at $5, tune after shadow run
+  reddit:
+    enabled: true
+    subreddits:                 # tiered; health check flags dead/renamed subs
+      - IndianStreetBets
+      - IndianStockMarket
+      - IndiaInvestments
+      - StockMarketIndia
+      - DalalStreetTalks
+      - DalalStreetBets
+      - mutualfunds
+      - personalfinanceindia
+      - FIREIndia
+      - IndiaFinance
+      - IndiaTax
+    max_posts_per_sub: 15       # local politeness cap
+    budget:
+      max_items_per_run: 2000
+
+recommend:
+  thresholds: {headsup: 70, secondary: 40}
+  max_drafted: 10
+  weights:
+    freshness_velocity: 0.25
+    relevance: 0.30
+    reach: 0.15
+    opportunity_type: 0.15
+    author_quality: 0.15
+  recurrence_boost_per_hit: 0.05   # × headsup_count, capped
+  recurrence_boost_cap: 0.15
+
+delivery:
+  headsup_on_empty: ops_summary    # ops_summary | skip
+  nubra_watch_mention: ""          # empty = plain post (v1); set to e.g. "@community-support" later
+
+aggregate:
+  feature_sim_threshold: 0.80      # unused in local mode (embeddings skipped → slug keys)
