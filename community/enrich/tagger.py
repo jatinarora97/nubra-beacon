@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from community.config.settings import settings
 from community.llm import client as llm
-from community.pipeline import prefilter
+from community.clean import prefilter
 from community.reference.taxonomy import resolve_broker, seed_taxonomy
 from community.store import db, repositories as repo
 

@@ -10,7 +10,7 @@ from datetime import timedelta
 
 from datasketch import LeanMinHash, MinHash, MinHashLSH
 
-from community.pipeline.normalize import norm
+from community.clean.normalize import norm
 from community.store import db
 from community.store import repositories as repo
 

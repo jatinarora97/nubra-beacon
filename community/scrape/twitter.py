@@ -16,7 +16,7 @@ from typing import Iterator
 import httpx
 
 from community.config.settings import settings
-from community.sources.base import AuthorMeta, Engagement, SocialItem, unified_score
+from community.scrape.base import AuthorMeta, Engagement, SocialItem, unified_score
 
 ENDPOINT = "https://api.twitterapi.io/twitter/tweet/advanced_search"
 

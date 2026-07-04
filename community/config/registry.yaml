@@ -25,7 +25,13 @@ sources:
       - FIREIndia
       - IndiaFinance
       - IndiaTax
-    max_posts_per_sub: 15       # local politeness cap
+      # from zanshash/reddit_scraper's field-tested list:
+      - IndiaAlgoTrading
+      - NSEbets
+      - IndiaOptionsSelling
+    max_posts_per_sub: 8        # local politeness cap (each post = 1 page visit + jitter)
+    comments_per_post: 15
+    sort_types: [new]           # prod may add: hot
     budget:
       max_items_per_run: 2000
 
@@ -45,6 +51,11 @@ recommend:
 delivery:
   headsup_on_empty: ops_summary    # ops_summary | skip
   nubra_watch_mention: ""          # empty = plain post (v1); set to e.g. "@community-support" later
+  # channels are config-gated: missing creds -> channel skipped, archive always written
+  slack_webhook_env: SLACK_WEBHOOK_URL          # .env key holding the incoming-webhook URL
+  gmail_sender_env: GMAIL_SENDER                # .env key: from-address
+  gmail_app_password_env: GMAIL_APP_PASSWORD    # .env key: app password
+  email_recipients: []                          # e.g. [team@nubra.in]
 
 roundup:
   daily_window_days: 7            # prod: 1 (the day); wider locally — test data spans days

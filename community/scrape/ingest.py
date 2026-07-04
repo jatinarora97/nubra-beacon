@@ -5,9 +5,9 @@ Idempotent: insert-if-absent on (source, external_id); reruns insert ~0.
 from __future__ import annotations
 
 from community.config.settings import settings
-from community.pipeline.normalize import norm
-from community.sources import reddit, twitter
-from community.sources.base import SocialItem
+from community.clean.normalize import norm
+from community.scrape import reddit, twitter
+from community.scrape.base import SocialItem
 from community.store import repositories as repo
 
 

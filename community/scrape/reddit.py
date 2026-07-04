@@ -1,14 +1,14 @@
-"""Reddit adapter — live fetch via the public JSON API (httpx), Playwright fallback.
+"""Reddit adapter — primary: the vendored zanshash/reddit_scraper (old.reddit via
+Playwright — verified working on networks that 403 the JSON API); fallback: the
+public JSON endpoints (kept for networks where plain HTTP is fine and faster).
 
-Port decision vs LLD-02 §3 (old.reddit DOM scrape): the public JSON endpoints
-(www.reddit.com/r/{sub}/new.json, /comments/{id}.json) return the same data with
-zero DOM fragility, so they are the primary transport here; if Reddit blocks the
-plain HTTP client (403/429), the SAME URL is fetched once more through headless
-Chromium (already installed), which clears most blocks. Politeness: ~0.6s between
-requests, realistic UA, per-sub failures degrade to a health note.
+Runtime config (subreddits, posts/sub, comments/post, sort types) is injected
+into the vendored module from registry.yaml — its own config.py is defaults only.
 """
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import time
 from datetime import datetime, timezone
@@ -16,7 +16,77 @@ from datetime import datetime, timezone
 import httpx
 
 from community.config.settings import settings
-from community.sources.base import AuthorMeta, Engagement, SocialItem, unified_score
+from community.scrape.base import AuthorMeta, Engagement, SocialItem, unified_score
+
+
+def _scraper_fetch(subs: list[str], max_posts: int, comments_cap: int,
+                   sorts: list[str]) -> tuple[list[SocialItem], list[str]]:
+    """Primary transport: the vendored old.reddit Playwright scraper."""
+    from community.lib import reddit_scraper as pkg
+    from community.lib.reddit_scraper import scraper as zs
+
+    # inject runtime config (module-level names bound at import time)
+    zs.SUBREDDITS = subs
+    zs.POSTS_PER_FEED = max_posts
+    zs.COMMENTS_PER_POST = comments_cap
+    zs.SORT_TYPES = sorts
+    zs.DOWNLOAD_IMAGES = False
+    zs.HEADLESS = True
+    zs.OUTPUT_DIR = str(settings.out_dir.parent / "reddit_scraper")
+    pkg.config.OUTPUT_DIR = zs.OUTPUT_DIR
+
+    combined = asyncio.run(zs.run())
+
+    items: list[SocialItem] = []
+    health: list[str] = []
+    for sub, posts in combined.items():
+        if not posts:
+            health.append(f"r/{sub}: 0 posts via scraper (dead/renamed/blocked?)")
+        for p in posts:
+            if not p.get("id") or p.get("author") in (None, "[deleted]"):
+                continue
+            text = " ".join(x for x in [(p.get("title") or "").strip(),
+                                        (p.get("selftext") or "").strip()] if x)
+            if not text:
+                continue
+            created = (datetime.fromtimestamp(p["timestamp"], tz=timezone.utc)
+                       if p.get("timestamp") else datetime.now(timezone.utc))
+            likes = int(p.get("score") or 0)
+            replies = int(p.get("num_comments") or 0)
+            items.append(SocialItem(
+                source="reddit", source_type="post",
+                external_id=p["id"], parent_id=None, thread_id=p["id"],
+                author=p["author"], author_meta=AuthorMeta(),
+                text=text[:8000], lang=None,
+                url=p.get("permalink") or f"https://www.reddit.com/r/{sub}",
+                created_at=created,
+                engagement=Engagement(score=unified_score(likes, 0, replies),
+                                      native={"upvotes": likes, "comments": replies}),
+                raw={"subreddit": sub, "flair": p.get("flair"),
+                     "post_type": p.get("post_type"), "via": "zanshash_scraper"},
+            ))
+            for c in p.get("comments") or []:
+                body = (c.get("body") or "").strip()
+                if not body or c.get("author") in (None, "[deleted]"):
+                    continue
+                # DOM comments carry no reddit id — derive a stable one from content
+                cid = hashlib.sha1(
+                    f"{c['author']}|{body[:120]}".encode()).hexdigest()[:12]
+                c_likes = int(c.get("score") or 0)
+                items.append(SocialItem(
+                    source="reddit", source_type="comment",
+                    external_id=f"{p['id']}_c{cid}",
+                    parent_id=p["id"], thread_id=p["id"],
+                    author=c["author"], author_meta=AuthorMeta(),
+                    text=body[:8000], lang=None,
+                    url=p.get("permalink") or f"https://www.reddit.com/r/{sub}",
+                    created_at=created,  # comment time not in DOM — post time approx
+                    engagement=Engagement(score=unified_score(c_likes, 0, 0),
+                                          native={"upvotes": c_likes}),
+                    raw={"subreddit": sub, "via": "zanshash_scraper",
+                         "created_at_approx": True},
+                ))
+    return items, health
 
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
@@ -110,13 +180,27 @@ def _walk_comments(children: list, thread_id: str, sub: str, cap: int) -> list[S
 
 
 def fetch_live() -> tuple[list[SocialItem], list[str]]:
-    """Fetch new posts + comments for every registry subreddit.
+    """Fetch posts + comments for every registry subreddit.
     Returns (items, health_notes) — a failing sub is a note, never an exception."""
     reg = settings.registry.get("sources", {}).get("reddit", {})
     subs = reg.get("subreddits", [])
     max_posts = int(reg.get("max_posts_per_sub", 15))
-    items: list[SocialItem] = []
-    health: list[str] = []
+
+    # ── primary: vendored zanshash scraper (works where the JSON API is blocked)
+    try:
+        items, health = _scraper_fetch(
+            subs, max_posts,
+            comments_cap=int(reg.get("comments_per_post", 15)),
+            sorts=list(reg.get("sort_types", ["new"])),
+        )
+        if items:
+            return items, health
+        health.append("reddit scraper returned 0 items everywhere — trying JSON API fallback")
+    except Exception as e:  # noqa: BLE001
+        health = [f"reddit scraper failed ({type(e).__name__}: {str(e)[:80]}) — JSON API fallback"]
+
+    # ── fallback: public JSON API (plain httpx, then Chromium for the same URL)
+    items = []
 
     consecutive_failures = 0
     with httpx.Client(timeout=20.0, headers={"User-Agent": _UA},

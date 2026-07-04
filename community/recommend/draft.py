@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 
 from community.config.settings import settings
 from community.llm.client import complete
-from community.pipeline import compliance
+from community.recommend import compliance
 from community.reference import features
 from community.store import db
 
