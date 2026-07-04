@@ -4,30 +4,27 @@
 
 _grounding: **{{ payload.grounding }}**{% if payload.grounding == "assumed-v0" %} — drafts cite our assumed catalog; marketing's vetted cut swaps in later{% endif %}_
 
-## 1 · Trending topics
+## 1 · Trending topics (bar: ≥{{ payload.trending_bar or 3 }} items)
 {% if payload.trending %}{% for t in payload.trending %}
-- **{{ t.label or t.topic_key }}** — {{ t.count }} item{{ "s" if t.count != 1 else "" }}{{ " · z=%.1f"|format(t.velocity_z) if t.velocity_z else "" }}{{ " · %d sources"|format(t.spread) if t.spread and t.spread > 1 else "" }}
-{% endfor %}{% else %}_none today_{% endif %}
+- **{{ t.label or t.topic_key }}** — {{ t.count }} item{{ "s" if t.count != 1 else "" }}{{ " · momentum z=%.1f"|format(t.velocity_z) if t.velocity_z else "" }}{{ " · %d sources"|format(t.spread) if t.spread and t.spread > 1 else "" }}
+{% endfor %}{% else %}_nothing crossed the trending bar today_{% endif %}
 
 ## 2 · Broker issues
 {% if payload.broker_issues %}{% for i in payload.broker_issues %}
 - **{{ i.broker }}** · {{ i.issue_key }} — {{ i.count }} complaint{{ "s" if i.count != 1 else "" }}{{ " · severity %.1f"|format(i.severity) if i.severity else "" }}
 {% endfor %}{% else %}_none today_{% endif %}
 
-## 3 · Feature requests
+## 3 · Feature requests (bar: ≥{{ payload.features_bar or 2 }} mentions)
 {% if payload.feature_requests %}{% for f in payload.feature_requests %}
 - {{ f.label }} — {{ f.count }} mention{{ "s" if f.count != 1 else "" }}
-{% endfor %}{% else %}_none today_{% endif %}
+{% endfor %}{% else %}_nothing crossed the bar today_{% endif %}
 
-## 4+5 · Opportunities (rep + brand drafts)
+## 4+5 · Opportunities (rep + brand drafts) — Priority 1 first
 {% if payload.opportunities %}{% for o in payload.opportunities %}
-### priority {{ o.priority }} · {{ o.source }}{{ " · %s"|format(o.url) if o.url else "" }}
-
-
-- insight: `{{ o.matched_insight }}`
-{% if o.recommended_timing %}
-- when: **{{ o.recommended_timing.action }}** {{ o.recommended_timing.window }} — {{ o.recommended_timing.why }}
-{% endif %}
+### Priority {{ loop.index }} · {{ (o.matched_insight or {}).get("kind", "thread").replace("_", " ") }} · {{ o.source }}
+- engagement: **{{ (o.matched_insight or {}).get("interactions", "?") }} interactions** · relevance score {{ o.priority }}/100
+- thread: {{ o.url or "-" }}
+- when: {{ "**%s** %s — %s"|format(o.recommended_timing.action, o.recommended_timing.window, o.recommended_timing.why) if o.recommended_timing else "-" }}
 {% if o.brand_reply %}
 
 **🏢 Brand:** {{ o.brand_reply }}
@@ -44,12 +41,22 @@ _no drafts (below draft threshold or dropped by compliance gate)_
 _none today_
 {% endif %}
 
-## 6 · Content proposals (top {{ payload.content_proposals|length }})
+## 6 · Content proposals (top {{ payload.content_proposals|length }}) — creator-ready briefs
 {% if payload.content_proposals %}{% for c in payload.content_proposals %}
-### #{{ c.rank }} · {{ c.format }}
+### #{{ c.rank }} · {{ c.format | upper }}
 - **Hook:** {{ c.hook }}
+{% if c.outline is mapping %}
+{% for b in c.outline.get("beats", []) %}
+- {{ loop.index }}. {{ b }}
+{% endfor %}
+- **Caption (paste-ready):** {{ c.outline.get("caption", "-") }}
+- **Hashtags:** {{ c.outline.get("hashtags", []) | join(" ") }}
+- **CTA:** {{ c.outline.get("cta", "-") }}
+- **Visual direction:** {{ c.outline.get("visual_direction", "-") }}
+{% else %}
 - **Outline:** {{ c.outline | join(" → ") }}
-- **Why:** {{ c.why }}
+{% endif %}
+- **Why now:** {{ c.why }}
 - **Window:** {{ c.recommended_timing.window if c.recommended_timing and c.recommended_timing.window else "flexible" }}
 {% endfor %}{% else %}_none today_{% endif %}
 
@@ -58,12 +65,9 @@ _none today_
 - “{{ n.summary }}” · {{ n.source }}{{ " · %s"|format(n.url) if n.url else "" }}
 {% endfor %}{% else %}_no Nubra mentions in the last 24h_{% endif %}
 
-## 🔊 Rising voices
+## 🔊 Rising voices — worth building relationships with
 {% if payload.rising_voices %}{% for v in payload.rising_voices %}
-- {{ v.handle }} ({{ v.source }}) — voice {{ "%.0f"|format(v.voice_score) }}{{ " ⚠️ flagged" if v.authenticity_flag else "" }}
+- [@{{ v.handle }}]({{ v.profile_url or "#" }}) · {{ v.source }}{{ " ⚠️ authenticity flagged" if v.authenticity_flag else "" }}
 {% endfor %}{% else %}_not enough history yet_{% endif %}
-
----
-_stats: {{ payload.stats }}_
 
 _Local build: on prod this goes to Slack + email._

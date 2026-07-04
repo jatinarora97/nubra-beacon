@@ -16,16 +16,32 @@ from community.store import db
 
 
 def _daily_payload(today: date) -> dict:
+    cfg = settings.registry.get("roundup", {})
+    trend_bar = cfg.get("trending_min_items", 3)
+    exclude = cfg.get("trending_exclude_topics", []) or [""]
+    feat_bar = cfg.get("features_min_mentions", 2)
+    # Trending = ≥N items (1 person ≠ a trend), excluding topics that already have
+    # their own section (broker issues/charges), excluding unclassified other:*.
+    window = cfg.get("daily_window_days", 1)  # prod 1; wider locally (spread test data)
+    since = today - timedelta(days=window - 1)
     trending = db.query(
-        "SELECT t.topic_key, x.label, t.count, t.velocity_z, t.spread FROM topic_daily t "
-        "LEFT JOIN topic_taxonomy x ON x.topic_key = t.topic_key WHERE t.day=%s "
-        "ORDER BY t.velocity_z DESC NULLS LAST, t.count DESC LIMIT 8", (today,))
-    broker_issues = db.query(
-        "SELECT broker, issue_key, count, severity, sentiment_avg FROM issue_rollup "
-        "WHERE day=%s ORDER BY count DESC LIMIT 8", (today,))
+        "SELECT t.topic_key, x.label, SUM(t.count)::int AS count, MAX(t.velocity_z) AS velocity_z, "
+        "MAX(t.spread)::int AS spread FROM topic_daily t "
+        "LEFT JOIN topic_taxonomy x ON x.topic_key = t.topic_key "
+        "WHERE t.day BETWEEN %s AND %s AND NOT (t.topic_key = ANY(%s)) "
+        "AND t.topic_key NOT LIKE 'other:%%' GROUP BY t.topic_key, x.label "
+        "HAVING SUM(t.count) >= %s "
+        "ORDER BY MAX(t.velocity_z) DESC NULLS LAST, SUM(t.count) DESC LIMIT 8",
+        (since, today, exclude, trend_bar))
+    broker_issues = db.query(  # deliberately NO cutoff — one complaint is reportable
+        "SELECT broker, issue_key, SUM(count)::int AS count, MAX(severity) AS severity, "
+        "AVG(sentiment_avg) AS sentiment_avg FROM issue_rollup "
+        "WHERE day BETWEEN %s AND %s GROUP BY broker, issue_key "
+        "ORDER BY SUM(count) DESC LIMIT 8", (since, today))
     feature_requests = db.query(
-        "SELECT feature_key, canonical_label AS label, count FROM feature_rollup "
-        "WHERE day=%s ORDER BY count DESC LIMIT 8", (today,))
+        "SELECT feature_key, MAX(canonical_label) AS label, SUM(count)::int AS count "
+        "FROM feature_rollup WHERE day BETWEEN %s AND %s GROUP BY feature_key "
+        "HAVING SUM(count) >= %s ORDER BY SUM(count) DESC LIMIT 8", (since, today, feat_bar))
     opportunities = db.query(
         "SELECT o.id, o.source, o.thread_id, o.priority, o.matched_insight, o.brand_reply, "
         "o.rep_reply, o.recommended_timing, o.status, si.url "
@@ -45,6 +61,9 @@ def _daily_payload(today: date) -> dict:
         "SELECT a.handle, a.source, s.voice_score, s.contributions, s.authenticity_flag "
         "FROM author_stats s JOIN authors a ON a.author_id = s.author_id "
         "ORDER BY s.voice_score DESC LIMIT 5")
+    for v in rising_voices:  # profile links, not bare names
+        v["profile_url"] = (f"https://x.com/{v['handle']}" if v["source"] == "twitter"
+                            else f"https://www.reddit.com/user/{v['handle']}")
     stats_row = {
         "items_today": (db.one(
             "SELECT count(*) AS n FROM social_items WHERE ingested_at::date = %s", (today,)) or {}).get("n", 0),
@@ -62,6 +81,7 @@ def _daily_payload(today: date) -> dict:
         "feature_requests": feature_requests, "opportunities": opportunities,
         "content_proposals": content_proposals, "nubra_watch": nubra_watch,
         "rising_voices": rising_voices, "stats": stats_row,
+        "trending_bar": trend_bar, "features_bar": feat_bar,
     }
 
 

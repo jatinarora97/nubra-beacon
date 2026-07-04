@@ -176,18 +176,34 @@ def _content_proposals(catalog: list[dict]) -> int:
         "ORDER BY count DESC LIMIT 5", (today,))
     if not topics and not issues and not feats:
         return 0
-    system = ("You propose social content for Nubra, an Indian stock broker. NOT buy/sell "
-              "content — relevant presence around trending topics. Ground any Nubra claim in "
-              "NUBRA_FEATURES. Return ONLY JSON: {\"candidates\": [{\"format\": "
-              "\"infographic|reel|short|post|thread\", \"hook\": \"...\", \"outline\": "
-              "[\"beat1\",\"beat2\",\"beat3\"], \"why\": \"...\", \"recommended_window\": "
-              "\"HH:MM–HH:MM IST\", \"scores\": {\"impact\":0.0,\"reach_fit\":0.0,"
-              "\"timeliness\":0.0,\"effort_inv\":0.0,\"on_brand\":0.0}}]}  (~8 candidates)")
+    system = (
+        "You are a senior creative strategist writing CONTENT BRIEFS for Nubra's content "
+        "creators and community managers (Nubra = SEBI-regulated Indian stock broker). "
+        "NOT buy/sell content — relevant, useful presence around what traders discuss "
+        "today. Ground any Nubra claim ONLY in NUBRA_FEATURES. "
+        "HARD CONSTRAINTS (a compliance gate rejects violations): never anchor content "
+        "on a named competitor or their bad news; no directional/predictive market "
+        "claims; no trade setups, levels, targets or stop-losses — not even as chart "
+        "examples; no urgency/FOMO/social-proof pressure. Safe angles: educational "
+        "explainers, process/tooling walkthroughs, myth-busting with public facts, "
+        "feature demos, community questions. Each brief must be "
+        "executable without follow-up questions: concrete beats a creator can shoot/write "
+        "directly (for reels/shorts: shot-by-shot with on-screen text; for threads: "
+        "tweet-by-tweet with the first two tweets fully written; for infographics: the "
+        "exact data points and layout). Reference the actual signal (real topics/counts "
+        "from TODAY'S SIGNAL). Return ONLY JSON: {\"candidates\": [{\"format\": "
+        "\"infographic|reel|short|post|thread\", \"hook\": \"exact opening line/cover text\", "
+        "\"brief\": {\"beats\": [\"concrete production step 1\", \"...\"], "
+        "\"caption\": \"ready-to-paste caption\", \"hashtags\": [\"#tag\"], "
+        "\"cta\": \"one CTA\", \"visual_direction\": \"style/format notes\"}, "
+        "\"why\": \"why this lands, tied to the signal\", \"recommended_window\": "
+        "\"HH:MM-HH:MM IST\", \"scores\": {\"impact\":0.0,\"reach_fit\":0.0,"
+        "\"timeliness\":0.0,\"effort_inv\":0.0,\"on_brand\":0.0}}]} (exactly 5 candidates)")
     user = (f"NUBRA_FEATURES: {json.dumps(catalog)}\n\nTODAY'S SIGNAL:\n"
             f"rising topics: {json.dumps(topics, default=str)}\n"
             f"broker issues: {json.dumps(issues, default=str)}\n"
             f"feature requests: {json.dumps(feats, default=str)}")
-    raw, _u = complete(settings.draft_model, system, user, max_tokens=6000)
+    raw, _u = complete(settings.draft_model, system, user, max_tokens=8000)
     try:
         cands = _parse_json(raw)["candidates"]
     except (ValueError, KeyError, json.JSONDecodeError) as e:
@@ -208,7 +224,9 @@ def _content_proposals(catalog: list[dict]) -> int:
             continue
         if per_format.get(f, 0) >= 2:
             continue
-        text = f"{c.get('hook','')} | {' / '.join(c.get('outline', []))}"
+        brief = c.get("brief") or {}
+        text = " | ".join([c.get("hook", ""), " / ".join(brief.get("beats", [])),
+                           brief.get("caption", "")])
         ok, _ = compliance.check(text, "content_proposal", {"kind": "content_proposal", "hook": c.get("hook", "")[:60]})
         if not ok:
             continue
@@ -222,7 +240,7 @@ def _content_proposals(catalog: list[dict]) -> int:
         db.execute(
             "INSERT INTO content_proposals (day, rank, format, hook, outline, why, "
             "rides_signal, recommended_timing) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-            (today, rank, c["format"], c.get("hook", ""), db.jsonb(c.get("outline", [])),
+            (today, rank, c["format"], c.get("hook", ""), db.jsonb(c.get("brief", {})),
              c.get("why"), db.jsonb({"signal": "day_mix"}),
              db.jsonb({"action": "schedule", "window": c.get("recommended_window", "")})),
         )

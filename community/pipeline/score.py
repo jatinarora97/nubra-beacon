@@ -70,12 +70,27 @@ def _seo_boost(rows: list[dict], kws: list[str]) -> float:
     return min(0.1 * hits, 0.2)
 
 
-def _reach(rows: list[dict]) -> float:
+def _interactions(rows: list[dict]) -> int:
+    """Real engagement: likes + replies + shares (views/followers are NOT interactions)."""
     best = 0
     for r in rows:
+        n = (r.get("engagement") or {}).get("native", {})
+        inter = (n.get("likes", 0) + n.get("upvotes", 0) + n.get("replies", 0)
+                 + n.get("comments", 0) + n.get("retweets", 0) + n.get("quotes", 0))
+        best = max(best, inter)
+    return best
+
+
+def _reach(rows: list[dict]) -> float:
+    """60% audience size (followers/views), 40% actual interactions — a thread with
+    zero likes/replies should not out-reach one people engage with."""
+    audience = 0
+    for r in rows:
         native = (r.get("engagement") or {}).get("native", {})
-        best = max(best, r.get("followers") or 0, native.get("views", 0))
-    return min(math.log10(1 + best) / 6.0, 1.0)
+        audience = max(audience, r.get("followers") or 0, native.get("views", 0))
+    a = min(math.log10(1 + audience) / 6.0, 1.0)
+    e = min(math.log1p(_interactions(rows)) / math.log1p(200), 1.0)
+    return 0.6 * a + 0.4 * e
 
 
 def _author_quality(rows: list[dict]) -> float:
@@ -154,10 +169,19 @@ def run(lookback_hours: int = 48) -> dict:
                                          "boost": round(boost, 2)}
                 stats["recurrence_boosted"] += 1
 
+        # Engagement gate: a thread nobody liked/replied to can't be a TOP action
+        # (still allowed into the secondary pool).
+        inter = _interactions(rows)
+        min_inter = settings.registry["recommend"].get("action_min_interactions", 10)
+        headsup_bar = settings.registry["recommend"]["thresholds"]["headsup"]
+        if inter < min_inter and priority >= headsup_bar:
+            priority = headsup_bar - 1
+
         priority = int(min(priority, 100))
         if priority < settings.registry["recommend"]["thresholds"]["secondary"]:
             continue
 
+        insight["interactions"] = inter
         insight["topic_key"] = insight.get("topic_key") or c["dominant_topic_key"]
         db.execute(
             """

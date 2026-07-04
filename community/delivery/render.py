@@ -53,6 +53,7 @@ def _action_items() -> list[dict]:
         age_h = ((now - r["last_seen"]).total_seconds() / 3600) if r.get("last_seen") else None
         actions.append({
             "id": r["id"], "priority": r["priority"],
+            "interactions": mi.get("interactions"),
             "icon": "↗" if rec else _ICONS.get(kind, "•"),
             "kind_label": (f"STILL RISING · {rec['topic_key']} — thread #{rec['nth_thread_today']} today"
                             if rec else kind.replace("_", " ").upper()),
@@ -107,35 +108,59 @@ def _rising_topics() -> list[dict]:
     )
 
 
-def _ops_lines(all_stats: dict) -> list[str]:
+def _ops_block(all_stats: dict) -> dict:
+    """The 'what we did in the last hour' framework — human-facing, no pipeline
+    internals: sources fetched, volume analyzed, actions identified per platform
+    and kind, top standing actions."""
     ing = all_stats.get("ingest", {})
-    ded = all_stats.get("dedup", {})
     enr = all_stats.get("enrich", {})
-    agg = all_stats.get("aggregate", {})
-    sco = all_stats.get("score", {})
-    fetched = ing.get("fetched_by_source") or {}
-    lines = []
-    if fetched:
-        per_src = " · ".join(f"{k} {v}" for k, v in fetched.items())
-        lines.append(f"- fetched **{sum(fetched.values())}** ({per_src})"
-                     + (f" + backfilled {ing['backfilled']}" if ing.get("backfilled") else ""))
-    if ded:
-        lines.append(f"- dedup: {ded.get('checked', 0)} checked → "
-                     f"{ded.get('exact_dupes', 0)} exact + {ded.get('near_dupes', 0)} near dupes linked")
-    if enr:
-        lines.append(f"- enriched {enr.get('enriched', 0)} · noise-filtered "
-                     f"{enr.get('prefiltered_noise', 0)} (rules) · LLM calls {enr.get('llm_calls', 0)}"
-                     + (" · **keyword fallback active**" if enr.get("fallback") else ""))
-    if agg:
-        lines.append(f"- aggregate: {agg.get('conversations', 0)} conversations · "
-                     f"{agg.get('topics', agg.get('topics_rising', 0))} topics · "
-                     f"{agg.get('issues', 0)} issue rollups · {agg.get('features', 0)} feature rollups")
-    if sco:
-        lines.append(f"- scored {sco.get('scored', 0)} → {sco.get('persisted', 0)} opportunities "
-                     f"({sco.get('new_ge70', 0)} ≥70) · Nubra mentions {sco.get('nubra_watch', 0)}"
-                     + (f" · recurrence-boosted {sco['recurrence_boosted']}"
-                        if sco.get("recurrence_boosted") else ""))
-    return lines or ["- no stage stats this run"]
+    fetched = ing.get("fetched", ing.get("fetched_by_source") or {})
+
+    src_bits = []
+    for src, n in fetched.items():
+        src_bits.append(f"{src.replace('_', ' ')} **{n}**")
+    fetched_line = " · ".join(src_bits) if src_bits else "no new fetches this run"
+    blocked = [h for h in (ing.get("reddit_health") or []) if "block" in h.lower() or "FAIL" in h]
+    if blocked:
+        fetched_line += f" · reddit **blocked on this network** ({len(blocked)} subs unreachable)"
+
+    analyzed = (enr.get("llm_enriched", 0) or 0) + (enr.get("prefiltered_noise", 0) or 0)
+    junk = enr.get("prefiltered_noise", 0) or 0
+    llm_noise = (db.one(
+        "SELECT count(*) AS n FROM item_enrichment WHERE is_noise AND model NOT LIKE 'rule%%' "
+        "AND enriched_at > now() - interval '2 hours'") or {}).get("n", 0)
+    analyzed_line = (f"**{analyzed}** new items analyzed → {max(analyzed - junk - llm_noise, 0)} relevant "
+                     f"({junk + llm_noise} junk/noise filtered out)") if analyzed else         "no new items this run (nothing new to analyze)"
+
+    by_src = db.query(
+        "SELECT source, count(*) AS n FROM opportunities "
+        "WHERE status='suggested' AND updated_at > now() - interval '24 hours' GROUP BY source")
+    by_kind = db.query(
+        "SELECT matched_insight->>'kind' AS kind, count(*) AS n FROM opportunities "
+        "WHERE status='suggested' AND updated_at > now() - interval '24 hours' "
+        "GROUP BY 1 ORDER BY n DESC")
+    total_opps = sum(r["n"] for r in by_src)
+    kind_labels = {"feature_request": "feature requests", "question": "questions",
+                   "broker_issue": "competitor complaints", "comparison": "comparisons",
+                   "topic": "topical threads"}
+    identified_line = (
+        f"**{total_opps}** possible actions on the table ("
+        + " · ".join(f"{r['source']} {r['n']}" for r in by_src) + ") — "
+        + " · ".join(f"{r['n']} {kind_labels.get(r['kind'], r['kind'])}" for r in by_kind if r["kind"])
+    ) if total_opps else "no actions identified yet"
+
+    top_standing = db.query(
+        "SELECT o.priority, o.matched_insight->>'kind' AS kind, left(si.text, 110) AS title, si.url "
+        "FROM opportunities o "
+        "LEFT JOIN conversations c ON (c.source, c.thread_id) = (o.source, o.thread_id) "
+        "LEFT JOIN social_items si ON si.item_id = c.root_item_id "
+        "WHERE o.status='suggested' ORDER BY o.priority DESC LIMIT 3")
+    for i, r in enumerate(top_standing, 1):
+        r["rank"] = i
+        r["kind_label"] = kind_labels.get(r["kind"], r["kind"] or "thread")
+
+    return {"fetched": fetched_line, "analyzed": analyzed_line,
+            "identified": identified_line, "top_standing": top_standing}
 
 
 def write_local_messages(all_stats: dict) -> list[pathlib.Path]:
@@ -156,7 +181,7 @@ def write_local_messages(all_stats: dict) -> list[pathlib.Path]:
             "is_ops_only": is_ops_only,
             "actions": actions, "nubra_watch": watch, "rising_topics": rising,
             "mention": f" · {mention}" if mention else "",
-            "ops_lines": _ops_lines(all_stats),
+            "ops": _ops_block(all_stats),
             "x_live_note": (all_stats.get("ingest") or {}).get("x_live_note"),
         }
         out = _env.get_template("headsup_md.j2").render(**ctx)

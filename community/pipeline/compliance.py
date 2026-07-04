@@ -83,7 +83,7 @@ def l2_check(text: str, kind: str) -> tuple[bool, list[str]]:
     raw, _usage = complete(
         settings.draft_model, _L2_SYSTEM,
         f"KIND: {kind}\nDRAFT:\n{text}\n\nReturn only the JSON verdict.",
-        max_tokens=500,
+        max_tokens=1200,
     )
     try:
         blob = raw[raw.index("{"): raw.rindex("}") + 1]

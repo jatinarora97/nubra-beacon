@@ -1,18 +1,15 @@
 # ⚡ Community heads-up · {{ window }}
 {% if is_ops_only %}
-_No new action items this hour — ops summary below._
+_No brand-new action items this hour — activity summary below._
 {% else %}
-## Actions ({{ actions|length }}) — sorted by weight
+## 🎯 Actions ({{ actions|length }}) — Priority 1 first
 {% for a in actions %}
-### {{ a.icon }} {{ a.kind_label }} · priority {{ a.priority }}{% if a.boost_note %} ({{ a.boost_note }}){% endif %}
+### Priority {{ loop.index }} — {{ a.icon }} {{ a.kind_label }}{{ " · %s"|format(a.boost_note) if a.boost_note else "" }}
 
 > {{ a.title }}
 
-- insight: {{ a.insight }}
-- age: {{ a.age }}{% if a.timing %} · timing: **{{ a.timing }}**{% endif +%}
-{% if a.url %}
+- engagement: **{{ a.interactions if a.interactions is not none else "?" }} interactions** · age {{ a.age }}{{ " · post window: **%s**"|format(a.timing) if a.timing else "" }} · relevance score {{ a.priority }}/100
 - thread: {{ a.url }}
-{% endif %}
 {% if a.brand_reply %}
 
 **Brand draft:** {{ a.brand_reply }}
@@ -25,21 +22,28 @@ _No new action items this hour — ops summary below._
 {% if nubra_watch %}
 ## 🟠 Nubra watch — routed to support, do NOT engage from marketing{{ mention }}
 {% for n in nubra_watch %}
-- “{{ n.summary }}” · {{ n.source }}{% if n.url %} · {{ n.url }}{% endif %}
+- “{{ n.summary }}” · {{ n.source }}{{ " · %s"|format(n.url) if n.url else "" }}
 {% endfor %}
 {% endif %}
 {% if rising_topics %}
 ## 📈 Newly rising topics
 {% for t in rising_topics %}
-- **{{ t.label or t.topic_key }}** — {{ t.count }} items today{% if t.velocity_z %} · z={{ "%.1f"|format(t.velocity_z) }}{% elif t.cold_start %} · (cold-start: by volume){% endif %}
+- **{{ t.label or t.topic_key }}** — {{ t.count }} item{{ "s" if t.count != 1 else "" }} today{{ " · momentum z=%.1f"|format(t.velocity_z) if t.velocity_z else (" · (early view: by volume)" if t.cold_start else "") }}
 {% endfor %}
 {% endif %}
 
 ---
-## 📊 Last hour · ops summary
-{% for line in ops_lines %}
-{{ line }}
+## 📊 What we did in the last hour
+- **Fetched** — {{ ops.fetched }}
+- **Analyzed** — {{ ops.analyzed }}
+- **Actions identified** — {{ ops.identified }}
+{% if is_ops_only and ops.top_standing %}
+
+**Top standing actions (from earlier runs):**
+{% for s in ops.top_standing %}
+{{ s.rank }}. {{ s.kind_label }} · score {{ s.priority }} — “{{ s.title }}” {{ s.url or "" }}
 {% endfor %}
+{% endif %}
 {% if x_live_note %}
 > ⚠️ **X/Twitter:** {{ x_live_note }}
 {% endif %}
