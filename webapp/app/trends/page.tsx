@@ -33,8 +33,8 @@ export default async function TrendsPage() {
               <InfoTip text="Distinct sources the topic appears on (X, Reddit). 2 sources = cross-platform conversation." />
             </span>
             <span>
-              Engagement
-              <InfoTip text="Sum of real interactions (likes + replies + shares) across the topic's items." />
+              Engagement index
+              <InfoTip text="Sum of each item's log-scaled engagement score — an index for comparing topics, not a raw interaction count. Formula at the bottom of the chart." />
             </span>
           </div>
           <div className="space-y-2.5">
@@ -65,13 +65,31 @@ export default async function TrendsPage() {
               </div>
             ))}
           </div>
-          {!anyMomentum && (
-            <p className="mt-4 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
-              Momentum (z-score) is not shown yet — it needs 7 days of per-topic
-              history to establish a baseline. It will appear automatically as
-              history accumulates.
+          <div className="mt-4 space-y-1.5 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
+            <div className="micro mb-2">How each number is computed</div>
+            <p>
+              <span className="font-medium text-ink">Volume (bar)</span> = distinct
+              posts + comments tagged to the topic in the window, duplicates merged.
             </p>
-          )}
+            <p>
+              <span className="font-medium text-ink">Momentum (z)</span> = (today&apos;s
+              volume − 7-day mean) / (7-day std + 1). Above ~1.5 means unusually busy.
+              {!anyMomentum &&
+                " Not shown yet — it needs 7 days of per-topic history and will appear automatically."}
+            </p>
+            <p>
+              <span className="font-medium text-ink">Engagement index (eng)</span> = sum
+              over the topic&apos;s items of log(1 + likes + 2·shares + 3·replies). Log-scaled
+              per item so one viral post cannot drown the chart — compare topics with it,
+              but do not read it as a raw interaction count.
+            </p>
+            <p>
+              <span className="font-medium text-ink">Relevance score</span> is not on this
+              page — it is the 0–100 ranking on Opportunities: 30% relevance to Nubra +
+              25% freshness/velocity + 15% reach + 15% opportunity type + 15% author
+              quality, boosted up to +15% when a topic keeps resurfacing.
+            </p>
+          </div>
         </SectionCard>
       )}
     </div>
