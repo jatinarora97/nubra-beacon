@@ -1,4 +1,4 @@
-# 📡 Community Roundup — {{ date }}
+# Community Roundup — {{ date }}
 
 > {{ payload.headline }}
 
@@ -27,9 +27,9 @@ _grounding: **{{ payload.grounding }}**{% if payload.grounding == "assumed-v0" %
 - when: {{ "**%s** %s — %s"|format(o.recommended_timing.action, o.recommended_timing.window, o.recommended_timing.why) if o.recommended_timing else "-" }}
 {% if o.brand_reply %}
 
-**🏢 Brand:** {{ o.brand_reply }}
+**Brand:** {{ o.brand_reply }}
 
-**🧑 Rep:** {{ o.rep_reply }}
+**Rep:** {{ o.rep_reply }}
 
 {% else %}
 
@@ -43,7 +43,7 @@ _none today_
 
 ## 6 · Content proposals (top {{ payload.content_proposals|length }}) — creator-ready briefs
 {% if payload.content_proposals %}{% for c in payload.content_proposals %}
-### #{{ c.rank }} · {{ c.format | upper }}
+### #{{ c.rank }} · {{ c.format }}{{ " — %s"|format(c.platform) if c.platform else "" }}
 - **Hook:** {{ c.hook }}
 {% if c.outline is mapping %}
 {% for b in c.outline.get("beats", []) %}
@@ -60,14 +60,14 @@ _none today_
 - **Window:** {{ c.recommended_timing.window if c.recommended_timing and c.recommended_timing.window else "flexible" }}
 {% endfor %}{% else %}_none today_{% endif %}
 
-## 🟠 Nubra watch
+## Nubra watch
 {% if payload.nubra_watch %}{% for n in payload.nubra_watch %}
 - “{{ n.summary }}” · {{ n.source }}{{ " · %s"|format(n.url) if n.url else "" }}
 {% endfor %}{% else %}_no Nubra mentions in the last 24h_{% endif %}
 
-## 🔊 Rising voices — worth building relationships with
+## Rising voices — worth building relationships with
 {% if payload.rising_voices %}{% for v in payload.rising_voices %}
-- [@{{ v.handle }}]({{ v.profile_url or "#" }}) · {{ v.source }}{{ " ⚠️ authenticity flagged" if v.authenticity_flag else "" }}
+- [@{{ v.handle }}]({{ v.profile_url or "#" }}) · {{ v.source }}{{ " authenticity flagged" if v.authenticity_flag else "" }}
 {% endfor %}{% else %}_not enough history yet_{% endif %}
 
 _Local build: on prod this goes to Slack + email._

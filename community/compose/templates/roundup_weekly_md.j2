@@ -1,15 +1,15 @@
-# 📅 Weekly Community Roundup — {{ payload.window["from"] }} → {{ payload.window["to"] }} (Sat→Sat)
+# Weekly Community Roundup — {{ payload.window["from"] }} → {{ payload.window["to"] }} (Sat→Sat)
 
 _grounding: **{{ payload.grounding }}**{{ " — drafts cite our assumed catalog; marketing's vetted cut swaps in later" if payload.grounding == "assumed-v0" else "" }}_
 
 {% if payload.get("highlights") %}
-## ✨ Highlights of the week
+## Highlights of the week
 {% for h in payload.highlights %}
 - {{ h }}
 {% endfor %}
 
 {% endif %}
-## 🔁 Persisted — also present last week (weighted up)
+## Persisted — also present last week (weighted up)
 {% if payload.persisted %}{% for p in payload.persisted %}
 - **{{ p.label or p.key }}** ({{ p.kind }}) — metric {{ "%.0f"|format(p.metric) }} · **{{ p.weeks_running }} weeks running**
 {% endfor %}{% else %}_nothing persisted from last week yet (first tracked week)_{% endif %}
@@ -21,13 +21,13 @@ _grounding: **{{ payload.grounding }}**{{ " — drafts cite our assumed catalog;
 {% endfor %}{% else %}_none_{% endif %}
 
 
-## 🔧 Consistently requested features (≥4 of 7 days)
+## Consistently requested features (≥4 of 7 days)
 {% if payload.get("consistent_features") %}{% for f in payload.consistent_features %}
 - {{ f.get("label") or f.key }} — {{ f.days }} of 7 days
 {% endfor %}{% else %}_none crossed the bar this week_{% endif %}
 
 
-## 📊 Actions recap (the week in numbers)
+## Actions recap (the week in numbers)
 - opportunities surfaced: **{{ payload.actions_recap.opportunities_surfaced }}**
 {% if payload.actions_recap.get("status_changes") %}
 {% for s in payload.actions_recap.status_changes %}

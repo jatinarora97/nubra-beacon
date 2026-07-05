@@ -23,8 +23,8 @@ _env = Environment(
     undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True,
 )
 
-_ICONS = {"broker_issue": "🔥", "feature_request": "✨", "question": "❓",
-          "comparison": "⚖️", "topic": "📈"}
+_TAGS = {"broker_issue": "COMPETITOR ISSUE", "feature_request": "FEATURE REQUEST",
+         "question": "QUESTION", "comparison": "COMPARISON", "topic": "TOPIC"}
 
 
 def _today_start_utc() -> datetime:
@@ -56,9 +56,9 @@ def _action_items() -> list[dict]:
         actions.append({
             "id": r["id"], "priority": r["priority"],
             "interactions": mi.get("interactions"),
-            "icon": "↗" if rec else _ICONS.get(kind, "•"),
+            "icon": "RISING" if rec else _TAGS.get(kind, "ITEM"),
             "kind_label": (f"STILL RISING · {rec['topic_key']} — thread #{rec['nth_thread_today']} today"
-                            if rec else kind.replace("_", " ").upper()),
+                            if rec else _TAGS.get(kind, kind.replace("_", " ").upper())),
             "boost_note": f"boosted ×{rec['boost']}" if rec else None,
             "title": (r.get("title") or "").replace("\n", " "),
             "insight": {k: v for k, v in mi.items() if k != "recurrence"},

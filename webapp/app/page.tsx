@@ -1,0 +1,147 @@
+import Link from "next/link";
+import { get } from "@/lib/api";
+import type { Overview } from "@/lib/types";
+import { Badge, KpiCard, SectionCard } from "@/components/ui";
+
+const NAV_CARDS = [
+  {
+    href: "/trends",
+    title: "What's happening",
+    body: "Trending topics, broker issues, and the feature requests traders keep raising.",
+    tone: "bg-trends",
+  },
+  {
+    href: "/opportunities",
+    title: "What to do",
+    body: "Ranked conversations worth joining, with compliant brand and rep drafts ready.",
+    tone: "bg-opps",
+  },
+  {
+    href: "/content",
+    title: "What to make",
+    body: "Creator-ready content briefs riding today's signal, with platform targeting.",
+    tone: "bg-content",
+  },
+  {
+    href: "/explore",
+    title: "Verify the data",
+    body: "Inspect the raw posts and comments behind every number on this dashboard.",
+    tone: "bg-voices",
+  },
+];
+
+const GLOSSARY = [
+  ["Momentum", "how unusual today's volume is vs the topic's 7-day baseline (z-score). Needs a week of history."],
+  ["Spread", "how many distinct sources (X, Reddit) the conversation appears on."],
+  ["Engagement", "real interactions: likes + replies + shares. Views and followers are reach, not engagement."],
+  ["Relevance score", "0-100 blend of freshness, relevance to Nubra, reach, opportunity type and author quality."],
+];
+
+export default async function Home() {
+  const ov = await get<Overview>("/overview", {});
+  const k = ov.kpis ?? {};
+  return (
+    <div className="space-y-8">
+      <section>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          The community radar for Nubra
+        </h1>
+        <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-muted">
+          This system listens to Indian trading communities on X and Reddit,
+          understands what is trending, breaking and being asked for, and
+          recommends the smartest compliant way for Nubra to join the
+          conversation. Humans act — it only recommends.
+        </p>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {NAV_CARDS.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="group rounded-[10px] border border-line bg-surface p-4 transition-colors hover:border-muted"
+          >
+            <span className={`mb-3 block h-1.5 w-8 rounded-full ${c.tone}`} />
+            <div className="text-[14px] font-semibold group-hover:text-ink">
+              {c.title}
+            </div>
+            <div className="mt-1 text-[12.5px] leading-relaxed text-muted">
+              {c.body}
+            </div>
+          </Link>
+        ))}
+      </section>
+
+      <section className="grid grid-cols-3 gap-3 lg:grid-cols-6">
+        <KpiCard label="Items today" value={k.items_today ?? "-"} />
+        <KpiCard label="Analyzed" value={k.analyzed_today ?? "-"} />
+        <KpiCard label="Actions on table" value={k.actions_on_table ?? "-"} />
+        <KpiCard label="New high-priority" value={k.new_high_priority_today ?? "-"} />
+        <KpiCard label="Nubra mentions 24h" value={k.nubra_mentions_24h ?? "-"} />
+        <KpiCard label="Drafts ready" value={k.drafts_ready ?? "-"} />
+      </section>
+
+      {ov.headline && (
+        <SectionCard>
+          <div className="micro mb-2">Today in one line</div>
+          <p className="text-[14.5px] leading-relaxed">{ov.headline}</p>
+        </SectionCard>
+      )}
+
+      {(ov.top_actions?.length ?? 0) > 0 && (
+        <section>
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-[15px] font-semibold">Top actions right now</h2>
+            <Link
+              href="/opportunities"
+              className="text-[12.5px] text-opps hover:underline"
+            >
+              all opportunities →
+            </Link>
+          </div>
+          <div className="space-y-2.5">
+            {ov.top_actions!.slice(0, 3).map((a, i) => (
+              <SectionCard key={a.id} className="flex items-start gap-4">
+                <div className="mt-0.5 text-[13px] font-semibold text-muted">
+                  {i + 1}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="opps">{a.kind_label ?? a.kind ?? "action"}</Badge>
+                    <span className="text-[11.5px] text-muted">
+                      score {a.priority}/100
+                      {a.interactions != null &&
+                        ` · ${a.interactions} interactions`}
+                    </span>
+                  </div>
+                  {a.why_engage && (
+                    <p className="mt-1.5 text-[13.5px] leading-relaxed">
+                      {a.why_engage}
+                    </p>
+                  )}
+                  {a.title && (
+                    <p className="mt-1 truncate text-[12.5px] text-muted">
+                      “{a.title}”
+                    </p>
+                  )}
+                </div>
+              </SectionCard>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-[10px] border border-line bg-surface/50 p-5">
+        <div className="micro mb-3">How to read the numbers</div>
+        <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2">
+          {GLOSSARY.map(([term, def]) => (
+            <div key={term} className="text-[12.5px] leading-relaxed">
+              <span className="font-medium text-ink">{term}</span>{" "}
+              <span className="text-muted">— {def}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}

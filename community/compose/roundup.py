@@ -50,7 +50,7 @@ def _daily_payload(today: date) -> dict:
         "LEFT JOIN social_items si ON si.item_id = c.root_item_id "
         "WHERE o.day = %s AND o.status='suggested' ORDER BY o.priority DESC LIMIT 10", (today,))
     content_proposals = db.query(
-        "SELECT rank, format, hook, outline, why, recommended_timing "
+        "SELECT rank, format, format_family, platform, hook, outline, why, recommended_timing "
         "FROM content_proposals WHERE day=%s ORDER BY rank", (today,))
     nubra_watch = db.query(
         "SELECT c.source, c.thread_id, si.url, left(si.text, 200) AS summary "
@@ -98,7 +98,7 @@ def _headline(payload: dict) -> str:
     raw, _u = complete(
         settings.draft_model,
         "You summarize a day of Indian trading-community chatter for Nubra's marketing "
-        "team. Two short lines, factual, no advice, no hype. Return plain text only.",
+        "team. Two short lines, factual, no advice, no hype, no emojis. Plain text only.",
         json.dumps(slim, default=str), max_tokens=150)
     return raw.strip()[:400]
 

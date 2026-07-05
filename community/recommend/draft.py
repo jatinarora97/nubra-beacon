@@ -176,6 +176,8 @@ def _content_proposals(catalog: list[dict]) -> int:
         "ORDER BY count DESC LIMIT 5", (today,))
     if not topics and not issues and not feats:
         return 0
+    fams = settings.registry["content"]["format_families"]
+    plats = settings.registry["content"]["platforms"]
     system = (
         "You are a senior creative strategist writing CONTENT BRIEFS for Nubra's content "
         "creators and community managers (Nubra = SEBI-regulated Indian stock broker). "
@@ -184,21 +186,26 @@ def _content_proposals(catalog: list[dict]) -> int:
         "HARD CONSTRAINTS (a compliance gate rejects violations): never anchor content "
         "on a named competitor or their bad news; no directional/predictive market "
         "claims; no trade setups, levels, targets or stop-losses — not even as chart "
-        "examples; no urgency/FOMO/social-proof pressure. Safe angles: educational "
-        "explainers, process/tooling walkthroughs, myth-busting with public facts, "
-        "feature demos, community questions. Each brief must be "
-        "executable without follow-up questions: concrete beats a creator can shoot/write "
-        "directly (for reels/shorts: shot-by-shot with on-screen text; for threads: "
-        "tweet-by-tweet with the first two tweets fully written; for infographics: the "
-        "exact data points and layout). Reference the actual signal (real topics/counts "
-        "from TODAY'S SIGNAL). Return ONLY JSON: {\"candidates\": [{\"format\": "
-        "\"infographic|reel|short|post|thread\", \"hook\": \"exact opening line/cover text\", "
-        "\"brief\": {\"beats\": [\"concrete production step 1\", \"...\"], "
-        "\"caption\": \"ready-to-paste caption\", \"hashtags\": [\"#tag\"], "
-        "\"cta\": \"one CTA\", \"visual_direction\": \"style/format notes\"}, "
-        "\"why\": \"why this lands, tied to the signal\", \"recommended_window\": "
-        "\"HH:MM-HH:MM IST\", \"scores\": {\"impact\":0.0,\"reach_fit\":0.0,"
-        "\"timeliness\":0.0,\"effort_inv\":0.0,\"on_brand\":0.0}}]} (exactly 5 candidates)")
+        "examples; no urgency/FOMO/social-proof pressure. NO EMOJIS anywhere. "
+        "Safe angles: educational explainers, process/tooling walkthroughs, myth-busting "
+        "with public facts, feature demos, community questions. "
+        "Invent the creative TREATMENT freely — do not limit yourself to generic "
+        "formats; propose the specific creative vehicle (e.g. 'split-screen myth-vs-"
+        "reality reel with on-screen calculator', 'founder-voice teardown thread'). "
+        f"Pick format_family from {fams} and platform from {plats} — say WHY that "
+        "platform fits this audience/signal. Each brief must be executable without "
+        "follow-up questions: concrete beats a creator can shoot/write directly "
+        "(video: shot-by-shot with on-screen text; threads: tweet-by-tweet with the "
+        "first two written; image/carousel: exact data points and layout). Reference "
+        "the actual signal from TODAY'S SIGNAL. Return ONLY JSON: "
+        '{"candidates": [{"format_family": "...", "platform": "...", '
+        '"treatment": "one-line creative vehicle", "platform_why": "...", '
+        '"hook": "exact opening line/cover text", "brief": {"beats": ["..."], '
+        '"caption": "ready-to-paste", "hashtags": ["#tag"], "cta": "one CTA", '
+        '"visual_direction": "..."}, "why": "tied to the signal", '
+        '"recommended_window": "HH:MM-HH:MM IST", "scores": {"impact":0.0,'
+        '"reach_fit":0.0,"timeliness":0.0,"effort_inv":0.0,"on_brand":0.0}}]} '
+        "(exactly 5 candidates)")
     user = (f"NUBRA_FEATURES: {json.dumps(catalog)}\n\nTODAY'S SIGNAL:\n"
             f"rising topics: {json.dumps(topics, default=str)}\n"
             f"broker issues: {json.dumps(issues, default=str)}\n"
@@ -217,12 +224,12 @@ def _content_proposals(catalog: list[dict]) -> int:
                 + 0.10 * s.get("on_brand", 0))
 
     cands.sort(key=score, reverse=True)
-    chosen, per_format = [], {}
+    chosen, per_family = [], {}
     for c in cands:
-        f = c.get("format")
-        if f not in ("infographic", "reel", "short", "post", "thread"):
+        fam, plat = c.get("format_family"), c.get("platform")
+        if fam not in fams or plat not in plats:   # taxonomy = the control layer
             continue
-        if per_format.get(f, 0) >= 2:
+        if per_family.get(fam, 0) >= 2:
             continue
         brief = c.get("brief") or {}
         text = " | ".join([c.get("hook", ""), " / ".join(brief.get("beats", [])),
@@ -231,16 +238,20 @@ def _content_proposals(catalog: list[dict]) -> int:
         if not ok:
             continue
         chosen.append(c)
-        per_format[f] = per_format.get(f, 0) + 1
+        per_family[fam] = per_family.get(fam, 0) + 1
         if len(chosen) == 3:
             break
 
     db.execute("DELETE FROM content_proposals WHERE day=%s", (today,))
     for rank, c in enumerate(chosen, 1):
         db.execute(
-            "INSERT INTO content_proposals (day, rank, format, hook, outline, why, "
-            "rides_signal, recommended_timing) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-            (today, rank, c["format"], c.get("hook", ""), db.jsonb(c.get("brief", {})),
+            "INSERT INTO content_proposals (day, rank, format, format_family, platform, "
+            "hook, outline, why, rides_signal, recommended_timing) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (today, rank, (c.get("treatment") or c["format_family"])[:120],
+             c["format_family"], c.get("platform"),
+             c.get("hook", ""), db.jsonb({**c.get("brief", {}),
+                                          "platform_why": c.get("platform_why")}),
              c.get("why"), db.jsonb({"signal": "day_mix"}),
              db.jsonb({"action": "schedule", "window": c.get("recommended_window", "")})),
         )

@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0f1a;
+  --surface: #111827;
+  --surface-2: #1a2333;
+  --line: #233045;
+  --ink: #e7edf6;
+  --muted: #8fa0b8;
+
+  --acc-trends: #3b82f6;
+  --acc-warn: #f59e0b;
+  --acc-danger: #ef4444;
+  --acc-opps: #10b981;
+  --acc-content: #8b5cf6;
+  --acc-voices: #06b6d4;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-trends: var(--acc-trends);
+  --color-warn: var(--acc-warn);
+  --color-danger: var(--acc-danger);
+  --color-opps: var(--acc-opps);
+  --color-content: var(--acc-content);
+  --color-voices: var(--acc-voices);
+  --font-sans: var(--font-inter);
+  --radius-card: 10px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.micro {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--acc-trends) 40%, transparent);
+}

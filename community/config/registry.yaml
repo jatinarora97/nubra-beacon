@@ -77,6 +77,11 @@ enrich:
   batch_sla_minutes: 25            # Batch API SLA; breach -> cancel + sync fallback (cost plan §2.1)
   poll_seconds: 20
 
+content:
+  # controlled taxonomy — the LLM picks family+platform from these, treatment is free
+  format_families: [video_short, video_long, image_post, carousel, text_post, thread, poll]
+  platforms: [instagram_reels, youtube_shorts, x_thread, x_post, linkedin_post, instagram_post]
+
 aggregate:
   feature_sim_threshold: 0.86      # centroid match τ. NOTE: e5-small compresses cosines
                                    # (distinct asks ≈0.78–0.85, same ask ≥0.86 — measured on real

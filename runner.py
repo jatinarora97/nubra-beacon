@@ -80,8 +80,8 @@ def run_local(skip_scrape: bool = False, skip_enrich: bool = False) -> None:
 
 
 @app.command()
-def ui(api_port: int = 8400, dash_port: int = 8501) -> None:
-    """Serve the read-API (FastAPI) + dashboard (Streamlit)."""
+def ui(api_port: int = 8400, dash_port: int = 3000) -> None:
+    """Serve the read-API (FastAPI, :8400) + the Next.js dashboard (:3000)."""
     from community.api.serve import serve_ui
 
     serve_ui(api_port=api_port, dash_port=dash_port)
