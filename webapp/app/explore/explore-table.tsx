@@ -51,6 +51,15 @@ export function ExploreTable() {
     [items],
   );
 
+  // Server-side export honouring the active filters (full text, higher row cap).
+  function exportUrl(format: "csv" | "xlsx"): string {
+    const params = new URLSearchParams({ sort: "engagement", limit: "2000", format });
+    if (source) params.set("source", source);
+    if (intent) params.set("intent", intent);
+    if (q) params.set("q", q);
+    return `/api/v1/items/export?${params}`;
+  }
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -83,6 +92,19 @@ export function ExploreTable() {
         <span className="text-[11.5px] text-muted">
           sorted by engagement · snapshot at fetch
         </span>
+        <div className="ml-auto flex items-center gap-2">
+          {(["csv", "xlsx"] as const).map((fmt) => (
+            <a
+              key={fmt}
+              href={exportUrl(fmt)}
+              download
+              title={`Download the current filter result (up to 2,000 rows, full text) as ${fmt === "csv" ? "CSV" : "Excel"}`}
+              className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:border-muted hover:text-ink"
+            >
+              Export {fmt === "csv" ? "CSV" : "Excel"}
+            </a>
+          ))}
+        </div>
       </div>
 
       {loading ? (

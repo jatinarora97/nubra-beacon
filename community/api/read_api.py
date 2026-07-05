@@ -363,27 +363,18 @@ def roundups(period: Literal["daily", "weekly"] = "daily",
     return row
 
 
-@app.get(API + "/items")
-def items(topic: str | None = None, broker: str | None = None,
-          intent: str | None = None, audience: str | None = None,
-          q: str | None = None, min_engagement: float = 0,
-          source: str | None = None,
-          sort: Literal["engagement", "recent"] = "engagement",
-          limit: int = 20, offset: int = 0):
+def _item_filters(topic: str | None, broker: str | None, intent: str | None,
+                  audience: str | None, q: str | None, min_engagement: float,
+                  source: str | None) -> tuple[str, dict]:
+    """Shared FROM/WHERE for /items and /items/export — one filter semantic."""
     sql = """
-        SELECT si.source, si.external_id, si.thread_id, left(si.text, 300) AS text,
-               si.url, si.created_at, si.ingested_at, si.engagement,
-               a.handle AS author,
-               e.topic_key, e.intent, e.audience, e.sentiment, e.entities,
-               (SELECT count(*) FROM social_items d WHERE d.duplicate_of = si.item_id)::int
-                 AS duplicate_count
         FROM social_items si
         JOIN authors a ON a.author_id = si.author_id
         LEFT JOIN item_enrichment e ON e.item_id = si.item_id
         WHERE si.duplicate_of IS NULL AND COALESCE(e.is_noise, false) = false
           AND (si.engagement->>'score')::float >= %(mine)s
     """
-    params: dict = {"mine": min_engagement, "limit": _lim(limit), "offset": max(offset, 0)}
+    params: dict = {"mine": min_engagement}
     for name, val, clause in (
         ("topic", topic, " AND e.topic_key = %(topic)s"),
         ("intent", intent, " AND e.intent = %(intent)s"),
@@ -399,10 +390,121 @@ def items(topic: str | None = None, broker: str | None = None,
     if q:
         sql += " AND si.text ILIKE %(q)s"
         params["q"] = f"%{q}%"
-    order = ("(si.engagement->>'score')::float DESC NULLS LAST, si.created_at DESC"
-             if sort == "engagement" else "si.created_at DESC")
-    sql += f" ORDER BY {order} LIMIT %(limit)s OFFSET %(offset)s"
+    return sql, params
+
+
+def _item_order(sort: str) -> str:
+    return ("(si.engagement->>'score')::float DESC NULLS LAST, si.created_at DESC"
+            if sort == "engagement" else "si.created_at DESC")
+
+
+@app.get(API + "/items")
+def items(topic: str | None = None, broker: str | None = None,
+          intent: str | None = None, audience: str | None = None,
+          q: str | None = None, min_engagement: float = 0,
+          source: str | None = None,
+          sort: Literal["engagement", "recent"] = "engagement",
+          limit: int = 20, offset: int = 0):
+    body, params = _item_filters(topic, broker, intent, audience, q, min_engagement, source)
+    params.update({"limit": _lim(limit), "offset": max(offset, 0)})
+    sql = """
+        SELECT si.source, si.external_id, si.thread_id, left(si.text, 300) AS text,
+               si.url, si.created_at, si.ingested_at, si.engagement,
+               a.handle AS author,
+               e.topic_key, e.intent, e.audience, e.sentiment, e.entities,
+               (SELECT count(*) FROM social_items d WHERE d.duplicate_of = si.item_id)::int
+                 AS duplicate_count
+    """ + body + f" ORDER BY {_item_order(sort)} LIMIT %(limit)s OFFSET %(offset)s"
     return db.query(sql, params)
+
+
+_EXPORT_COLUMNS = ["source", "external_id", "thread_id", "author", "text", "url",
+                   "topic_key", "intent", "audience", "sentiment", "interactions",
+                   "engagement_score", "entities", "posted_at_ist", "fetched_at_ist",
+                   "duplicate_count"]
+
+
+@app.get(API + "/items/export")
+def items_export(format: Literal["csv", "xlsx"] = "csv",
+                 topic: str | None = None, broker: str | None = None,
+                 intent: str | None = None, audience: str | None = None,
+                 q: str | None = None, min_engagement: float = 0,
+                 source: str | None = None,
+                 sort: Literal["engagement", "recent"] = "engagement",
+                 limit: int = 2000):
+    """Same filters as /items, but full text and spreadsheet-shaped rows."""
+    import csv
+    import io
+    import json as _json
+    import re as _re
+    from zoneinfo import ZoneInfo
+
+    from fastapi.responses import Response
+
+    body, params = _item_filters(topic, broker, intent, audience, q, min_engagement, source)
+    params["limit"] = max(1, min(limit, 10000))
+    rows = db.query("""
+        SELECT si.source, si.external_id, si.thread_id, si.text, si.url,
+               si.created_at, si.ingested_at, si.engagement, a.handle AS author,
+               e.topic_key, e.intent, e.audience, e.sentiment, e.entities,
+               (SELECT count(*) FROM social_items d WHERE d.duplicate_of = si.item_id)::int
+                 AS duplicate_count
+    """ + body + f" ORDER BY {_item_order(sort)} LIMIT %(limit)s", params)
+
+    ist = ZoneInfo("Asia/Kolkata")
+    ctrl = _re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")  # Excel rejects control chars
+
+    def _cell(v, guard_formula: bool = False):
+        if v is None:
+            return ""
+        s = ctrl.sub(" ", str(v))
+        if guard_formula and s[:1] in "=+-@":  # neutralize spreadsheet formula injection
+            s = "'" + s
+        return s
+
+    flat = []
+    for r in rows:
+        native = (r.get("engagement") or {}).get("native") or {}
+        inter = sum(v for v in native.values() if isinstance(v, (int, float)))
+        flat.append([
+            r["source"], r["external_id"], r["thread_id"],
+            _cell(r["author"], True), _cell(r["text"], True), r["url"] or "",
+            r["topic_key"] or "", r["intent"] or "", r["audience"] or "",
+            r["sentiment"] if r["sentiment"] is not None else "",
+            int(inter), (r.get("engagement") or {}).get("score", ""),
+            _json.dumps(r["entities"]) if r["entities"] else "",
+            r["created_at"].astimezone(ist).strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
+            r["ingested_at"].astimezone(ist).strftime("%Y-%m-%d %H:%M") if r["ingested_at"] else "",
+            r["duplicate_count"],
+        ])
+
+    stamp = datetime.now(ist).strftime("%Y%m%d-%H%M")
+    if format == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(_EXPORT_COLUMNS)
+        w.writerows(flat)
+        return Response(
+            buf.getvalue().encode("utf-8-sig"),  # BOM so Excel opens UTF-8 correctly
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition":
+                     f'attachment; filename="beacon-items-{stamp}.csv"'})
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "items"
+    ws.append(_EXPORT_COLUMNS)
+    for row in flat:
+        ws.append(row)
+    ws.freeze_panes = "A2"
+    out = io.BytesIO()
+    wb.save(out)
+    return Response(
+        out.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f'attachment; filename="beacon-items-{stamp}.xlsx"'})
 
 
 @app.get(API + "/items/{source}/{external_id}")
