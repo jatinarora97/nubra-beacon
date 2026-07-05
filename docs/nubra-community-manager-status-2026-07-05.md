@@ -82,6 +82,7 @@ Decisions made during the build (the LLD/build-plan docs predate these):
 - [ ] Auth for the dashboard/API (SSO/OIDC per LLD; `X-Auth-Request-Email` wiring is a one-liner server-side; currently `local-dev` writes) — before anyone beyond the team touches it.
 - [ ] "Backend offline" banner in the webapp (soft-fail currently looks like blank data — bit us once).
 - [ ] Reddit engagement refresh (`fetch_items` not implemented for the scraper transport — candidate threads' upvotes stay snapshot-at-fetch).
+- [ ] `feature_rollup` idempotency: still an additive `count = count + new` UPSERT — a watermark replay would double-count (issue_rollup had exactly this and was rewritten to per-day recompute 2026-07-05; features need an item→feature_key mapping first, since recompute would re-fold centroids). Counts verified NOT inflated today (26=26).
 - [ ] `llm_usage`/`trace_log` persistence (spend + stage logs currently stdout only) + health alerting (per-source staleness → Slack alerts channel).
 - [ ] Weekly roundup page in the webapp (payload + markdown exist; no route renders it).
 - [ ] Doc-sync pass: LLDs/build plan still describe pre-restructure layout, Streamlit, τ=0.80, 70-bar, Mon weekly (this file is the authority meanwhile).

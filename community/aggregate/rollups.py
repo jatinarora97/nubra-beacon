@@ -180,36 +180,51 @@ def _recompute_topic_days(days: set) -> tuple[int, int]:
 
 # ── issue_rollup ──────────────────────────────────────────────────────────
 
-def _rollup_issues(rows: list[dict]) -> int:
-    groups: dict[tuple, list[dict]] = defaultdict(list)
-    for r in rows:
-        ents = r["entities"] or {}
-        broker = ents.get("broker")
-        if r["intent"] == "complaint" and broker and not r["is_noise"]:
-            issue_key = ents.get("issue_type") or "support"
-            groups[(broker, issue_key, r["created_at"].date())].append(r)
-    for (broker, issue_key, day), items in groups.items():
-        sentiments = [i["sentiment"] for i in items if i["sentiment"] is not None]
-        neg_share = (sum(1 for s in sentiments if s < -0.3) / len(sentiments)) if sentiments else 0
-        reach = sum(max(i["followers"] or 0, i["views"] or 0) for i in items)
-        severity = math.log1p(reach) * neg_share
-        samples = [i["item_id"] for i in
-                   sorted(items, key=lambda x: -(x["score"] or 0))[:5]]
-        db.execute(
+def _rollup_issues(days: set) -> int:
+    """Full recompute per touched day (idempotent — mirrors _recompute_topic_days).
+    The previous additive UPSERT double-counted whenever a rerun or watermark
+    replay re-fed items (counts drifted to 2x while sample ids deduped);
+    recompute-and-replace makes replays safe."""
+    n_groups = 0
+    for day in sorted(days):
+        items = db.query(
             """
-            INSERT INTO issue_rollup (broker, issue_key, day, count, severity,
-                                      sentiment_avg, sample_item_ids)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (broker, issue_key, day) DO UPDATE SET
-                count = issue_rollup.count + EXCLUDED.count,
-                severity = GREATEST(issue_rollup.severity, EXCLUDED.severity),
-                sentiment_avg = (COALESCE(issue_rollup.sentiment_avg,0) + COALESCE(EXCLUDED.sentiment_avg,0)) / 2,
-                sample_item_ids = (SELECT ARRAY(SELECT DISTINCT unnest(issue_rollup.sample_item_ids || EXCLUDED.sample_item_ids) LIMIT 5))
+            SELECT ie.item_id, ie.sentiment, ie.entities,
+                   (si.engagement->>'score')::float AS score,
+                   COALESCE((si.engagement->'native'->>'views')::bigint, 0) AS views,
+                   a.followers
+            FROM item_enrichment ie
+            JOIN social_items si ON si.item_id = ie.item_id
+            JOIN authors a ON a.author_id = si.author_id
+            WHERE NOT ie.is_noise AND ie.intent = 'complaint'
+              AND ie.entities->>'broker' IS NOT NULL
+              AND si.created_at::date = %s
             """,
-            (broker, issue_key, day, len(items), severity,
-             sum(sentiments) / len(sentiments) if sentiments else None, samples),
+            (day,),
         )
-    return len(groups)
+        groups: dict[tuple, list[dict]] = defaultdict(list)
+        for r in items:
+            ents = r["entities"] or {}
+            groups[(ents["broker"], ents.get("issue_type") or "support")].append(r)
+        db.execute("DELETE FROM issue_rollup WHERE day = %s", (day,))
+        for (broker, issue_key), grp in groups.items():
+            sentiments = [i["sentiment"] for i in grp if i["sentiment"] is not None]
+            neg_share = (sum(1 for s in sentiments if s < -0.3) / len(sentiments)) if sentiments else 0
+            reach = sum(max(i["followers"] or 0, i["views"] or 0) for i in grp)
+            severity = math.log1p(reach) * neg_share
+            samples = [i["item_id"] for i in
+                       sorted(grp, key=lambda x: -(x["score"] or 0))[:5]]
+            db.execute(
+                """
+                INSERT INTO issue_rollup (broker, issue_key, day, count, severity,
+                                          sentiment_avg, sample_item_ids)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (broker, issue_key, day, len(grp), severity,
+                 sum(sentiments) / len(sentiments) if sentiments else None, samples),
+            )
+            n_groups += 1
+    return n_groups
 
 
 # ── feature_rollup + feature_keys (LLD-02 §8.4 incremental centroids) ─────
@@ -359,7 +374,7 @@ def run() -> dict:
 
     conversations = _rebuild_conversations(threads)
     days_touched, topics_rising = _recompute_topic_days(days)
-    issue_rows = _rollup_issues(rows)
+    issue_rows = _rollup_issues(days)
     feature_rows = _rollup_features(rows)
     authors_scored = _score_authors(author_ids)
 
