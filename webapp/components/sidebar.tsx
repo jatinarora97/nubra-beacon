@@ -14,6 +14,7 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/voices", label: "Voices", dot: "bg-voices", group: "Who matters" },
   { href: "/explore", label: "Explore data", dot: "bg-muted", group: "Verify" },
   { href: "/sources", label: "Sources", dot: "bg-muted", group: "Configure" },
+  { href: "/requests", label: "Beacon requests", dot: "bg-content", group: "Improve" },
 ];
 
 export function Sidebar() {
