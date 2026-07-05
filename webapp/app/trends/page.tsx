@@ -78,6 +78,11 @@ export default async function TrendsPage() {
                 " Not shown yet — it needs 7 days of per-topic history and will appear automatically."}
             </p>
             <p>
+              <span className="font-medium text-ink">Spread</span> = distinct sources
+              (X, Reddit) the topic appeared on in the window. 2 sources = the
+              conversation is cross-platform, not one community&apos;s echo.
+            </p>
+            <p>
               <span className="font-medium text-ink">Engagement index (eng)</span> = sum
               over the topic&apos;s items of log(1 + likes + 2·shares + 3·replies). Log-scaled
               per item so one viral post cannot drown the chart — compare topics with it,

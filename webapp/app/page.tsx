@@ -30,11 +30,10 @@ const NAV_CARDS = [
   },
 ];
 
+// Only the numbers visible on THIS page — each page explains its own metrics.
 const GLOSSARY = [
-  ["Momentum", "how unusual today's volume is vs the topic's 7-day baseline (z-score). Needs a week of history."],
-  ["Spread", "how many distinct sources (X, Reddit) the conversation appears on."],
   ["Engagement", "real interactions: likes + replies + shares. Views and followers are reach, not engagement."],
-  ["Relevance score", "0-100 blend of freshness, relevance to Nubra, reach, opportunity type and author quality."],
+  ["Relevance score", "0-100 blend of freshness, relevance to Nubra, reach, opportunity type and author quality — the score on each action card."],
 ];
 
 export default async function Home() {
