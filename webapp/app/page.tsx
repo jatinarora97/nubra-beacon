@@ -44,13 +44,13 @@ export default async function Home() {
     <div className="space-y-8">
       <section>
         <h1 className="text-2xl font-semibold tracking-tight">
-          The community radar for Nubra
+          Nubra Beacon
         </h1>
         <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-muted">
-          This system listens to Indian trading communities on X and Reddit,
+          Beacon listens to Indian trading communities on X and Reddit,
           understands what is trending, breaking and being asked for, and
           recommends the smartest compliant way for Nubra to join the
-          conversation. Humans act — it only recommends.
+          conversation. Humans act — Beacon only recommends.
         </p>
       </section>
 

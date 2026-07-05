@@ -71,7 +71,7 @@ export function SourcesManager() {
   }
 
   const inputCls =
-    "rounded-[10px] border border-line bg-surface2 px-3 py-2 text-[13px] text-text outline-none focus:border-trends";
+    "rounded-[10px] border border-line bg-surface2 px-3 py-2 text-[13px] text-ink outline-none focus:border-trends";
 
   return (
     <div className="space-y-6">
@@ -102,7 +102,7 @@ export function SourcesManager() {
           </select>
           <button
             onClick={add}
-            className="rounded-[10px] border border-line bg-surface2 px-4 py-2 text-[13px] font-medium text-text transition-colors hover:border-trends"
+            className="rounded-[10px] border border-line bg-surface2 px-4 py-2 text-[13px] font-medium text-ink transition-colors hover:border-trends"
           >
             Add source
           </button>
@@ -126,7 +126,7 @@ export function SourcesManager() {
                 <div className="divide-y divide-line">
                   {rows.map((s) => (
                     <div key={s.id} className="flex items-center gap-3 py-2">
-                      <span className={`text-[13px] ${s.active ? "text-text" : "text-muted line-through"}`}>
+                      <span className={`text-[13px] ${s.active ? "text-ink" : "text-muted line-through"}`}>
                         {KIND_META[s.kind].prefix}
                         {s.value}
                       </span>
@@ -136,7 +136,7 @@ export function SourcesManager() {
                       <div className="ml-auto flex items-center gap-2">
                         <button
                           onClick={() => toggle(s.id)}
-                          className="rounded-md border border-line px-2.5 py-1 text-[11.5px] text-muted transition-colors hover:border-trends hover:text-text"
+                          className="rounded-md border border-line px-2.5 py-1 text-[11.5px] text-muted transition-colors hover:border-trends hover:text-ink"
                         >
                           {s.active ? "Pause" : "Activate"}
                         </button>

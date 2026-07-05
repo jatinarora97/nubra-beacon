@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NubraMark } from "@/components/logo";
 
 const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/", label: "Overview", dot: "bg-muted" },
@@ -21,10 +22,13 @@ export function Sidebar() {
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface px-4 py-6 md:flex">
       <Link href="/" className="mb-8 block px-2">
-        <div className="text-[15px] font-semibold tracking-tight">
-          Nubra <span className="text-muted">Community Radar</span>
+        <div className="flex items-center gap-2.5">
+          <NubraMark className="h-[18px] w-6 shrink-0 text-ink" />
+          <div className="text-[15px] font-semibold tracking-tight">
+            Nubra <span className="text-muted">Beacon</span>
+          </div>
         </div>
-        <div className="micro mt-1">listen · understand · recommend</div>
+        <div className="micro mt-1.5">listen · understand · recommend</div>
       </Link>
       <nav className="flex flex-1 flex-col gap-0.5">
         {NAV.map((n) => {

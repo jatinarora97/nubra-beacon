@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
-:root {
+/* Dark is the default; the boot script in layout.tsx stamps data-theme
+   ("dark" | "light") on <html> before first paint from the stored preference. */
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+
   --bg: #0a0f1a;
   --surface: #111827;
   --surface-2: #1a2333;
@@ -14,6 +19,25 @@
   --acc-opps: #10b981;
   --acc-content: #8b5cf6;
   --acc-voices: #06b6d4;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #edf1f7;
+  --line: #dbe2ec;
+  --ink: #101828;
+  --muted: #5d6b81;
+
+  /* accents darkened one step for contrast on white */
+  --acc-trends: #2563eb;
+  --acc-warn: #b45309;
+  --acc-danger: #dc2626;
+  --acc-opps: #047857;
+  --acc-content: #6d28d9;
+  --acc-voices: #0e7490;
 }
 
 @theme inline {

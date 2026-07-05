@@ -90,7 +90,7 @@ export function ExploreTable() {
       ) : sorted.length === 0 ? (
         <EmptyState
           title="No items match"
-          body="Loosen the filters — or the radar genuinely hasn't seen matching items in the window."
+          body="Loosen the filters — or Beacon genuinely hasn't seen matching items in the window."
         />
       ) : (
         <div className="overflow-hidden rounded-[10px] border border-line">

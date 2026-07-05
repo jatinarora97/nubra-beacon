@@ -1,6 +1,7 @@
 import { get } from "@/lib/api";
 import type { Feature } from "@/lib/types";
 import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
+import { RequestIntake } from "./request-intake";
 
 export default async function FeaturesPage() {
   const rows = await get<Feature[]>("/features", []);
@@ -11,8 +12,10 @@ export default async function FeaturesPage() {
       <PageHeader
         title="Feature requests"
         accent="bg-warn"
-        blurb="What traders keep asking for, across any broker. Different phrasings of the same ask are merged by meaning (embeddings), so one theme = one card. A theme needs 2+ mentions to appear."
+        blurb="What traders keep asking for, across any broker. Different phrasings of the same ask are merged by meaning (embeddings), so one theme = one card. A theme needs 2+ mentions to appear. Requests heard outside X/Reddit can be logged below."
       />
+
+      <RequestIntake />
 
       {sorted.length === 0 ? (
         <EmptyState

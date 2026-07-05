@@ -26,7 +26,8 @@ scrape/ → clean/ → enrich/ → aggregate/ → recommend/ → compose/ → di
 Outputs: **hourly heads-up** (weight-sorted actions + last-hour ops summary, 08–20 IST),
 **daily roundup** (07:30, all 6 outputs), **weekly Sat→Sat roundup** (Sat 10:00,
 persistence-weighted), a **Nubra-watch** segment (our own mentions → support, never
-engagement drafts), and a **React dashboard** for browsing/acting on everything.
+engagement drafts), and a **React dashboard** — branded **Nubra Beacon** — for
+browsing/acting on everything.
 Recommends only — humans post. Grounded on the versioned `nubra_features` table;
 every draft passes a 3-layer compliance gate (regex rules → LLM review → human).
 
@@ -42,7 +43,7 @@ every draft passes a 3-layer compliance gate (regex rules → LLM review → hum
 | **Recommend** | Priority scoring (weights in registry; **engagement gate**: <10 interactions can't be a top action; **recurrence boost** for topics rising in new threads; action bar 60 — recalibrated on real data), Nubra-watch diversion, grounded brand+rep drafts (features_cited validated, ASCI disclosure verbatim), timing rules, compliance gate writing `compliance_audit` (429 rows so far). |
 | **Compose** | Heads-up (actions + human ops summary: fetched/analyzed/identified per platform), daily roundup (trending bar ≥3 items, issue topics excluded from trending; features bar ≥2), weekly Sat→Sat with `weeks_running` weighting, **content briefs**: free-form creative treatment + registry-controlled `format_family`/`platform` taxonomy, creator-ready (beats/caption/hashtags/CTA/visual direction). Jinja templates, emoji-free. |
 | **Dispatch** | Slack webhook + Gmail SMTP senders (config-gated via .env; template `community/config/env.example`), archive to `out/messages/` always, 08–20 IST channel window, once-per-row roundup sends, novelty stamping post-delivery. |
-| **UI** | **React/Next.js** (`webapp/`, :3000) — dark multi-accent, 9 routes: context-first landing, trends (sorted bars + metric glossary), broker×issue heatmap with quotes, feature cards with quotes, opportunities (why-engage-led cards, tabbed drafts + copy, acted/dismiss-with-reason), creator-handoff content briefs, sorted voices (niche, why-rising, profile links), explore (verification layer, engagement-sorted), **Sources** (manage subreddits/hashtags/handles/queries from the UI — next run picks them up). Streamlit retired. |
+| **UI** | **React/Next.js** (`webapp/`, :3000) — dark multi-accent, 9 routes: context-first landing, trends (sorted bars + metric glossary), broker×issue heatmap with quotes, feature cards with quotes, opportunities (why-engage-led cards, tabbed drafts + copy, acted/dismiss-with-reason), creator-handoff content briefs, sorted voices (niche, why-rising, profile links), explore (verification layer, engagement-sorted), **Sources** (manage subreddits/hashtags/handles/queries from the UI — next run picks them up). Branded **Nubra Beacon** with the official Nubra logo (tab icon + sidebar); theme switcher (System/Dark/Light) behind a top-right settings menu; manual feature-request intake on the Features page (writes to the `feedback` table). Streamlit retired. |
 | **API** | FastAPI read-API (:8400, /docs): overview KPIs, server-computed `why_engage`, quote samples, sources CRUD, feedback + status writes (one-way, dismissed-reason enum). `./cm ui` supervises API+webapp and respawns dead children. |
 | **Scheduler** | `./cm schedule` prints/installs cron (hourly 07–00 IST, 06:00 morning build, Sat weekly, 01–05 pause); `./cm morning-build` orchestrated sequence with sync enrich + X trend discovery. NOT yet installed on any machine. |
 | **Sources config** | `watch_sources` table = source of truth (UI-managed, registry is seed): 18 subreddits, 14 hashtags, 12 researched handles (official NSE/BSE/SEBI, verified SEBI-registered voices with provenance notes, educators), 1 X query. X trend discovery (India trends → LLM finance filter → inactive suggestions) implemented, unverified until X credits return. |
@@ -66,6 +67,7 @@ Decisions made during the build (the LLD/build-plan docs predate these):
 11. **Retention**: 180d for EVERYTHING incl. compliance_audit (user decision, final). Grounding = engineering's `assumed-v0` catalog until marketing's vetted cut + keyword excel swap in (versioned publish).
 12. **Emoji-free** everywhere in system chrome (UI, messages, prompts); social drafts may still use them (they're platform-native content).
 13. Email = **Gmail SMTP app password** (not SES).
+14. Dashboard renamed **Nubra Beacon** (user-picked, 2026-07-05) with official nubra.io logo mark; light theme added (System/Dark/Light, persisted, no-flash boot script); Next dev indicator disabled. Team-logged feature requests land in the designed `feedback` table (`GET`/`POST /api/v1/feedback`, category `feature_request`) — kept separate from measured community rollups.
 
 ## 4 · What's left
 

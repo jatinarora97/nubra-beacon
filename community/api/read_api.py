@@ -430,6 +430,17 @@ def item_detail(source: str, external_id: str):
     return {"item": item, "thread_siblings": siblings}
 
 
+@app.get(API + "/feedback")
+def list_feedback(category: str | None = None, limit: int = 50):
+    q = ("SELECT id, object_ref, category, free_text, submitted_by, ts "
+         "FROM feedback")
+    params: tuple = ()
+    if category:
+        q += " WHERE category = %s"
+        params = (category,)
+    return db.query(q + " ORDER BY ts DESC LIMIT %s", params + (_lim(limit),))
+
+
 # ── writes (the only two) ────────────────────────────────────────────────────
 
 @app.post(API + "/feedback", status_code=201)
