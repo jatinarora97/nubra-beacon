@@ -16,7 +16,8 @@ def _echo(name: str, stats: dict) -> None:
 
 
 def run_morning_build() -> dict:
-    from community.aggregate import rollups
+    from community.scrape import x_trends
+from community.aggregate import rollups
     from community.clean import dedup
     from community.compose import roundup
     from community.dispatch import local as dispatch
@@ -28,6 +29,7 @@ def run_morning_build() -> dict:
     t0 = time.time()
 
     all_stats["scrape"] = ingest.run(daily=True)  # daily=True → include `top` feed (scrape stage owns it)
+    print('[morning] trend discovery:', x_trends.discover())
     _echo("scrape", all_stats["scrape"])
     all_stats["clean"] = dedup.run()
     _echo("clean", all_stats["clean"])

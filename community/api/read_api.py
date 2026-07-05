@@ -465,3 +465,54 @@ def set_status(opp_id: int, body: dict = Body(...),
         (status, reason if status == "dismissed" else None,
          _who(x_auth_request_email), opp_id))
     return {"ok": True, "id": opp_id, "status": status}
+
+
+# ── watch sources (UI-managed collection config) ──────────────────────────
+
+_KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query")
+
+
+@app.get(API + "/sources")
+def list_sources():
+    rows = db.query("SELECT id, kind, value, category, active, added_by, note, "
+                    "created_at FROM watch_sources ORDER BY kind, active DESC, value")
+    return rows
+
+
+@app.post(API + "/sources", status_code=201)
+def add_source(payload: dict = Body(...),
+               x_auth_request_email: str | None = Header(default=None)):
+    kind = payload.get("kind")
+    if kind not in _KINDS:
+        raise HTTPException(400, f"kind must be one of {_KINDS}")
+    value = (payload.get("value") or "").strip()
+    # normalize prefixes users naturally paste
+    for pre in ("r/", "@", "#", "https://reddit.com/r/", "https://www.reddit.com/r/",
+                "https://x.com/", "https://twitter.com/"):
+        if value.lower().startswith(pre):
+            value = value[len(pre):]
+    value = value.strip("/ ")
+    if not value or (kind != "x_query" and (" " in value or len(value) > 60)):
+        raise HTTPException(400, "value looks invalid for this kind")
+    row = db.one(
+        "INSERT INTO watch_sources (kind, value, category, added_by, note) "
+        "VALUES (%s, %s, %s, 'ui', %s) "
+        "ON CONFLICT (kind, value) DO UPDATE SET active = true "
+        "RETURNING id, kind, value, category, active",
+        (kind, value, payload.get("category") or "custom", payload.get("note")))
+    return row
+
+
+@app.post(API + "/sources/{source_id}/toggle")
+def toggle_source(source_id: int):
+    row = db.one("UPDATE watch_sources SET active = NOT active WHERE id=%s "
+                 "RETURNING id, kind, value, active", (source_id,))
+    if not row:
+        raise HTTPException(404, "no such source")
+    return row
+
+
+@app.delete(API + "/sources/{source_id}", status_code=204)
+def delete_source(source_id: int):
+    if not db.execute("DELETE FROM watch_sources WHERE id=%s", (source_id,)):
+        raise HTTPException(404, "no such source")

@@ -18,8 +18,18 @@ from community.scrape.base import AuthorMeta, Engagement, SocialItem, unified_sc
 
 
 def _sub_categories(reg: dict) -> dict[str, str]:
-    """Registry subreddits: mapping category -> [subs] (or a legacy flat list).
-    Returns {sub: category}."""
+    """{sub: category}. Source of truth = watch_sources (UI-managed; seeded from
+    the registry by scripts/seed_sources.py) — new subs added in the UI join the
+    NEXT scrape run automatically. Registry is the fallback when the table is
+    empty/unavailable."""
+    from community.store import db
+    try:
+        rows = db.query("SELECT value, category FROM watch_sources "
+                        "WHERE kind='subreddit' AND active ORDER BY value")
+        if rows:
+            return {r["value"]: (r["category"] or "custom") for r in rows}
+    except Exception:
+        pass
     subs = reg.get("subreddits") or {}
     if isinstance(subs, list):  # backward compat
         return {s: "uncategorized" for s in subs}

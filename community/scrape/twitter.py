@@ -130,7 +130,7 @@ def fetch_live_capped() -> tuple[list[SocialItem], str]:
         return [], "X live fetch skipped: TWITTERAPI_IO_KEY not set — X data via CSV backfill only"
 
     since = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
-    queries = [f"{q} since:{since}" for q in reg.get("queries", [])]
+    queries = [f"{q} since:{since}" for q in _watch_queries(reg)]
     items: list[SocialItem] = []
     try:
         with httpx.Client(timeout=20.0,
@@ -153,3 +153,26 @@ def fetch_live_capped() -> tuple[list[SocialItem], str]:
         note = (f"X live fetch unavailable ({type(e).__name__}: {str(e)[:120]}) — "
                 f"X data via CSV backfill only")
     return items, note
+
+def _watch_queries(reg: dict) -> list[str]:
+    """X search queries = watch_sources (UI-managed: x_query verbatim, x_hashtag
+    -> '#tag', x_handle -> 'from:handle') with the registry queries as seed/
+    fallback. Hashtags are batched OR-style to conserve query spend."""
+    from community.store import db
+    base = list(reg.get("queries", []))
+    try:
+        rows = db.query("SELECT kind, value FROM watch_sources "
+                        "WHERE kind IN ('x_query','x_hashtag','x_handle') AND active")
+    except Exception:
+        return base
+    if not rows:
+        return base
+    queries = [r["value"] for r in rows if r["kind"] == "x_query"]
+    tags = [f"#{r['value'].lstrip('#')}" for r in rows if r["kind"] == "x_hashtag"]
+    for i in range(0, len(tags), 8):  # ≤8 tags per OR-query
+        queries.append("(" + " OR ".join(tags[i:i + 8]) + ") lang:en")
+    handles = [r["value"].lstrip("@") for r in rows if r["kind"] == "x_handle"]
+    for i in range(0, len(handles), 8):
+        queries.append("(" + " OR ".join(f"from:{h}" for h in handles[i:i + 8]) + ")")
+    return queries or base
+

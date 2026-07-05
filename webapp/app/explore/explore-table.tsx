@@ -107,7 +107,7 @@ export function ExploreTable() {
             <tbody className="divide-y divide-line bg-surface">
               {sorted.map((it) => (
                 <tr
-                  key={it.item_id}
+                  key={`${it.source}-${it.external_id}`}
                   onClick={() => setDetail(it)}
                   className="cursor-pointer transition-colors hover:bg-surface2/50"
                 >
