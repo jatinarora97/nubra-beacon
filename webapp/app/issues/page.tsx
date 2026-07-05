@@ -13,7 +13,15 @@ function sevTone(s?: number | null): { label: string; cls: string } {
 export default async function IssuesPage() {
   const rows = await get<Issue[]>("/issues", []);
   const brokers = [...new Set(rows.map((r) => r.broker))];
-  const issueKeys = [...new Set(rows.map((r) => r.issue_key))];
+  // Columns are data-driven: top 5 issue types by total complaint volume.
+  const issueTotals = new Map<string, number>();
+  for (const r of rows)
+    issueTotals.set(r.issue_key, (issueTotals.get(r.issue_key) ?? 0) + r.count);
+  const issueKeys = [...issueTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([k]) => k);
+  const clippedIssueTypes = issueTotals.size - issueKeys.length;
   const cell = (b: string, k: string) =>
     rows.find((r) => r.broker === b && r.issue_key === k);
   const maxCount = Math.max(...rows.map((r) => r.count), 1);
@@ -36,6 +44,8 @@ export default async function IssuesPage() {
           <SectionCard>
             <div className="micro mb-4">
               complaints by broker × issue type · cell intensity = volume · label = severity
+              {clippedIssueTypes > 0 &&
+                ` · top 5 issue types shown (${clippedIssueTypes} more below)`}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full border-separate border-spacing-1">
@@ -96,11 +106,16 @@ export default async function IssuesPage() {
           </SectionCard>
 
           <SectionCard>
-            <div className="micro mb-3">what people actually said</div>
+            <div className="mb-3 flex items-baseline gap-2">
+              <span className="micro">what people actually said</span>
+              <span className="text-[11.5px] font-normal normal-case tracking-normal text-muted/70">
+                — every broker × issue segment; click one to expand the quotes
+              </span>
+            </div>
             <div className="space-y-2">
-              {rows
-                .filter((r) => (r.samples?.length ?? 0) > 0)
-                .map((r) => (
+              {rows.map((r) => {
+                const sev = sevTone(r.severity);
+                return (
                   <Expandable
                     key={`${r.broker}-${r.issue_key}`}
                     summary={
@@ -108,32 +123,44 @@ export default async function IssuesPage() {
                         <Badge tone="danger">{r.broker}</Badge>
                         <span className="text-[13px]">{r.issue_key.replace(/_/g, " ")}</span>
                         <span className="text-[11.5px] text-muted">
-                          {r.count} complaint{r.count !== 1 ? "s" : ""}
+                          {r.count} complaint{r.count !== 1 ? "s" : ""} · severity{" "}
+                          <span className={sev.cls}>
+                            {sev.label}
+                            {r.severity != null && ` (${r.severity.toFixed(1)})`}
+                          </span>
                         </span>
                       </span>
                     }
                   >
                     <div className="space-y-2 pl-1">
-                      {r.samples!.map((s, i) => (
-                        <blockquote
-                          key={i}
-                          className="border-l-2 border-line pl-3 text-[12.5px] leading-relaxed text-muted"
-                        >
-                          “{s.text}”
-                          {s.url && (
-                            <a
-                              href={s.url}
-                              target="_blank"
-                              className="ml-2 text-trends hover:underline"
-                            >
-                              view thread
-                            </a>
-                          )}
-                        </blockquote>
-                      ))}
+                      {(r.samples?.length ?? 0) === 0 ? (
+                        <p className="text-[12.5px] text-muted">
+                          No sample quotes captured for this segment — inspect the raw
+                          items on the Explore page.
+                        </p>
+                      ) : (
+                        r.samples!.map((s, i) => (
+                          <blockquote
+                            key={i}
+                            className="border-l-2 border-line pl-3 text-[12.5px] leading-relaxed text-muted"
+                          >
+                            “{s.text}”
+                            {s.url && (
+                              <a
+                                href={s.url}
+                                target="_blank"
+                                className="ml-2 text-trends hover:underline"
+                              >
+                                view thread
+                              </a>
+                            )}
+                          </blockquote>
+                        ))
+                      )}
                     </div>
                   </Expandable>
-                ))}
+                );
+              })}
             </div>
           </SectionCard>
         </div>

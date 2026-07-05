@@ -219,7 +219,7 @@ def issues(broker: str | None = None,
     start = from_ or end - timedelta(days=6)
     rows = db.query(
         """
-        SELECT broker, issue_key,
+        SELECT broker, issue_key, sum(count)::int AS count,
                jsonb_agg(jsonb_build_object('day', day, 'count', count) ORDER BY day) AS day_counts,
                max(severity) AS severity, avg(sentiment_avg) AS sentiment_avg,
                jsonb_agg(to_jsonb(sample_item_ids)) AS samples_nested
@@ -231,7 +231,7 @@ def issues(broker: str | None = None,
         nested = r.pop("samples_nested") or []
         ids = sorted({i for arr in nested for i in (arr or [])})
         r["sample_item_ids"] = ids
-        r["samples"] = _sample_items(ids, 2)
+        r["samples"] = _sample_items(ids, 5)
     if broker:
         rows = [r for r in rows if r["broker"] == broker]
     return rows

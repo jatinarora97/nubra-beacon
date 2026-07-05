@@ -1,6 +1,6 @@
 import { get } from "@/lib/api";
 import type { Trend } from "@/lib/types";
-import { Badge, EmptyState, InfoTip, PageHeader, SectionCard } from "@/components/ui";
+import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 export default async function TrendsPage() {
   const rows = await get<Trend[]>("/trends?limit=20", []);
@@ -23,20 +23,6 @@ export default async function TrendsPage() {
         />
       ) : (
         <SectionCard>
-          <div className="mb-4 flex items-center gap-6 text-[12px] text-muted">
-            <span>
-              Momentum
-              <InfoTip text="z-score of today's volume vs the topic's own 7-day baseline. Higher = more unusual. Needs 7 days of history." />
-            </span>
-            <span>
-              Spread
-              <InfoTip text="Distinct sources the topic appears on (X, Reddit). 2 sources = cross-platform conversation." />
-            </span>
-            <span>
-              Engagement index
-              <InfoTip text="Sum of each item's log-scaled engagement score — an index for comparing topics, not a raw interaction count. Formula at the bottom of the chart." />
-            </span>
-          </div>
           <div className="space-y-2.5">
             {sorted.map((t) => (
               <div key={t.topic_key} className="grid grid-cols-12 items-center gap-3">
