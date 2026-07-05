@@ -1,4 +1,5 @@
 # VENDORED from github.com/zanshash/reddit_scraper @ f926fc7
+# (+ nested-replies patch — see this script's docstring)
 # Do not edit here; update the source repo, then run scripts/sync_reddit_scraper.py
 import asyncio
 import json
@@ -28,6 +29,7 @@ from .config import (
 from .models import Comment, Post
 
 BASE = "https://old.reddit.com"
+SKIP_IDS: set = set()  # PATCH: pre-known ids to skip (set by the caller)
 log = logging.getLogger(__name__)
 
 # Posts from these accounts are always noise (megathreads, daily threads, promos)
@@ -325,8 +327,33 @@ async def fetch_comments(page: Page, limit: Optional[int] = None) -> List[Commen
             body_el = el.locator("> div.entry div.usertext-body div.md").first
             body    = (await body_el.inner_text()).strip() if await body_el.count() else ""
 
+            # PATCH: one nested reply level (strict child chain, cap 3)
+            replies = []
+            try:
+                nested = await el.locator(
+                    "> div.child > div.sitetable > div.thing.comment").all()
+                for rel in nested[:3]:
+                    r_author_el = rel.locator("a.author").first
+                    r_author = ((await r_author_el.inner_text()).strip()
+                                if await r_author_el.count() else "[deleted]")
+                    r_score_el = rel.locator("span.score").first
+                    r_score_txt = (await r_score_el.inner_text()
+                                   if await r_score_el.count() else "")
+                    r_score = (_parse_int(r_score_txt.split()[0])
+                               if r_score_txt.strip() else None)
+                    r_body_el = rel.locator(
+                        "> div.entry div.usertext-body div.md").first
+                    r_body = ((await r_body_el.inner_text()).strip()
+                              if await r_body_el.count() else "")
+                    if r_body:
+                        replies.append(
+                            {"author": r_author, "score": r_score, "body": r_body})
+            except Exception as exc:
+                log.debug(f"Reply extract error: {exc}")
+
             if body:
-                comments.append(Comment(author=author, score=score, body=body))
+                comments.append(
+                    Comment(author=author, score=score, body=body, replies=replies))
         except Exception as exc:
             log.debug(f"Comment extract error: {exc}")
 
@@ -374,7 +401,7 @@ async def scrape_subreddit(ctx: BrowserContext, subreddit: str) -> List[dict]:
             log.info(f"  {len(metas)} posts in listing")
 
             for meta in metas:
-                if meta["id"] in seen:
+                if meta["id"] in seen or meta["id"] in SKIP_IDS:
                     continue
                 seen.add(meta["id"])
 

@@ -1,4 +1,5 @@
 # VENDORED from github.com/zanshash/reddit_scraper @ f926fc7
+# (+ nested-replies patch — see this script's docstring)
 # Do not edit here; update the source repo, then run scripts/sync_reddit_scraper.py
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -9,6 +10,7 @@ class Comment:
     author: str
     score: Optional[int]
     body: str
+    replies: List[dict] = field(default_factory=list)  # PATCH: one nested level
 
 
 @dataclass
@@ -48,7 +50,8 @@ class Post:
             "local_images": self.local_images,
             "timestamp": self.timestamp,
             "comments": [
-                {"author": c.author, "score": c.score, "body": c.body}
+                {"author": c.author, "score": c.score, "body": c.body,
+                 "replies": c.replies}
                 for c in self.comments
             ],
         }

@@ -13,25 +13,33 @@ sources:
       max_usd_per_day: 5.00     # config — start at $5, tune after shadow run
   reddit:
     enabled: true
-    subreddits:                 # tiered; health check flags dead/renamed subs
-      - IndianStreetBets
-      - IndianStockMarket
-      - IndiaInvestments
-      - StockMarketIndia
-      - DalalStreetTalks
-      - DalalStreetBets
-      - mutualfunds
-      - personalfinanceindia
-      - FIREIndia
-      - IndiaFinance
-      - IndiaTax
-      # from zanshash/reddit_scraper's field-tested list:
-      - IndiaAlgoTrading
-      - NSEbets
-      - IndiaOptionsSelling
-    max_posts_per_sub: 8        # local politeness cap (each post = 1 page visit + jitter)
+    subreddits:                 # category -> subs (category stored on items as raw.category)
+      brokers:                  # brand visibility + competitor issues (all live-probed 2026-07-05)
+        - Zerodha
+        - groww
+        - upstox
+        - dhanhq
+      market_trading:           # trends: NSE/BSE, stocks, market moves
+        - IndianStreetBets
+        - IndianStockMarket
+        - StockMarketIndia
+        - DalalStreetTalks
+        - DalalStreetBets
+        - NSEbets
+      investing_pf:             # investing + personal finance (feature requests, charges chatter)
+        - IndiaInvestments
+        - mutualfunds
+        - personalfinanceindia
+        - FIREIndia
+        - IndiaFinance
+        - IndiaTax
+      fno_algo:                 # F&O traders + algo/API crowd
+        - IndiaOptionsSelling
+        - IndiaAlgoTrading
+    max_posts_per_sub: 10
     comments_per_post: 15
-    sort_types: [new]           # prod may add: hot
+    sort_types_hourly: [new, hot, rising]   # every hourly scrape; scraper de-dups across sorts
+    sort_types_daily_extra: [top]           # 1×/day — old.reddit /top = past 24h (verified 2026-07-05)
     budget:
       max_items_per_run: 2000
 
@@ -65,5 +73,11 @@ roundup:
     - brokerage_charges
   features_min_mentions: 2           # feature requests need ≥N mentions (issues can be 1)
 
+enrich:
+  batch_sla_minutes: 25            # Batch API SLA; breach -> cancel + sync fallback (cost plan §2.1)
+  poll_seconds: 20
+
 aggregate:
-  feature_sim_threshold: 0.80      # unused in local mode (embeddings skipped → slug keys)
+  feature_sim_threshold: 0.86      # centroid match τ. NOTE: e5-small compresses cosines
+                                   # (distinct asks ≈0.78–0.85, same ask ≥0.86 — measured on real
+                                   # data 2026-07-05); LLD's 0.80 assumed a wider-range model

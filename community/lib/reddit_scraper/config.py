@@ -1,4 +1,5 @@
 # VENDORED from github.com/zanshash/reddit_scraper @ f926fc7
+# (+ nested-replies patch — see this script's docstring)
 # Do not edit here; update the source repo, then run scripts/sync_reddit_scraper.py
 SUBREDDITS = [
     "IndiaInvestments",

@@ -1,9 +1,11 @@
-"""Local delivery — renders the heads-up + daily roundup to out/messages/*.md.
+"""Compose — PURE rendering. No DB writes, no file writes, no sending.
 
-On prod the same context dicts feed the Slack Block-Kit + email templates
-(LLD-03 §6.4); locally the markdown pair stands in for both channels. Novelty
-stamping (pinged_at / conversations.headsup_at / topic_daily.headsup_at+count)
-happens HERE, on send — exactly like the prod heads-up sender.
+build_headsup(all_stats)  -> (markdown | None, stamping_plan)
+build_roundup(period)     -> {"markdown", "date", "period"} | None
+
+The stamping_plan (opportunity ids, Nubra-watch thread keys, topic keys) is
+returned to the caller; dispatch applies it AFTER at least one successful
+delivery — rendering alone must never consume novelty.
 """
 from __future__ import annotations
 
@@ -112,8 +114,10 @@ def _ops_block(all_stats: dict) -> dict:
     """The 'what we did in the last hour' framework — human-facing, no pipeline
     internals: sources fetched, volume analyzed, actions identified per platform
     and kind, top standing actions."""
-    ing = all_stats.get("ingest", {})
-    enr = all_stats.get("enrich", {})
+    # stage keys per runner.STAGE_MODULES ("ingest"/"dedup" kept as fallbacks
+    # for older callers)
+    ing = all_stats.get("scrape") or all_stats.get("ingest") or {}
+    enr = all_stats.get("enrich") or {}
     fetched = ing.get("fetched", ing.get("fetched_by_source") or {})
 
     src_bits = []
@@ -130,7 +134,8 @@ def _ops_block(all_stats: dict) -> dict:
         "SELECT count(*) AS n FROM item_enrichment WHERE is_noise AND model NOT LIKE 'rule%%' "
         "AND enriched_at > now() - interval '2 hours'") or {}).get("n", 0)
     analyzed_line = (f"**{analyzed}** new items analyzed → {max(analyzed - junk - llm_noise, 0)} relevant "
-                     f"({junk + llm_noise} junk/noise filtered out)") if analyzed else         "no new items this run (nothing new to analyze)"
+                     f"({junk + llm_noise} junk/noise filtered out)") if analyzed else \
+        "no new items this run (nothing new to analyze)"
 
     by_src = db.query(
         "SELECT source, count(*) AS n FROM opportunities "
@@ -163,52 +168,50 @@ def _ops_block(all_stats: dict) -> dict:
             "identified": identified_line, "top_standing": top_standing}
 
 
-def write_local_messages(all_stats: dict) -> list[pathlib.Path]:
-    settings.out_dir.mkdir(parents=True, exist_ok=True)
+def build_headsup(all_stats: dict) -> tuple[str | None, dict]:
+    """Render the heads-up. Returns (markdown | None, stamping_plan).
+    None markdown = nothing to send this hour (ops-only + headsup_on_empty=skip)."""
     now_ist = datetime.now(IST)
-    paths: list[pathlib.Path] = []
-
-    # ── heads-up ──
     actions = _action_items()
     watch = _nubra_watch_items()
     rising = _rising_topics()
     is_ops_only = not (actions or watch or rising)
     on_empty = settings.registry["delivery"].get("headsup_on_empty", "ops_summary")
+    plan = {
+        "opportunity_ids": [a["id"] for a in actions],
+        "watch_threads": [(n["source"], n["thread_id"]) for n in watch],
+        "topics": [(t["topic_key"], str(now_ist.date())) for t in rising],
+    }
+    if is_ops_only and on_empty == "skip":
+        return None, plan
     mention = settings.registry["delivery"].get("nubra_watch_mention") or ""
-    if not (is_ops_only and on_empty == "skip"):
-        ctx = {
-            "window": now_ist.strftime("%d %b %Y · %H:%M IST"),
-            "is_ops_only": is_ops_only,
-            "actions": actions, "nubra_watch": watch, "rising_topics": rising,
-            "mention": f" · {mention}" if mention else "",
-            "ops": _ops_block(all_stats),
-            "x_live_note": (all_stats.get("ingest") or {}).get("x_live_note"),
-        }
-        out = _env.get_template("headsup_md.j2").render(**ctx)
-        p = settings.out_dir / f"{now_ist:%Y-%m-%d-%H%M}-headsup.md"
-        p.write_text(out)
-        paths.append(p)
-        # novelty stamping — on send, exactly like prod
-        if actions:
-            db.execute("UPDATE opportunities SET pinged_at = now() WHERE id = ANY(%s)",
-                       ([a["id"] for a in actions],))
-        for n in watch:
-            db.execute("UPDATE conversations SET headsup_at = now() "
-                       "WHERE source=%s AND thread_id=%s", (n["source"], n["thread_id"]))
-        for t in rising:
-            db.execute(
-                "UPDATE topic_daily SET headsup_at = COALESCE(headsup_at, now()), "
-                "headsup_count = headsup_count + 1 WHERE topic_key=%s AND day=%s",
-                (t["topic_key"], now_ist.date()),
-            )
+    ctx = {
+        "window": now_ist.strftime("%d %b %Y · %H:%M IST"),
+        "is_ops_only": is_ops_only,
+        "actions": actions, "nubra_watch": watch, "rising_topics": rising,
+        "mention": f" · {mention}" if mention else "",
+        "ops": _ops_block(all_stats),
+        "x_live_note": (all_stats.get("scrape") or all_stats.get("ingest") or {}).get("x_live_note"),
+    }
+    return _env.get_template("headsup_md.j2").render(**ctx), plan
 
-    # ── daily roundup ──
-    r = db.one("SELECT payload FROM roundups WHERE period='daily' AND date=%s",
-               (now_ist.date(),))
-    if r:
-        out = _env.get_template("roundup_daily_md.j2").render(
-            date=now_ist.strftime("%a %d %b %Y"), payload=r["payload"])
-        p = settings.out_dir / f"{now_ist:%Y-%m-%d}-roundup-daily.md"
-        p.write_text(out)
-        paths.append(p)
-    return paths
+
+def build_roundup(period: str = "daily") -> dict | None:
+    """Render the latest roundup of a period. Daily = today's row; weekly = the
+    most recent row within 7 days (produced Saturdays). Returns
+    {"markdown", "date", "period"} or None when no row exists."""
+    now_ist = datetime.now(IST)
+    if period == "daily":
+        row = db.one("SELECT date, payload FROM roundups WHERE period='daily' AND date=%s",
+                     (now_ist.date(),))
+    else:
+        row = db.one(
+            "SELECT date, payload FROM roundups WHERE period='weekly' "
+            "AND date > %s ORDER BY date DESC LIMIT 1",
+            (now_ist.date() - timedelta(days=7),))
+    if not row:
+        return None
+    template = "roundup_daily_md.j2" if period == "daily" else "roundup_weekly_md.j2"
+    md = _env.get_template(template).render(
+        date=now_ist.strftime("%a %d %b %Y"), payload=row["payload"])
+    return {"markdown": md, "date": row["date"], "period": period}

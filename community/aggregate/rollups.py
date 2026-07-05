@@ -2,15 +2,15 @@
 rollups, author_stats. Consumes item_enrichment past the 'aggregate' watermark
 (enriched_at — arrival clock).
 
-LOCAL-MODE SIMPLIFICATION (documented deviation): embeddings are skipped, so
-feature_key assignment is exact-slug matching on canonical_label instead of the
-LLD-02 §8.4 centroid nearest-neighbour (τ=0.80). feature_keys.centroid stays NULL;
-prod swaps the matcher without schema change.
+feature_key assignment is the LLD-02 §8.4 incremental centroid design: embed the
+feature phrase (multilingual-e5-small), nearest existing feature_keys.centroid by
+cosine; ≥ τ (registry aggregate.feature_sim_threshold) → reuse key + fold into
+the running-mean centroid; else mint feat_NNNNN. Near-misses (0.70–τ) logged for
+threshold tuning. No per-run re-clustering (arch §4.2).
 """
 from __future__ import annotations
 
 import math
-import re
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -19,10 +19,6 @@ from community.store import db, repositories as repo
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
-
-def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", (text or "").lower()).strip("_")[:60]
-
 
 def _new_enrichment(wm: datetime | None) -> list[dict]:
     return db.query(
@@ -216,26 +212,58 @@ def _rollup_issues(rows: list[dict]) -> int:
     return len(groups)
 
 
-# ── feature_rollup + feature_keys (slug fallback — see module docstring) ─
+# ── feature_rollup + feature_keys (LLD-02 §8.4 incremental centroids) ─────
 
-def _feature_key_for(phrase: str) -> str:
-    slug = _slug(phrase)
-    if not slug:
-        slug = "unspecified"
-    existing = db.query("SELECT feature_key, canonical_label FROM feature_keys")
-    for row in existing:
-        if _slug(row["canonical_label"]) == slug:
-            db.execute(
-                "UPDATE feature_keys SET phrase_count = phrase_count + 1, updated_at = now() "
-                "WHERE feature_key = %s", (row["feature_key"],))
-            return row["feature_key"]
-    key = f"feat_{len(existing) + 1:05d}"
+def _mint_key(phrase: str, vec: list[float]) -> str:
+    from community.enrich.embeddings import to_vec
+
+    nxt = db.one(
+        "SELECT COALESCE(MAX(substring(feature_key FROM 6)::int), 0) + 1 AS n "
+        "FROM feature_keys WHERE feature_key ~ '^feat_[0-9]+$'")["n"]
+    key = f"feat_{nxt:05d}"
     db.execute(
-        "INSERT INTO feature_keys (feature_key, canonical_label) VALUES (%s, %s) "
-        "ON CONFLICT (feature_key) DO NOTHING",
-        (key, phrase[:120]),
+        "INSERT INTO feature_keys (feature_key, canonical_label, centroid, phrase_count) "
+        "VALUES (%s, %s, %s::vector, 1) ON CONFLICT (feature_key) DO NOTHING",
+        (key, phrase[:120], to_vec(vec)),
     )
     return key
+
+
+def _feature_key_for(phrase: str) -> str:
+    """Incremental centroid assignment: nearest existing centroid ≥ τ → assign
+    + fold (running mean, renormalized); else mint. Near-misses logged."""
+    from community.config.settings import settings
+    from community.enrich import embeddings
+
+    vec = embeddings.embed_texts([phrase])[0]
+    vstr = embeddings.to_vec(vec)
+    tau = float(settings.registry.get("aggregate", {}).get("feature_sim_threshold", 0.80))
+    best = db.one(
+        "SELECT feature_key, canonical_label, phrase_count, centroid::text AS c, "
+        "1 - (centroid <=> %s::vector) AS sim "
+        "FROM feature_keys WHERE centroid IS NOT NULL AND is_active "
+        "ORDER BY centroid <=> %s::vector LIMIT 1",
+        (vstr, vstr),
+    )
+    if best and best["sim"] is not None:
+        if best["sim"] >= tau:
+            n = best["phrase_count"]
+            old = embeddings.from_vec(best["c"])
+            folded = [(o * n + v) / (n + 1) for o, v in zip(old, vec)]
+            norm_ = sum(x * x for x in folded) ** 0.5 or 1.0
+            folded = [x / norm_ for x in folded]
+            db.execute(
+                "UPDATE feature_keys SET centroid = %s::vector, "
+                "phrase_count = phrase_count + 1, updated_at = now() "
+                "WHERE feature_key = %s",
+                (embeddings.to_vec(folded), best["feature_key"]),
+            )
+            return best["feature_key"]
+        if tau - 0.03 <= best["sim"] < tau:  # near-miss band, e5 range is compressed
+            print(f"[aggregate] feature near-miss {best['sim']:.2f}: "
+                  f"{phrase[:50]!r} vs {best['canonical_label'][:50]!r} "
+                  f"({best['feature_key']}) — below τ={tau}")
+    return _mint_key(phrase, vec)
 
 
 def _rollup_features(rows: list[dict]) -> int:

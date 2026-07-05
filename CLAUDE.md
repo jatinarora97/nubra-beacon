@@ -4,6 +4,28 @@ This repo holds the **POC** (Streamlit + Reddit live + vetted X CSV) and the **f
 production design docs**. The production service is a NEW sibling repo — do not build it
 here.
 
+## State (as of 2026-07-05) — SUPERSEDES the block below where they conflict
+
+- **No local/prod split** (user directive): one prod-grade codebase, tested on real data.
+- Layout = pipeline stages, 1:1 with runner stages: `community/scrape/ clean/ enrich/
+  aggregate/ recommend/ compose/ dispatch/` + shared `store/ llm/ config/ lib/ reference/`.
+- Reddit: vendored zanshash/reddit_scraper is the ONLY transport (JSON fallback removed);
+  feeds new+hot+rising hourly + top daily; 18 categorized subs (brokers incl. r/Zerodha,
+  r/groww, r/upstox, r/dhanhq — all probed alive); 10 posts/sub; nested replies (1 level,
+  ≤3) SHIPPED; rerun skip via SKIP_IDS. Vendor patches live in scripts/sync_reddit_scraper.py.
+- Prod parity: multilingual-e5-small embeddings + centroid feature keys (τ=0.86, measured
+  2026-07-05 — LLD's 0.80 over-merges on e5-small); Batch API enrichment default,
+  `tagger.run(sync=True)` for the morning build.
+- UI: `./cm ui` → read-API :8400 (/docs) + Streamlit dashboard :8501 (blue-dark, 8 pages,
+  acted/dismiss-with-reason wired).
+- Dispatch: Slack webhook + Gmail SMTP senders, config-gated via .env (template:
+  community/config/env.example); archive to out/messages/ always; heads-up channel window
+  08–20 IST; roundups send once per row. Scheduler: `./cm schedule` (cron plan) +
+  `./cm morning-build`.
+- Action bar recalibrated to 60 (real-data distribution); engagement gate ≥10 interactions
+  for top actions; trending bar ≥3 items; docs in docs/ predate the restructure — CLAUDE.md
+  wins on layout/config until the doc-sync pass.
+
 ## State (as of 2026-07-03, evening)
 
 - Design complete and verified; **local build (M0–M4) DONE and running E2E in THIS repo**

@@ -73,13 +73,17 @@ def _validate(raw: str, expected_ids: list[str]) -> EnrichResponse:
     return parsed
 
 
-def enrich_batch(items: list[dict]) -> tuple[EnrichResponse, dict]:
-    """items: [{id, source, text, thread_hint}] → validated response + usage.
-    Retries ≤2 appending the validation error; raises EnrichError after."""
+def _build_prompt(items: list[dict]) -> str:
     taxonomy = "\n".join(f"- {k}: {label}" for k, (label, _) in TOPICS.items())
-    prompt = _PROMPT.replace("{taxonomy}", taxonomy) \
-                    .replace("{issue_types}", ", ".join(ISSUE_TYPES)) \
-                    .replace("{items}", json.dumps(items, ensure_ascii=False, default=str))
+    return _PROMPT.replace("{taxonomy}", taxonomy) \
+                  .replace("{issue_types}", ", ".join(ISSUE_TYPES)) \
+                  .replace("{items}", json.dumps(items, ensure_ascii=False, default=str))
+
+
+def enrich_batch(items: list[dict]) -> tuple[EnrichResponse, dict]:
+    """SYNC path: items: [{id, source, text, thread_hint}] → validated response +
+    usage. Retries ≤2 appending the validation error; raises EnrichError after."""
+    prompt = _build_prompt(items)
     expected = [str(i["id"]) for i in items]
     messages = [{"role": "user", "content": prompt}]
     usage = {"input_tokens": 0, "output_tokens": 0, "calls": 0}
@@ -103,6 +107,61 @@ def enrich_batch(items: list[dict]) -> tuple[EnrichResponse, dict]:
                             "Return ONLY the corrected JSON object."},
             ]
     raise EnrichError(f"batch failed after retries: {last_err}")
+
+
+def enrich_via_batch_api(
+    chunks: list[list[dict]], *, sla_minutes: float = 25, poll_seconds: float = 20,
+) -> tuple[dict[int, EnrichResponse | None], dict]:
+    """Message Batches API path (−50%, cost plan §2.1). One request per chunk,
+    custom_id = chunk index. Polls until ended or the SLA; on SLA breach the
+    batch is cancelled and every unresolved chunk maps to None (caller falls
+    back to the sync path). Per-chunk validation failure / errored / expired
+    also map to None. Returns ({chunk_idx: EnrichResponse|None}, usage)."""
+    import time as _time
+
+    usage = {"input_tokens": 0, "output_tokens": 0, "calls": 0, "batch_id": None}
+    requests = [
+        {"custom_id": f"chunk_{i}",
+         "params": {"model": settings.enrich_model, "max_tokens": 8000,
+                    "messages": [{"role": "user", "content": _build_prompt(chunk)}]}}
+        for i, chunk in enumerate(chunks)
+    ]
+    batch = client().messages.batches.create(requests=requests)
+    usage["batch_id"] = batch.id
+    print(f"[enrich] batch {batch.id} submitted ({len(chunks)} chunks) — polling")
+
+    deadline = _time.monotonic() + sla_minutes * 60
+    while True:
+        b = client().messages.batches.retrieve(batch.id)
+        if b.processing_status == "ended":
+            break
+        if _time.monotonic() > deadline:
+            try:
+                client().messages.batches.cancel(batch.id)
+            except Exception:  # noqa: BLE001 — cancel is best-effort
+                pass
+            print(f"[enrich] batch {batch.id} exceeded {sla_minutes}min SLA — "
+                  "cancelled, falling back to sync for this pass")
+            return {i: None for i in range(len(chunks))}, usage
+        _time.sleep(poll_seconds)
+
+    out: dict[int, EnrichResponse | None] = {i: None for i in range(len(chunks))}
+    for result in client().messages.batches.results(batch.id):
+        idx = int(result.custom_id.split("_")[1])
+        if result.result.type != "succeeded":
+            print(f"[enrich] batch chunk {idx}: {result.result.type} — sync retry")
+            continue
+        msg = result.result.message
+        usage["input_tokens"] += msg.usage.input_tokens
+        usage["output_tokens"] += msg.usage.output_tokens
+        usage["calls"] += 1
+        raw = next((blk.text for blk in msg.content if blk.type == "text"), "")
+        expected = [str(it["id"]) for it in chunks[idx]]
+        try:
+            out[idx] = _validate(raw, expected)
+        except (ValueError, ValidationError, json.JSONDecodeError) as e:
+            print(f"[enrich] batch chunk {idx} failed validation ({e}) — sync retry")
+    return out, usage
 
 
 def complete(model: str, system: str, user: str, max_tokens: int = 2000) -> tuple[str, dict]:

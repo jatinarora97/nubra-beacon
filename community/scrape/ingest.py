@@ -36,9 +36,12 @@ def _store(item: SocialItem, counters: dict) -> None:
     counters["inserted" if item_id else "skipped_existing"] += 1
 
 
-def run(**_) -> dict:
+def run(daily: bool = False, **_) -> dict:
+    """daily=True adds the once-a-day sorts (top = past-24h best) to the hourly
+    new+hot+rising feeds; the scheduler passes it on the morning build."""
     counters = {"inserted": 0, "skipped_existing": 0}
     fetched = {"twitter_csv": 0, "twitter_live": 0, "reddit": 0}
+    reddit_by_category: dict[str, int] = {}
 
     # X backfill (CSV is the main X source locally — user decision 2026-07-03)
     csv_path = settings.registry["sources"]["twitter"].get("csv_backfill")
@@ -47,10 +50,16 @@ def run(**_) -> dict:
             fetched["twitter_csv"] += 1
             _store(item, counters)
 
-    # Reddit live
-    reddit_items, reddit_health = reddit.fetch_live()
+    # Reddit live — all feeds: hourly new+hot+rising, +top when daily
+    r_reg = settings.registry["sources"]["reddit"]
+    sorts = list(r_reg.get("sort_types_hourly", ["new"]))
+    if daily:
+        sorts += list(r_reg.get("sort_types_daily_extra", []))
+    reddit_items, reddit_health = reddit.fetch_live(sorts=sorts)
     for item in reddit_items:
         fetched["reddit"] += 1
+        cat = (item.raw or {}).get("category", "uncategorized")
+        reddit_by_category[cat] = reddit_by_category.get(cat, 0) + 1
         _store(item, counters)
 
     # X live — capped, degrade-to-note
@@ -63,5 +72,6 @@ def run(**_) -> dict:
                       ("reddit", fetched["reddit"])):
         repo.advance_state("ingest", source, watermark=repo.now_utc(), items=n)
 
-    return {"fetched": fetched, **counters,
+    return {"fetched": fetched, "reddit_by_category": reddit_by_category,
+            "reddit_sorts": sorts, **counters,
             "x_live_note": x_live_note, "reddit_health": reddit_health}
