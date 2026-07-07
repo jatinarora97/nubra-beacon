@@ -71,6 +71,10 @@ Decisions made during the build (the LLD/build-plan docs predate these):
 
 ## 4 · What's left
 
+> **2026-07-07:** the active backlog moved to `nubra-beacon-workplan-2026-07-07.md`
+> (approved items, phases, parked list). The lists below predate that doc — where
+> they disagree, the work plan wins.
+
 **To go live (needs human/credentials):**
 - [ ] Slack webhook + Gmail app password into `.env` (+ recipients in registry) — senders activate on next dispatch, zero code.
 - [ ] X credits top-up (twitterapi.io is 402) → verifies live X at volume + trend discovery round-trip; then raise/remove the 10-item cap.
