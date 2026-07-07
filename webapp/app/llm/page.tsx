@@ -35,21 +35,21 @@ export default async function LlmPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="LLM usage"
+        title="AI usage"
         accent="bg-voices"
-        blurb={`Every Claude call the pipeline makes, priced at call time and stored locally — the radar's own meter, not a Langfuse clone. Deep per-call traces stream to Langfuse when its keys are configured in .env. Window: last ${s.window_days} days.`}
+        blurb={`Every AI call the pipeline makes, priced at the moment it happens — Beacon's own meter for what the intelligence costs. Window: last ${s.window_days} days.`}
       />
 
       {(t.calls ?? 0) === 0 ? (
         <EmptyState
-          title="No LLM usage recorded yet"
-          body="Rows appear as pipeline stages run (enrich, draft, compose). Kick off ./cm run-local or wait for the next scheduled run."
+          title="No AI usage recorded yet"
+          body="Rows appear as pipeline stages run (analysis, drafting, composing). The next scheduled run will populate this page."
         />
       ) : (
         <>
           <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <KpiCard label={`Spend ${s.window_days}d`} value={fmtUsd(t.cost_usd)} />
-            <KpiCard label="Calls" value={t.calls ?? "-"} hint={`${t.traced_calls ?? 0} traced to Langfuse`} />
+            <KpiCard label="Calls" value={t.calls ?? "-"} hint="across all pipeline stages" />
             <KpiCard label="Tokens in" value={fmtTok(t.input_tokens)} />
             <KpiCard label="Tokens out" value={fmtTok(t.output_tokens)} />
             <KpiCard
@@ -135,7 +135,7 @@ export default async function LlmPage() {
           </div>
 
           <SectionCard>
-            <div className="micro mb-3">recent runs — one row per ./cm invocation</div>
+            <div className="micro mb-3">recent runs — one row per pipeline run</div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>

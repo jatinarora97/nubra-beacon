@@ -88,9 +88,6 @@ export function GroundingEditor() {
             IST
           </span>
         )}
-        {catalog.version?.startsWith("assumed") && (
-          <Badge tone="warn">engineering-assumed — awaiting marketing&apos;s vetted catalog</Badge>
-        )}
       </div>
 
       <div className="space-y-3">

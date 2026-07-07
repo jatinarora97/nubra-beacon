@@ -97,28 +97,34 @@ export default async function Home() {
               analyzed up to <span className="text-ink">{fmtIst(f.enriched_up_to)}</span>
             </span>
           )}
-          {f.schedule_installed ? (
-            <span className="ml-auto">
-              next run <span className="text-ink">{fmtIst(f.next_hourly_run)}</span> · morning
-              build <span className="text-ink">{fmtIst(f.next_morning_build)}</span>
-            </span>
-          ) : (
-            <span className="ml-auto text-warn">
-              scheduler not installed — runs are manual (planned: hourly + 06:00 build)
-            </span>
-          )}
+          <span className="ml-auto">
+            next update <span className="text-ink">{fmtIst(f.next_hourly_run)}</span> · morning
+            build <span className="text-ink">{fmtIst(f.next_morning_build)}</span>
+          </span>
         </section>
       )}
 
       <section className="grid grid-cols-3 gap-3 lg:grid-cols-7">
-        <KpiCard label="Items today" value={k.items_today ?? "-"} />
-        <KpiCard label="Analyzed" value={k.analyzed_today ?? "-"} />
-        <KpiCard label="Actions on table" value={k.actions_on_table ?? "-"} />
-        <KpiCard label="New high-priority" value={k.new_high_priority_today ?? "-"} />
-        <KpiCard label="Nubra mentions 24h" value={k.nubra_mentions_24h ?? "-"} />
-        <KpiCard label="Drafts ready" value={k.drafts_ready ?? "-"} />
         <KpiCard
-          label="LLM cost last run"
+          label="Items today"
+          value={k.items_today ?? "-"}
+          hint={`+${k.items_last_hour ?? 0} in the last hour`}
+        />
+        <KpiCard
+          label="Analyzed"
+          value={k.analyzed_today ?? "-"}
+          hint={`+${k.analyzed_last_hour ?? 0} in the last hour`}
+        />
+        <KpiCard
+          label="Actions on table"
+          value={k.actions_on_table ?? "-"}
+          hint={`${k.new_actions_last_hour ?? 0} new in the last hour`}
+        />
+        <KpiCard label="New high-priority" value={k.new_high_priority_today ?? "-"} hint="today" />
+        <KpiCard label="Nubra mentions" value={k.nubra_mentions_24h ?? "-"} hint="last 24 hours" />
+        <KpiCard label="Drafts ready" value={k.drafts_ready ?? "-"} hint="compliant, awaiting a human" />
+        <KpiCard
+          label="AI cost, last run"
           value={
             ov.llm_last_run?.cost_usd != null
               ? `$${Number(ov.llm_last_run.cost_usd).toFixed(
@@ -131,8 +137,8 @@ export default async function Home() {
           }
           hint={
             ov.llm_last_run
-              ? `${ov.llm_last_run.calls} calls · ${ov.llm_last_run.stages} stage${(ov.llm_last_run.stages ?? 0) !== 1 ? "s" : ""}`
-              : undefined
+              ? `${ov.llm_last_run.calls} AI call${(ov.llm_last_run.calls ?? 0) !== 1 ? "s" : ""} in the last pipeline run`
+              : "no runs recorded yet"
           }
         />
       </section>

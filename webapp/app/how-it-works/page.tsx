@@ -50,12 +50,8 @@ const HUMANS_OWN: string[] = [
 ];
 
 const FAQ: [string, string][] = [
-  ["Why does X data look stale?",
-   "Live X collection is paid (twitterapi.io) and the credits are currently exhausted, so X shows the last collected data plus a CSV backfill. Reddit is fully live. The topbar states the current mode."],
   ["Why do some pages show 'nothing yet'?",
-   "Quality bars are deliberate: a trend needs 3+ items, a feature theme needs 2+ merged mentions, and momentum needs 7 days of history. Empty states mean the bar was not crossed — not that the system is broken. A red banner appears if the backend is actually down."],
-  ["What does 'assumed-v0 grounding' mean?",
-   "The USP catalog drafts are grounded on is engineering's best-guess seed. Marketing's vetted catalog replaces it as a new version on the Grounding page — until then, treat product claims in drafts with extra care."],
+   "Quality bars are deliberate: a trend needs 3+ items, and momentum needs 7 days of history. Empty states mean the bar was not crossed — not that the system is broken. A red banner appears if the backend is actually down."],
   ["Does Beacon ever post on its own?",
    "No. Nothing is ever published automatically. Beacon recommends and drafts; humans review, edit, and post."],
 ];
@@ -137,6 +133,29 @@ export default function HowItWorksPage() {
       </SectionCard>
 
       <SectionCard>
+        <div className="micro mb-3">Under the hood — for the curious</div>
+        <div className="space-y-1.5">
+          {(
+            [
+              ["One API, every page",
+               "Everything on this dashboard is served by a single internal API — the same numbers power the pages, the hourly heads-ups and the roundups, so they can never disagree."],
+              ["AI in bulk, at half price",
+               "Understanding thousands of posts one-by-one would be slow and expensive. Beacon sends them to the AI in large batches processed at half the normal price, and falls back to instant calls only when a batch is too slow (like the pre-market morning build)."],
+              ["Meaning, not keywords",
+               "Every post is converted into an embedding — a numeric fingerprint of what it means. That is how two differently-worded versions of the same complaint or ask end up counted as one theme even when they share no words."],
+              ["Everything is auditable",
+               "Every post, tag, score, draft, compliance check and AI call is stored in one database — any number on any page can be traced back to the raw posts behind it (that is what the Explore page is for)."],
+            ] as [string, string][]
+          ).map(([term, def]) => (
+            <p key={term} className="text-[12.5px] leading-relaxed">
+              <span className="font-medium text-ink">{term}</span>{" "}
+              <span className="text-muted">— {def}</span>
+            </p>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard>
         <div className="micro mb-3">What humans own (Beacon never does these)</div>
         <ul className="space-y-1.5">
           {HUMANS_OWN.map((h) => (
@@ -160,10 +179,6 @@ export default function HowItWorksPage() {
         </div>
       </SectionCard>
 
-      <p className="text-[11.5px] text-muted">
-        For engineers and PMs: the full API reference lives in the repo at
-        docs/api-reference-2026-07-07.md.
-      </p>
     </div>
   );
 }

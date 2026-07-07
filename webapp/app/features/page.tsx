@@ -4,20 +4,23 @@ import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 export default async function FeaturesPage() {
   const rows = await get<Feature[]>("/features", []);
-  const sorted = [...rows].sort((a, b) => b.count - a.count);
+  // Engagement-first: the ask the community is loudest about leads the page.
+  const sorted = [...rows].sort(
+    (a, b) => (b.engagement ?? 0) - (a.engagement ?? 0) || b.count - a.count,
+  );
 
   return (
     <div>
       <PageHeader
         title="Feature requests"
         accent="bg-warn"
-        blurb="What traders keep asking for, across any broker. Different phrasings of the same ask are merged by meaning (embeddings), so one theme = one card. A theme needs 2+ mentions to appear."
+        blurb="What traders are asking for, across any broker — sorted by how much engagement each ask is drawing. Different phrasings of the same ask are merged by meaning, so one theme = one card; even a single mention appears."
       />
 
       {sorted.length === 0 ? (
         <EmptyState
-          title="No feature theme crossed the bar"
-          body="Themes need at least 2 merged mentions. Single one-off asks stay below the line until someone else asks for the same thing."
+          title="No feature requests in the window"
+          body="Feature asks are extracted from posts where someone is requesting a capability. They appear here as soon as one is picked up."
         />
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">

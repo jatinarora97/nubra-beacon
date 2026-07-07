@@ -61,11 +61,35 @@ export default async function WeeklyPage() {
             <span>
               window {p.window?.from} → {p.window?.to}
             </span>
-            <span>· grounding {p.grounding}</span>
-            {p.actions_recap?.opportunities_surfaced != null && (
-              <span>· {p.actions_recap.opportunities_surfaced} opportunities surfaced</span>
-            )}
           </div>
+
+          {r?.week_stats && (
+            <SectionCard>
+              <div className="micro mb-3">The week in numbers</div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                {(
+                  [
+                    ["Collected", r.week_stats.collected, "posts + comments pulled in"],
+                    ["Duplicates merged", r.week_stats.duplicates_merged, "same content, counted once"],
+                    ["Noise filtered", r.week_stats.noise_filtered, "spam / off-topic set aside"],
+                    ["Analyzed", r.week_stats.analyzed, "tagged by topic, intent, sentiment"],
+                    ["Trends identified", r.week_stats.trends_identified, "topics with 3+ items"],
+                    ["Issue segments", r.week_stats.issue_segments, "broker x issue combinations"],
+                    ["Feature themes", r.week_stats.feature_themes, "distinct asks (merged by meaning)"],
+                    ["Opportunities", r.week_stats.opportunities, "conversations worth joining"],
+                    ["Drafts written", r.week_stats.drafts_written, "compliant replies ready"],
+                    ["Heads-ups sent", r.week_stats.headsups_sent, "hourly action alerts"],
+                  ] as [string, number | undefined, string][]
+                ).map(([label, value, hint]) => (
+                  <div key={label} className="rounded-[10px] border border-line bg-surface2/40 px-3 py-2.5">
+                    <div className="text-xl font-semibold tabular-nums">{value ?? "-"}</div>
+                    <div className="mt-0.5 text-[11.5px] font-medium">{label}</div>
+                    <div className="text-[11px] leading-snug text-muted">{hint}</div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          )}
 
           {(p.persisted?.length ?? 0) > 0 && (
             <SectionCard>

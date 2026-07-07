@@ -14,7 +14,7 @@ export function Topbar() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-[12px] text-muted">
           <span className="h-1.5 w-1.5 rounded-full bg-opps" />
-          beacon live · X via CSV backfill · Reddit live
+          beacon live
         </div>
         <SettingsMenu />
       </div>

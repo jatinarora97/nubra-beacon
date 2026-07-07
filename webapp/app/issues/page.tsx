@@ -11,10 +11,20 @@ function sevTone(s?: number | null): { label: string; cls: string } {
 }
 
 export default async function IssuesPage() {
-  const rows = await get<Issue[]>("/issues", []);
-  // Nubra is watched with the same machinery; pin it first when present.
-  const brokers = [...new Set(rows.map((r) => r.broker))].sort(
-    (a, b) => Number(b === "nubra") - Number(a === "nubra"),
+  const data = await get<{ segments: Issue[]; brokers: string[] }>("/issues", {
+    segments: [],
+    brokers: [],
+  });
+  const rows = data.segments;
+  // Every watched broker gets a row — a clean row (green zeros) is signal too.
+  // Order: Nubra first, then by complaint volume, then alphabetical.
+  const volume = new Map<string, number>();
+  for (const r of rows) volume.set(r.broker, (volume.get(r.broker) ?? 0) + r.count);
+  const brokers = [...new Set([...data.brokers, ...rows.map((r) => r.broker)])].sort(
+    (a, b) =>
+      Number(b === "nubra") - Number(a === "nubra") ||
+      (volume.get(b) ?? 0) - (volume.get(a) ?? 0) ||
+      a.localeCompare(b),
   );
   // Columns are data-driven: top 5 issue types by total complaint volume.
   const issueTotals = new Map<string, number>();
@@ -34,13 +44,13 @@ export default async function IssuesPage() {
       <PageHeader
         title="Broker issues"
         accent="bg-danger"
-        blurb="What traders complain about, per broker — including Nubra, which is watched with the same machinery (its row pins to the top when complaints exist; the positive side lives on Nubra mentions). No minimum bar here — a single high-severity complaint is worth knowing about. Severity blends reach with how negative the sentiment is."
+        blurb="What traders complain about, across every broker we watch — including Nubra, tracked with the same machinery (the positive side lives on Nubra mentions). A green zero means no complaints in the window. No minimum bar — a single high-severity complaint is worth knowing about. Severity blends reach with how negative the sentiment is."
       />
 
       {rows.length === 0 ? (
         <EmptyState
-          title="No broker complaints in the window"
-          body="Complaints are extracted from posts where the intent is a complaint and a broker is explicitly identified."
+          title="No complaints in the window"
+          body={`All ${brokers.length} watched brokers are clean this window. Complaints are extracted from posts where the intent is a complaint and a broker is explicitly identified.`}
         />
       ) : (
         <div className="space-y-5">
@@ -78,7 +88,13 @@ export default async function IssuesPage() {
                         const c = cell(b, k);
                         if (!c)
                           return (
-                            <td key={k} className="h-11 rounded bg-surface2/40" />
+                            <td
+                              key={k}
+                              className="h-11 min-w-20 rounded bg-opps/10 text-center align-middle"
+                              title={`${b} · ${k.replace(/_/g, " ")}: no complaints in the window`}
+                            >
+                              <span className="text-[12.5px] font-medium tabular-nums text-opps">0</span>
+                            </td>
                           );
                         const alpha = 0.25 + 0.6 * (c.count / maxCount);
                         const sev = sevTone(c.severity);

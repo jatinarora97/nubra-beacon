@@ -216,6 +216,16 @@ def overview():
         "drafts_ready": _n(
             "SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
             "AND brand_reply IS NOT NULL"),
+        # last-hour deltas — the hourly cadence the tiles should surface
+        "items_last_hour": _n(
+            "SELECT count(*) AS n FROM social_items "
+            "WHERE ingested_at > now() - interval '1 hour'"),
+        "analyzed_last_hour": _n(
+            "SELECT count(*) AS n FROM item_enrichment "
+            "WHERE enriched_at > now() - interval '1 hour'"),
+        "new_actions_last_hour": _n(
+            "SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
+            "AND updated_at > now() - interval '1 hour'"),
     }
 
     top_actions = [
@@ -410,7 +420,9 @@ def issues(broker: str | None = None,
         r["samples"] = _sample_items(ids, 5)
     if broker:
         rows = [r for r in rows if r["broker"] == broker]
-    return rows
+    # full watched-broker list so the heatmap can show clean rows (0 complaints)
+    from community.reference.taxonomy import BROKER_GAZETTEER
+    return {"segments": rows, "brokers": list(BROKER_GAZETTEER)}
 
 
 @app.get(API + "/features")
@@ -420,19 +432,25 @@ def features(from_: date | None = Query(None, alias="from"),
     start = from_ or end - timedelta(days=6)
     rows = db.query(
         """
-        SELECT feature_key, max(canonical_label) AS label, sum(count)::int AS count,
-               count(DISTINCT day)::int AS days_requested,
-               jsonb_agg(to_jsonb(brokers_mentioned)) AS brokers_nested,
-               jsonb_agg(to_jsonb(sample_item_ids)) AS samples_nested
-        FROM feature_rollup WHERE day BETWEEN %s AND %s
-        GROUP BY feature_key HAVING count(DISTINCT day) >= %s
-        ORDER BY sum(count) DESC
-        """, (start, end, min_days))
+        SELECT fr.feature_key, max(fr.canonical_label) AS label, sum(fr.count)::int AS count,
+               count(DISTINCT fr.day)::int AS days_requested,
+               jsonb_agg(to_jsonb(fr.brokers_mentioned)) AS brokers_nested,
+               jsonb_agg(to_jsonb(fr.sample_item_ids)) AS samples_nested,
+               COALESCE((SELECT sum((si.engagement->>'score')::float)
+                         FROM feature_item_map m
+                         JOIN social_items si ON si.item_id = m.item_id
+                         WHERE m.feature_key = fr.feature_key
+                           AND m.day BETWEEN %s AND %s), 0) AS engagement
+        FROM feature_rollup fr WHERE fr.day BETWEEN %s AND %s
+        GROUP BY fr.feature_key HAVING count(DISTINCT fr.day) >= %s
+        ORDER BY engagement DESC, sum(fr.count) DESC
+        """, (start, end, start, end, min_days))
     for r in rows:
         r["brokers_mentioned"] = sorted(
             {b for arr in (r.pop("brokers_nested") or []) for b in (arr or []) if b})
         ids = sorted({i for arr in (r.pop("samples_nested") or []) for i in (arr or [])})
         r["samples"] = _sample_items(ids, 3)
+        r["engagement"] = round(r["engagement"], 1)
     return rows
 
 
@@ -587,7 +605,55 @@ def roundups(period: Literal["daily", "weekly"] = "daily",
                  "WHERE period=%s AND date=%s", (period, date_))
     if not row:
         raise HTTPException(404, f"no {period} roundup for {date_}")
+    if period == "weekly":
+        row["week_stats"] = _week_stats(row["payload"].get("window") or {})
     return row
+
+
+def _week_stats(window: dict) -> dict:
+    """Pipeline throughput for the weekly window — the Overview KPIs, extended
+    to the week: collected -> filtered -> analyzed -> what came out the end."""
+    frm, to = window.get("from"), window.get("to")
+    if not frm or not to:
+        return {}
+
+    def _n(sql: str, params: tuple) -> int:
+        return (db.one(sql, params) or {}).get("n", 0)
+
+    span = (frm, to)
+    return {
+        "collected": _n("SELECT count(*) AS n FROM social_items "
+                        "WHERE ingested_at::date BETWEEN %s AND %s", span),
+        "duplicates_merged": _n(
+            "SELECT count(*) AS n FROM social_items "
+            "WHERE ingested_at::date BETWEEN %s AND %s AND duplicate_of IS NOT NULL", span),
+        "noise_filtered": _n(
+            "SELECT count(*) AS n FROM item_enrichment ie "
+            "JOIN social_items si ON si.item_id = ie.item_id "
+            "WHERE si.ingested_at::date BETWEEN %s AND %s AND ie.is_noise", span),
+        "analyzed": _n(
+            "SELECT count(*) AS n FROM item_enrichment "
+            "WHERE ingested_at::date BETWEEN %s AND %s", span),
+        "trends_identified": _n(
+            "SELECT count(*) AS n FROM (SELECT topic_key FROM topic_daily "
+            "WHERE day BETWEEN %s AND %s AND topic_key NOT LIKE 'other:%%' "
+            "GROUP BY topic_key HAVING sum(count) >= 3) t", span),
+        "issue_segments": _n(
+            "SELECT count(*) AS n FROM (SELECT broker, issue_key FROM issue_rollup "
+            "WHERE day BETWEEN %s AND %s GROUP BY broker, issue_key) t", span),
+        "feature_themes": _n(
+            "SELECT count(DISTINCT feature_key) AS n FROM feature_rollup "
+            "WHERE day BETWEEN %s AND %s", span),
+        "opportunities": _n(
+            "SELECT count(*) AS n FROM opportunities "
+            "WHERE day BETWEEN %s AND %s", span),
+        "drafts_written": _n(
+            "SELECT count(*) AS n FROM opportunities "
+            "WHERE day BETWEEN %s AND %s AND brand_reply IS NOT NULL", span),
+        "headsups_sent": _n(
+            "SELECT count(*) AS n FROM headsups "
+            "WHERE ts::date BETWEEN %s AND %s", span),
+    }
 
 
 def _item_filters(topic: str | None, broker: str | None, intent: str | None,

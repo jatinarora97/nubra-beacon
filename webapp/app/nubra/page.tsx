@@ -36,7 +36,7 @@ export default async function NubraPage() {
       {positives.length === 0 ? (
         <EmptyState
           title="No Nubra mentions captured yet"
-          body="Beacon watches for Nubra across everything it collects. Mentions will appear here as they occur — X collection is currently credit-gated, so Reddit is the live ear."
+          body="Beacon watches for Nubra across everything it collects, on every source. Mentions appear here the moment they are picked up."
         />
       ) : (
         <SectionCard>

@@ -5,6 +5,9 @@ export type Kpis = {
   new_high_priority_today?: number;
   nubra_mentions_24h?: number;
   drafts_ready?: number;
+  items_last_hour?: number;
+  analyzed_last_hour?: number;
+  new_actions_last_hour?: number;
 };
 
 export type TopAction = {
@@ -117,9 +120,23 @@ export type WeeklyEntry = {
   weeks_running?: number;
 };
 
+export type WeekStats = {
+  collected?: number;
+  duplicates_merged?: number;
+  noise_filtered?: number;
+  analyzed?: number;
+  trends_identified?: number;
+  issue_segments?: number;
+  feature_themes?: number;
+  opportunities?: number;
+  drafts_written?: number;
+  headsups_sent?: number;
+};
+
 export type WeeklyRoundup = {
   period: string;
   date: string;
+  week_stats?: WeekStats;
   payload: {
     window?: { from?: string; to?: string };
     grounding?: string;
@@ -157,6 +174,7 @@ export type Feature = {
   feature_key: string;
   label: string;
   count: number;
+  engagement?: number;
   brokers_mentioned?: string[];
   samples?: { text: string; url?: string; source?: string }[];
 };

@@ -10,7 +10,7 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/issues", label: "Broker issues", dot: "bg-danger" },
   { href: "/features", label: "Feature requests", dot: "bg-warn" },
   { href: "/nubra", label: "Nubra mentions", dot: "bg-opps" },
-  { href: "/weekly", label: "Weekly roundup", dot: "bg-trends" },
+  { href: "/weekly", label: "Weekly roundup", dot: "bg-trends", group: "Roundups" },
   { href: "/opportunities", label: "Opportunities", dot: "bg-opps", group: "What to do" },
   { href: "/content", label: "Content briefs", dot: "bg-content", group: "What to make" },
   { href: "/voices", label: "Voices", dot: "bg-voices", group: "Who matters" },
@@ -18,7 +18,7 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/sources", label: "Sources", dot: "bg-muted", group: "Configure" },
   { href: "/grounding", label: "Grounding (USPs)", dot: "bg-warn" },
   { href: "/requests", label: "Beacon requests", dot: "bg-content", group: "Improve" },
-  { href: "/llm", label: "LLM usage", dot: "bg-voices", group: "System" },
+  { href: "/llm", label: "AI usage", dot: "bg-voices", group: "System" },
   { href: "/how-it-works", label: "How Beacon works", dot: "bg-trends", group: "Learn" },
 ];
 
@@ -36,7 +36,9 @@ export function Sidebar() {
         </div>
         <div className="micro mt-1.5">listen · understand · recommend</div>
       </Link>
-      <nav className="flex flex-1 flex-col gap-0.5">
+      {/* min-h-0 lets the nav scroll inside the h-screen column instead of
+          pushing System/Learn (and the footer) off the page */}
+      <nav className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1 pb-4">
         {NAV.map((n) => {
           const showGroup = n.group && n.group !== lastGroup;
           lastGroup = n.group ?? lastGroup;
@@ -59,7 +61,7 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="micro px-2">v1 · internal</div>
+      <div className="micro shrink-0 px-2 pt-3">v1 · internal</div>
     </aside>
   );
 }
