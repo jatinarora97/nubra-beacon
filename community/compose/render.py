@@ -1,7 +1,10 @@
 """Compose — PURE rendering. No DB writes, no file writes, no sending.
 
-build_headsup(all_stats)  -> (markdown | None, stamping_plan)
+build_headsup(all_stats)  -> (markdown | None, stamping_plan, payload)
 build_roundup(period)     -> {"markdown", "date", "period"} | None
+
+The payload is the structured heads-up context (actions, watch, rising topics,
+ops block) — dispatch persists it to the headsups table (work plan N3).
 
 The stamping_plan (opportunity ids, Nubra-watch thread keys, topic keys) is
 returned to the caller; dispatch applies it AFTER at least one successful
@@ -168,8 +171,8 @@ def _ops_block(all_stats: dict) -> dict:
             "identified": identified_line, "top_standing": top_standing}
 
 
-def build_headsup(all_stats: dict) -> tuple[str | None, dict]:
-    """Render the heads-up. Returns (markdown | None, stamping_plan).
+def build_headsup(all_stats: dict) -> tuple[str | None, dict, dict]:
+    """Render the heads-up. Returns (markdown | None, stamping_plan, payload).
     None markdown = nothing to send this hour (ops-only + headsup_on_empty=skip)."""
     now_ist = datetime.now(IST)
     actions = _action_items()
@@ -182,18 +185,18 @@ def build_headsup(all_stats: dict) -> tuple[str | None, dict]:
         "watch_threads": [(n["source"], n["thread_id"]) for n in watch],
         "topics": [(t["topic_key"], str(now_ist.date())) for t in rising],
     }
-    if is_ops_only and on_empty == "skip":
-        return None, plan
-    mention = settings.registry["delivery"].get("nubra_watch_mention") or ""
-    ctx = {
+    payload = {
         "window": now_ist.strftime("%d %b %Y · %H:%M IST"),
         "is_ops_only": is_ops_only,
         "actions": actions, "nubra_watch": watch, "rising_topics": rising,
-        "mention": f" · {mention}" if mention else "",
         "ops": _ops_block(all_stats),
         "x_live_note": (all_stats.get("scrape") or all_stats.get("ingest") or {}).get("x_live_note"),
     }
-    return _env.get_template("headsup_md.j2").render(**ctx), plan
+    if is_ops_only and on_empty == "skip":
+        return None, plan, payload
+    mention = settings.registry["delivery"].get("nubra_watch_mention") or ""
+    ctx = {**payload, "mention": f" · {mention}" if mention else ""}
+    return _env.get_template("headsup_md.j2").render(**ctx), plan, payload
 
 
 def build_roundup(period: str = "daily") -> dict | None:

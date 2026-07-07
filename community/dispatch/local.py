@@ -70,7 +70,7 @@ def run(all_stats: dict | None = None) -> dict:
     channels: dict[str, str] = {}
 
     # ── heads-up ─────────────────────────────────────────────────────────
-    md, plan = render.build_headsup(all_stats)
+    md, plan, payload = render.build_headsup(all_stats)
     if md is None:
         channels["headsup"] = "skipped (no actions; headsup_on_empty=skip)"
     else:
@@ -82,6 +82,13 @@ def run(all_stats: dict | None = None) -> dict:
         else:
             note = f"outside {SEND_WINDOW[0]:02d}–{SEND_WINDOW[1]:02d} IST window (archive only)"
             channels["headsup_slack"] = channels["headsup_email"] = note
+        # persist alongside the file archive (work plan N3 — DB is system of record)
+        import json as _json
+        db.execute(
+            "INSERT INTO headsups (payload, markdown, delivery) VALUES (%s, %s, %s)",
+            (db.jsonb(_json.loads(_json.dumps(payload, default=str))), md,
+             db.jsonb({k: v for k, v in channels.items() if k.startswith("headsup")})),
+        )
         # novelty consumed only after ≥1 successful delivery (archive counts)
         _apply_stamping(plan)
 

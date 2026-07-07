@@ -281,31 +281,66 @@ def _feature_key_for(phrase: str) -> str:
     return _mint_key(phrase, vec)
 
 
+def recompute_feature_day(key: str, day) -> None:
+    """Replace the (feature_key, day) rollup row from feature_item_map — the
+    single source of truth for counts. Mirrors the _rollup_issues recompute."""
+    stats = db.query(
+        """
+        SELECT m.item_id, ie.entities, (si.engagement->>'score')::float AS score
+        FROM feature_item_map m
+        JOIN item_enrichment ie ON ie.item_id = m.item_id
+        JOIN social_items si ON si.item_id = m.item_id
+        WHERE m.feature_key = %s AND m.day = %s
+        """,
+        (key, day),
+    )
+    db.execute("DELETE FROM feature_rollup WHERE feature_key=%s AND day=%s", (key, day))
+    if not stats:
+        return
+    label = (db.one("SELECT canonical_label FROM feature_keys WHERE feature_key=%s",
+                    (key,)) or {}).get("canonical_label") or key
+    brokers = sorted({(s["entities"] or {}).get("broker") for s in stats
+                      if (s["entities"] or {}).get("broker")})
+    samples = [s["item_id"] for s in
+               sorted(stats, key=lambda x: -(x["score"] or 0))[:5]]
+    db.execute(
+        """
+        INSERT INTO feature_rollup (feature_key, day, canonical_label, count,
+                                    brokers_mentioned, sample_item_ids)
+        VALUES (%s,%s,%s,%s,%s,%s)
+        """,
+        (key, day, label[:120], len(stats), brokers, samples),
+    )
+
+
 def _rollup_features(rows: list[dict]) -> int:
-    groups: dict[tuple, list[dict]] = defaultdict(list)
+    """Exactly-once + idempotent (work plan 2026-07-07, B3). feature_item_map
+    is the ledger of item -> feature_key: an item folds into a centroid only
+    when it FIRST enters the map (replayed items reuse their recorded key, so
+    centroids never re-fold), and rollup counts are recomputed FROM the map —
+    the additive upsert that let watermark replays double-count is gone."""
+    touched: set[tuple] = set()
     for r in rows:
         ents = r["entities"] or {}
         phrase = ents.get("feature_phrase")
-        if r["intent"] == "feature_request" and phrase and not r["is_noise"]:
-            key = _feature_key_for(phrase)
-            groups[(key, phrase, r["created_at"].date())].append(r)
-    for (key, phrase, day), items in groups.items():
-        brokers = sorted({(i["entities"] or {}).get("broker") for i in items
-                          if (i["entities"] or {}).get("broker")})
-        samples = [i["item_id"] for i in items[:5]]
-        db.execute(
-            """
-            INSERT INTO feature_rollup (feature_key, day, canonical_label, count,
-                                        brokers_mentioned, sample_item_ids)
-            VALUES (%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (feature_key, day) DO UPDATE SET
-                count = feature_rollup.count + EXCLUDED.count,
-                brokers_mentioned = (SELECT ARRAY(SELECT DISTINCT unnest(feature_rollup.brokers_mentioned || EXCLUDED.brokers_mentioned))),
-                sample_item_ids = (SELECT ARRAY(SELECT DISTINCT unnest(feature_rollup.sample_item_ids || EXCLUDED.sample_item_ids) LIMIT 5))
-            """,
-            (key, day, phrase[:120], len(items), brokers, samples),
-        )
-    return len(groups)
+        if r["intent"] != "feature_request" or not phrase or r["is_noise"]:
+            continue
+        day = r["created_at"].date()
+        existing = db.one(
+            "SELECT feature_key FROM feature_item_map WHERE item_id=%s",
+            (r["item_id"],))
+        if existing:
+            key = existing["feature_key"]  # replay — no re-fold, no re-mint
+        else:
+            key = _feature_key_for(phrase)  # folds/mints exactly once per item
+            db.execute(
+                "INSERT INTO feature_item_map (item_id, feature_key, day) "
+                "VALUES (%s,%s,%s) ON CONFLICT (item_id) DO NOTHING",
+                (r["item_id"], key, day))
+        touched.add((key, day))
+    for key, day in sorted(touched, key=lambda t: (t[0], str(t[1]))):
+        recompute_feature_day(key, day)
+    return len(touched)
 
 
 # ── author_stats ──────────────────────────────────────────────────────────

@@ -72,6 +72,15 @@ def run(daily: bool = False, **_) -> dict:
                       ("reddit", fetched["reddit"])):
         repo.advance_state("ingest", source, watermark=repo.now_utc(), items=n)
 
+    # engagement refresh for action-candidate threads (work plan B4) — a
+    # failure here must never fail the scrape stage
+    try:
+        from community.scrape import refresh
+        refresh_stats = refresh.run()
+    except Exception as e:  # noqa: BLE001
+        refresh_stats = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
+
     return {"fetched": fetched, "reddit_by_category": reddit_by_category,
             "reddit_sorts": sorts, **counters,
-            "x_live_note": x_live_note, "reddit_health": reddit_health}
+            "x_live_note": x_live_note, "reddit_health": reddit_health,
+            "engagement_refresh": refresh_stats}
