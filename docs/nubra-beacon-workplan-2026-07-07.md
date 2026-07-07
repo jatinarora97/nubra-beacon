@@ -115,14 +115,23 @@ to be started — resurface them when the phases above are done._
 
 ## 2 · Execution phases (build + validate together)
 
-| Phase | Items | Theme |
-|---|---|---|
-| **1** | B1, B2, N4, N1, N2 | Visibility quick wins — all frontend + small API additions |
-| **2** | B3, B4, N3-followup (persist heads-ups) | Data correctness & persistence |
-| **3** | N5 (plan → build), N6 | LLM observability (Langfuse + cost surfacing) |
-| **4** | N8, N9 | Content controls (grounding editor, brief editing) |
-| **5** | N11, E1 | Discovery (keyword watch, emergent topics + feature re-cluster) |
-| **6** | N7, N10 | Education & docs (how-it-works page, API reference) |
+| Phase | Items | Theme | Status |
+|---|---|---|---|
+| **1** | B1, B2, N4, N1, N2 | Visibility quick wins — all frontend + small API additions | DONE 2026-07-07 |
+| **2** | B3, B4, N3-followup (persist heads-ups) | Data correctness & persistence | DONE 2026-07-07 |
+| **3** | N5 (plan → build), N6 | LLM observability (Langfuse + cost surfacing) | DONE 2026-07-07 (Langfuse emit awaits keys) |
+| **4** | N8, N9 | Content controls (grounding editor, brief editing) | DONE 2026-07-07 |
+| **5** | N11, E1 | Discovery (keyword watch, emergent topics + feature re-cluster) | DONE 2026-07-07 (X fan-out awaits credits) |
+| **6** | N7, N10 | Education & docs (how-it-works page, API reference) | DONE 2026-07-07 |
+
+**All phases executed 2026-07-07** (one commit per phase, each verified on real
+data). Open follow-ups that survived the round: Langfuse `nubra-beacon` project
+keys into `.env` (activates tracing emit); X credits (activates keyword fan-out +
+live keyword verification); two topic suggestions on Trends await human
+Activate/Dismiss; `feat_00006` centroid drift is on watch (report:
+`scripts/report_feature_clusters.py`); one genuine feature-key merge candidate
+(feat_00019/00020) pending human review. §4 parked list is now the active
+backlog — resurface it with the user.
 
 Sequencing logic: 1 is pure surface (fast validation), 2 fixes counting/data
 trust before observability starts measuring it, 3 before 4 so brief-editing

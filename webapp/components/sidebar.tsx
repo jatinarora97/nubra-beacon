@@ -19,6 +19,7 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/grounding", label: "Grounding (USPs)", dot: "bg-warn" },
   { href: "/requests", label: "Beacon requests", dot: "bg-content", group: "Improve" },
   { href: "/llm", label: "LLM usage", dot: "bg-voices", group: "System" },
+  { href: "/how-it-works", label: "How Beacon works", dot: "bg-trends", group: "Learn" },
 ];
 
 export function Sidebar() {
