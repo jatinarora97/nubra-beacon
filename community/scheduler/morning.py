@@ -30,6 +30,8 @@ from community.aggregate import rollups
 
     all_stats["scrape"] = ingest.run(daily=True)  # daily=True → include `top` feed (scrape stage owns it)
     print('[morning] trend discovery:', x_trends.discover())
+    from community.aggregate import discover
+    print('[morning] topic discovery:', discover.discover_topics())
     _echo("scrape", all_stats["scrape"])
     all_stats["clean"] = dedup.run()
     _echo("clean", all_stats["clean"])

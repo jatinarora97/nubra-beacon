@@ -1,6 +1,7 @@
 import { get } from "@/lib/api";
 import type { Trend } from "@/lib/types";
 import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
+import { TopicSuggestions } from "./topic-suggestions";
 
 export default async function TrendsPage() {
   const rows = await get<Trend[]>("/trends?limit=20", []);
@@ -83,6 +84,8 @@ export default async function TrendsPage() {
           </div>
         </SectionCard>
       )}
+
+      <TopicSuggestions />
     </div>
   );
 }

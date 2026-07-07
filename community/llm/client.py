@@ -14,8 +14,9 @@ import anthropic
 from pydantic import BaseModel, Field, ValidationError
 
 from community.config.settings import settings
+from community.enrich.topics import active_topics
 from community.llm import trace
-from community.reference.taxonomy import ISSUE_TYPES, TOPICS
+from community.reference.taxonomy import ISSUE_TYPES
 
 _PROMPT = (pathlib.Path(__file__).parent / "prompts" / "enrich.txt").read_text()
 
@@ -66,7 +67,7 @@ def _validate(raw: str, expected_ids: list[str]) -> EnrichResponse:
     got = [i.id for i in parsed.items]
     if sorted(got) != sorted(expected_ids):
         raise ValueError(f"id mismatch: expected {expected_ids}, got {got}")
-    valid_keys = set(TOPICS)
+    valid_keys = set(active_topics())
     for it in parsed.items:
         if it.topic_key not in valid_keys and not it.topic_key.startswith("other:"):
             raise ValueError(f"invalid topic_key {it.topic_key!r} for id {it.id}")
@@ -76,7 +77,7 @@ def _validate(raw: str, expected_ids: list[str]) -> EnrichResponse:
 
 
 def _build_prompt(items: list[dict]) -> str:
-    taxonomy = "\n".join(f"- {k}: {label}" for k, (label, _) in TOPICS.items())
+    taxonomy = "\n".join(f"- {k}: {label}" for k, (label, _) in active_topics().items())
     return _PROMPT.replace("{taxonomy}", taxonomy) \
                   .replace("{issue_types}", ", ".join(ISSUE_TYPES)) \
                   .replace("{items}", json.dumps(items, ensure_ascii=False, default=str))

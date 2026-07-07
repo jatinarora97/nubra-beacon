@@ -6,12 +6,13 @@ import { apiBase } from "@/lib/api";
 
 type Source = {
   id: number;
-  kind: "subreddit" | "x_hashtag" | "x_handle" | "x_query";
+  kind: "subreddit" | "x_hashtag" | "x_handle" | "x_query" | "keyword";
   value: string;
   category: string | null;
   active: boolean;
   added_by: string;
   note: string | null;
+  config?: { x?: boolean; reddit?: boolean } | null;
 };
 
 const KIND_META: Record<Source["kind"], { label: string; prefix: string; hint: string }> = {
@@ -19,6 +20,7 @@ const KIND_META: Record<Source["kind"], { label: string; prefix: string; hint: s
   x_hashtag: { label: "X hashtags", prefix: "#", hint: "e.g. BankNifty" },
   x_handle: { label: "X handles", prefix: "@", hint: "e.g. zerodhaonline" },
   x_query: { label: "X search queries", prefix: "", hint: "full advanced-search query" },
+  keyword: { label: "Keywords", prefix: "", hint: "topic to watch, e.g. basket orders" },
 };
 
 export function SourcesManager() {
@@ -26,6 +28,8 @@ export function SourcesManager() {
   const [kind, setKind] = useState<Source["kind"]>("subreddit");
   const [value, setValue] = useState("");
   const [category, setCategory] = useState("custom");
+  const [kwX, setKwX] = useState(true);
+  const [kwReddit, setKwReddit] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -44,10 +48,12 @@ export function SourcesManager() {
 
   async function add() {
     if (!value.trim()) return;
+    const body: Record<string, unknown> = { kind, value, category };
+    if (kind === "keyword") body.config = { x: kwX, reddit: kwReddit };
     const res = await fetch(`${apiBase()}/sources`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, value, category }),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       setValue("");
@@ -100,6 +106,19 @@ export function SourcesManager() {
               <option key={c}>{c}</option>
             ))}
           </select>
+          {kind === "keyword" && (
+            <span className="flex items-center gap-3 text-[12.5px] text-muted">
+              watch on:
+              <label className="flex cursor-pointer items-center gap-1.5">
+                <input type="checkbox" checked={kwX} onChange={(e) => setKwX(e.target.checked)} />
+                X search
+              </label>
+              <label className="flex cursor-pointer items-center gap-1.5">
+                <input type="checkbox" checked={kwReddit} onChange={(e) => setKwReddit(e.target.checked)} />
+                Reddit lens
+              </label>
+            </span>
+          )}
           <button
             onClick={add}
             className="rounded-[10px] border border-line bg-surface2 px-4 py-2 text-[13px] font-medium text-ink transition-colors hover:border-trends"
@@ -131,6 +150,17 @@ export function SourcesManager() {
                         {s.value}
                       </span>
                       {s.category && <Badge>{s.category}</Badge>}
+                      {s.kind === "keyword" && s.config?.x && <Badge tone="trends">X search</Badge>}
+                      {s.kind === "keyword" && s.config?.reddit && <Badge tone="voices">Reddit lens</Badge>}
+                      {s.kind === "keyword" && (
+                        <a
+                          href={`/explore?q=${encodeURIComponent(s.value)}`}
+                          className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-trends hover:text-ink"
+                          title="Open Explore filtered to items matching this keyword"
+                        >
+                          see matches
+                        </a>
+                      )}
                       {s.added_by === "discovery" && <Badge tone="warn">suggested</Badge>}
                       {s.note && <span className="text-[11.5px] text-muted">{s.note}</span>}
                       <div className="ml-auto flex items-center gap-2">

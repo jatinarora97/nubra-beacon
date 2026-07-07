@@ -156,13 +156,16 @@ def fetch_live_capped() -> tuple[list[SocialItem], str]:
 
 def _watch_queries(reg: dict) -> list[str]:
     """X search queries = watch_sources (UI-managed: x_query verbatim, x_hashtag
-    -> '#tag', x_handle -> 'from:handle') with the registry queries as seed/
-    fallback. Hashtags are batched OR-style to conserve query spend."""
+    -> '#tag', x_handle -> 'from:handle', keyword -> quoted term when config.x)
+    with the registry queries as seed/fallback. Hashtags, handles and keywords
+    are batched OR-style to conserve query spend; keywords come last so the
+    budget cap spends on curated queries first."""
     from community.store import db
     base = list(reg.get("queries", []))
     try:
-        rows = db.query("SELECT kind, value FROM watch_sources "
-                        "WHERE kind IN ('x_query','x_hashtag','x_handle') AND active")
+        rows = db.query("SELECT kind, value, config FROM watch_sources "
+                        "WHERE kind IN ('x_query','x_hashtag','x_handle','keyword') "
+                        "AND active")
     except Exception:
         return base
     if not rows:
@@ -174,5 +177,10 @@ def _watch_queries(reg: dict) -> list[str]:
     handles = [r["value"].lstrip("@") for r in rows if r["kind"] == "x_handle"]
     for i in range(0, len(handles), 8):
         queries.append("(" + " OR ".join(f"from:{h}" for h in handles[i:i + 8]) + ")")
+    kws = [r["value"] for r in rows
+           if r["kind"] == "keyword" and (r.get("config") or {}).get("x", True)]
+    for i in range(0, len(kws), 8):
+        terms = " OR ".join(f'"{k}"' if " " in k else k for k in kws[i:i + 8])
+        queries.append(f"({terms}) lang:en")
     return queries or base
 

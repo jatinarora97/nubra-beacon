@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { get } from "@/lib/api";
 import type { Item } from "@/lib/types";
 import { Badge, EmptyState } from "@/components/ui";
@@ -15,12 +16,14 @@ function interactions(it: Item): number {
 }
 
 export function ExploreTable() {
+  // ?q= deep-links (e.g. keyword chips on the Sources page) seed the search box
+  const initialQ = useSearchParams().get("q") ?? "";
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState("");
   const [intent, setIntent] = useState("");
-  const [q, setQ] = useState("");
-  const [qLive, setQLive] = useState("");
+  const [q, setQ] = useState(initialQ);
+  const [qLive, setQLive] = useState(initialQ);
   const [detail, setDetail] = useState<Item | null>(null);
 
   useEffect(() => {
