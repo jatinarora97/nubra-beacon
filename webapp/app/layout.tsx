@@ -4,6 +4,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { THEME_BOOT_SCRIPT } from "@/components/theme";
+import { BackendStatus } from "@/components/backend-status";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 
@@ -29,6 +30,7 @@ export default function RootLayout({
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">
             <Topbar />
+            <BackendStatus />
             <main className="mx-auto w-full max-w-6xl flex-1 px-8 py-8">
               {children}
             </main>

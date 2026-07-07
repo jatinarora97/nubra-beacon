@@ -18,12 +18,67 @@ export type TopAction = {
   interactions?: number;
 };
 
+export type Freshness = {
+  sources?: Record<string, string>;
+  enriched_up_to?: string | null;
+  schedule_installed?: boolean;
+  next_hourly_run?: string;
+  next_morning_build?: string;
+};
+
 export type Overview = {
   date?: string;
   headline?: string;
   kpis?: Kpis;
   top_actions?: TopAction[];
   top_movers?: { topic_key: string; label?: string; count: number }[];
+  freshness?: Freshness;
+};
+
+export type NubraMentions = {
+  window_days: number;
+  kpis?: {
+    mentions_24h?: number;
+    mentions_window?: number;
+    positive_share?: number | null;
+    complaints_window?: number;
+  };
+  positives?: {
+    source: string;
+    external_id: string;
+    text: string;
+    url?: string;
+    created_at?: string;
+    author?: string;
+    sentiment?: number | null;
+    intent?: string;
+    topic_key?: string;
+  }[];
+};
+
+export type WeeklyEntry = {
+  key: string;
+  kind: string;
+  label: string;
+  metric?: number;
+  rank_score?: number;
+  weeks_running?: number;
+};
+
+export type WeeklyRoundup = {
+  period: string;
+  date: string;
+  payload: {
+    window?: { from?: string; to?: string };
+    grounding?: string;
+    new_this_week?: WeeklyEntry[];
+    consistent_features?: WeeklyEntry[];
+    persisted?: WeeklyEntry[];
+    actions_recap?: {
+      opportunities_surfaced?: number;
+      status_changes?: { status?: string; n?: number }[];
+    };
+  };
 };
 
 export type Trend = {

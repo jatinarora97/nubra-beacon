@@ -138,6 +138,52 @@ def _sample_items(item_ids: list[int], cap: int) -> list[dict]:
     return rows
 
 
+# ── health (offline banner probe — must stay dependency-light) ───────────────
+
+@app.get(API + "/health")
+def health():
+    try:
+        db.query("SELECT 1")
+        return {"ok": True, "db": True}
+    except Exception:  # noqa: BLE001 — API up, DB down is still "degraded"
+        return {"ok": True, "db": False}
+
+
+def _freshness() -> dict:
+    """Last-updated per source + pipeline watermarks + the next scheduled runs
+    (from the cron plan; flags when the schedule isn't actually installed)."""
+    import subprocess
+    from zoneinfo import ZoneInfo
+
+    per_source = {r["source"]: r["last"] for r in db.query(
+        "SELECT source, max(ingested_at) AS last FROM social_items GROUP BY source")}
+    watermarks = {r["stage"]: r["wm"] for r in db.query(
+        "SELECT stage, max(watermark) AS wm FROM pipeline_state GROUP BY stage")}
+
+    try:
+        crontab = subprocess.run(["crontab", "-l"], capture_output=True,
+                                 text=True, timeout=3).stdout
+    except Exception:  # noqa: BLE001
+        crontab = ""
+    installed = "run-local" in crontab
+
+    ist = ZoneInfo("Asia/Kolkata")
+    now = datetime.now(ist)
+    nxt = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    while nxt.hour in (1, 2, 3, 4, 5):  # cron pauses 01-05 IST (06:00 = morning build)
+        nxt += timedelta(hours=1)
+    morning = (now.replace(hour=6, minute=0, second=0, microsecond=0)
+               + timedelta(days=1 if now.hour >= 6 else 0))
+    wm = watermarks.get("enrich") or watermarks.get("aggregate")
+    return {
+        "sources": {k: v.isoformat() for k, v in per_source.items() if v},
+        "enriched_up_to": wm.isoformat() if wm else None,
+        "schedule_installed": installed,
+        "next_hourly_run": nxt.isoformat(),
+        "next_morning_build": morning.isoformat(),
+    }
+
+
 # ── overview (landing page) ──────────────────────────────────────────────────
 
 @app.get(API + "/overview")
@@ -189,7 +235,52 @@ def overview():
         "ORDER BY t.velocity_z DESC NULLS LAST, t.count DESC LIMIT 3", (movers_day,))
 
     return {"date": str(today), "headline": headline, "kpis": kpis,
-            "top_actions": top_actions, "top_movers": top_movers}
+            "top_actions": top_actions, "top_movers": top_movers,
+            "freshness": _freshness()}
+
+
+# ── nubra mentions (the positive side; complaints live in /issues) ──────────
+
+@app.get(API + "/nubra-mentions")
+def nubra_mentions(days: int = 7, limit: int = 30):
+    """People talking about Nubra: positive/neutral quotes + KPIs. Negative
+    items are counted (visibility) but rendered on the Broker-issues page."""
+    days = max(1, min(days, 90))
+    base = """
+        FROM social_items si
+        JOIN authors a ON a.author_id = si.author_id
+        LEFT JOIN item_enrichment e ON e.item_id = si.item_id
+        WHERE si.duplicate_of IS NULL AND COALESCE(e.is_noise, false) = false
+          AND si.text ~* '(?<![a-z])nubra(?![a-z])'
+    """
+    kpi = db.one(f"""
+        SELECT count(*) FILTER (WHERE si.created_at > now() - interval '24 hours') AS h24,
+               count(*) FILTER (WHERE si.created_at > now() - interval '%s days') AS win,
+               count(*) FILTER (WHERE si.created_at > now() - interval '%s days'
+                                AND COALESCE(e.sentiment, 0) >= 0) AS win_pos
+        {base}""" % (days, days)) or {}
+    positives = db.query(f"""
+        SELECT si.source, si.external_id, left(si.text, 300) AS text, si.url,
+               si.created_at, a.handle AS author, e.sentiment, e.intent, e.topic_key
+        {base}
+          AND COALESCE(e.sentiment, 0) >= 0
+          AND si.created_at > now() - interval '{days} days'
+        ORDER BY e.sentiment DESC NULLS LAST, si.created_at DESC LIMIT %s
+        """, (_lim(limit),))
+    complaints = db.one(
+        "SELECT COALESCE(sum(count), 0) AS n FROM issue_rollup "
+        "WHERE broker = 'nubra' AND day > current_date - %s", (days,)) or {}
+    return {
+        "window_days": days,
+        "kpis": {
+            "mentions_24h": kpi.get("h24", 0),
+            "mentions_window": kpi.get("win", 0),
+            "positive_share": (round(kpi["win_pos"] / kpi["win"], 2)
+                               if kpi.get("win") else None),
+            "complaints_window": complaints.get("n", 0),
+        },
+        "positives": positives,
+    }
 
 
 # ── core reads ───────────────────────────────────────────────────────────────

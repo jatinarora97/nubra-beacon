@@ -9,6 +9,8 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/trends", label: "Trends", dot: "bg-trends", group: "What's happening" },
   { href: "/issues", label: "Broker issues", dot: "bg-danger" },
   { href: "/features", label: "Feature requests", dot: "bg-warn" },
+  { href: "/nubra", label: "Nubra mentions", dot: "bg-opps" },
+  { href: "/weekly", label: "Weekly roundup", dot: "bg-trends" },
   { href: "/opportunities", label: "Opportunities", dot: "bg-opps", group: "What to do" },
   { href: "/content", label: "Content briefs", dot: "bg-content", group: "What to make" },
   { href: "/voices", label: "Voices", dot: "bg-voices", group: "Who matters" },

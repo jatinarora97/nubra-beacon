@@ -36,9 +36,21 @@ const GLOSSARY = [
   ["Relevance score", "0-100 blend of freshness, relevance to Nubra, reach, opportunity type and author quality — the score on each action card."],
 ];
 
+function fmtIst(iso?: string | null): string {
+  if (!iso) return "–";
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Kolkata",
+  });
+}
+
 export default async function Home() {
   const ov = await get<Overview>("/overview", {});
   const k = ov.kpis ?? {};
+  const f = ov.freshness;
   return (
     <div className="space-y-8">
       <section>
@@ -70,6 +82,33 @@ export default async function Home() {
           </Link>
         ))}
       </section>
+
+      {f && (
+        <section className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-[10px] border border-line bg-surface/50 px-4 py-2.5 text-[12px] text-muted">
+          <span className="micro">freshness</span>
+          {Object.entries(f.sources ?? {}).map(([src, ts]) => (
+            <span key={src}>
+              {src === "twitter" ? "X" : src} last item{" "}
+              <span className="text-ink">{fmtIst(ts)}</span>
+            </span>
+          ))}
+          {f.enriched_up_to && (
+            <span>
+              analyzed up to <span className="text-ink">{fmtIst(f.enriched_up_to)}</span>
+            </span>
+          )}
+          {f.schedule_installed ? (
+            <span className="ml-auto">
+              next run <span className="text-ink">{fmtIst(f.next_hourly_run)}</span> · morning
+              build <span className="text-ink">{fmtIst(f.next_morning_build)}</span>
+            </span>
+          ) : (
+            <span className="ml-auto text-warn">
+              scheduler not installed — runs are manual (planned: hourly + 06:00 build)
+            </span>
+          )}
+        </section>
+      )}
 
       <section className="grid grid-cols-3 gap-3 lg:grid-cols-6">
         <KpiCard label="Items today" value={k.items_today ?? "-"} />

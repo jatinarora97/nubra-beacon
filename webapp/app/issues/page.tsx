@@ -12,7 +12,10 @@ function sevTone(s?: number | null): { label: string; cls: string } {
 
 export default async function IssuesPage() {
   const rows = await get<Issue[]>("/issues", []);
-  const brokers = [...new Set(rows.map((r) => r.broker))];
+  // Nubra is watched with the same machinery; pin it first when present.
+  const brokers = [...new Set(rows.map((r) => r.broker))].sort(
+    (a, b) => Number(b === "nubra") - Number(a === "nubra"),
+  );
   // Columns are data-driven: top 5 issue types by total complaint volume.
   const issueTotals = new Map<string, number>();
   for (const r of rows)
@@ -31,7 +34,7 @@ export default async function IssuesPage() {
       <PageHeader
         title="Broker issues"
         accent="bg-danger"
-        blurb="What traders complain about, per broker. No minimum bar here — a single high-severity complaint is worth knowing about. Severity blends reach with how negative the sentiment is."
+        blurb="What traders complain about, per broker — including Nubra, which is watched with the same machinery (its row pins to the top when complaints exist; the positive side lives on Nubra mentions). No minimum bar here — a single high-severity complaint is worth knowing about. Severity blends reach with how negative the sentiment is."
       />
 
       {rows.length === 0 ? (
@@ -67,7 +70,10 @@ export default async function IssuesPage() {
                 <tbody>
                   {brokers.map((b) => (
                     <tr key={b}>
-                      <td className="pr-2 text-[13px] font-medium">{b}</td>
+                      <td className={`pr-2 text-[13px] font-medium ${b === "nubra" ? "text-opps" : ""}`}>
+                        {b}
+                        {b === "nubra" && <span className="ml-1.5 text-[10px] text-muted">(us)</span>}
+                      </td>
                       {issueKeys.map((k) => {
                         const c = cell(b, k);
                         if (!c)
