@@ -1,7 +1,8 @@
 """Thin Anthropic wrapper: sync enrichment batches + a generic completion helper.
 
 Local mode runs sync calls; prod moves enrichment to the Batch API (cost plan §2.1).
-Token usage is printed to stdout (llm_usage table is a prod reuse, absent locally).
+Every call is recorded to llm_usage (+ Langfuse when keys are configured) via
+community/llm/trace.py — tracing never breaks or delays a call.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import anthropic
 from pydantic import BaseModel, Field, ValidationError
 
 from community.config.settings import settings
+from community.llm import trace
 from community.reference.taxonomy import ISSUE_TYPES, TOPICS
 
 _PROMPT = (pathlib.Path(__file__).parent / "prompts" / "enrich.txt").read_text()
@@ -89,13 +91,19 @@ def enrich_batch(items: list[dict]) -> tuple[EnrichResponse, dict]:
     usage = {"input_tokens": 0, "output_tokens": 0, "calls": 0}
     last_err = None
     for _ in range(3):
-        resp = client().messages.create(
-            model=settings.enrich_model, max_tokens=8000, messages=messages
-        )
+        with trace.timer() as t:
+            resp = client().messages.create(
+                model=settings.enrich_model, max_tokens=8000, messages=messages
+            )
         usage["input_tokens"] += resp.usage.input_tokens
         usage["output_tokens"] += resp.usage.output_tokens
         usage["calls"] += 1
         raw = next((b.text for b in resp.content if b.type == "text"), "")
+        trace.record(model=settings.enrich_model,
+                     input_tokens=resp.usage.input_tokens,
+                     output_tokens=resp.usage.output_tokens,
+                     duration_ms=t.ms, prompt=prompt, response=raw,
+                     metadata={"items": len(items), "attempt": usage["calls"]})
         try:
             return _validate(raw, expected), usage
         except (ValueError, ValidationError, json.JSONDecodeError) as e:
@@ -126,6 +134,7 @@ def enrich_via_batch_api(
                     "messages": [{"role": "user", "content": _build_prompt(chunk)}]}}
         for i, chunk in enumerate(chunks)
     ]
+    t0 = _time.monotonic()
     batch = client().messages.batches.create(requests=requests)
     usage["batch_id"] = batch.id
     print(f"[enrich] batch {batch.id} submitted ({len(chunks)} chunks) — polling")
@@ -142,6 +151,10 @@ def enrich_via_batch_api(
                 pass
             print(f"[enrich] batch {batch.id} exceeded {sla_minutes}min SLA — "
                   "cancelled, falling back to sync for this pass")
+            trace.record(model=settings.enrich_model, input_tokens=0, output_tokens=0,
+                         duration_ms=int((_time.monotonic() - t0) * 1000), batch=True,
+                         metadata={"batch_id": batch.id, "chunks": len(chunks),
+                                   "succeeded": 0, "sla_breached": True})
             return {i: None for i in range(len(chunks))}, usage
         _time.sleep(poll_seconds)
 
@@ -161,15 +174,27 @@ def enrich_via_batch_api(
             out[idx] = _validate(raw, expected)
         except (ValueError, ValidationError, json.JSONDecodeError) as e:
             print(f"[enrich] batch chunk {idx} failed validation ({e}) — sync retry")
+    # one llm_usage row per submitted batch: aggregate tokens, -50% batch pricing
+    trace.record(model=settings.enrich_model,
+                 input_tokens=usage["input_tokens"],
+                 output_tokens=usage["output_tokens"],
+                 duration_ms=int((_time.monotonic() - t0) * 1000), batch=True,
+                 metadata={"batch_id": batch.id, "chunks": len(chunks),
+                           "succeeded": sum(1 for v in out.values() if v)})
     return out, usage
 
 
 def complete(model: str, system: str, user: str, max_tokens: int = 2000) -> tuple[str, dict]:
     """Generic single completion (used by recommend/compliance — Fork C)."""
-    resp = client().messages.create(
-        model=model, max_tokens=max_tokens, system=system,
-        messages=[{"role": "user", "content": user}],
-    )
+    with trace.timer() as t:
+        resp = client().messages.create(
+            model=model, max_tokens=max_tokens, system=system,
+            messages=[{"role": "user", "content": user}],
+        )
     usage = {"input_tokens": resp.usage.input_tokens,
              "output_tokens": resp.usage.output_tokens, "calls": 1}
-    return next((b.text for b in resp.content if b.type == "text"), ""), usage
+    text = next((b.text for b in resp.content if b.type == "text"), "")
+    trace.record(model=model, input_tokens=resp.usage.input_tokens,
+                 output_tokens=resp.usage.output_tokens, duration_ms=t.ms,
+                 prompt=user, system=system, response=text)
+    return text, usage

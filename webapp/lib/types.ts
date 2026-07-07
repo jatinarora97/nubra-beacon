@@ -33,6 +33,58 @@ export type Overview = {
   top_actions?: TopAction[];
   top_movers?: { topic_key: string; label?: string; count: number }[];
   freshness?: Freshness;
+  llm_last_run?: {
+    run_id: string;
+    cost_usd?: string | number | null;
+    calls?: number;
+    stages?: number;
+    ts?: string;
+  } | null;
+};
+
+export type LlmUsageSummary = {
+  window_days: number;
+  totals?: {
+    cost_usd?: string | number | null;
+    calls?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    batch_cost?: string | number | null;
+    batch_calls?: number;
+    traced_calls?: number;
+    unpriced_calls?: number;
+  };
+  by_day?: {
+    day: string;
+    cost_usd?: string | number | null;
+    input_tokens?: number;
+    output_tokens?: number;
+    calls: number;
+  }[];
+  by_stage?: {
+    stage: string;
+    cost_usd?: string | number | null;
+    calls: number;
+    tokens?: number;
+  }[];
+  by_model?: {
+    model: string;
+    batch: boolean;
+    cost_usd?: string | number | null;
+    calls: number;
+    input_tokens?: number;
+    output_tokens?: number;
+  }[];
+  recent_runs?: {
+    run_id: string;
+    started?: string;
+    ended?: string;
+    calls: number;
+    stages: number;
+    stage_list?: string[];
+    tokens?: number;
+    cost_usd?: string | number | null;
+  }[];
 };
 
 export type NubraMentions = {

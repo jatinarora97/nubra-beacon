@@ -110,13 +110,31 @@ export default async function Home() {
         </section>
       )}
 
-      <section className="grid grid-cols-3 gap-3 lg:grid-cols-6">
+      <section className="grid grid-cols-3 gap-3 lg:grid-cols-7">
         <KpiCard label="Items today" value={k.items_today ?? "-"} />
         <KpiCard label="Analyzed" value={k.analyzed_today ?? "-"} />
         <KpiCard label="Actions on table" value={k.actions_on_table ?? "-"} />
         <KpiCard label="New high-priority" value={k.new_high_priority_today ?? "-"} />
         <KpiCard label="Nubra mentions 24h" value={k.nubra_mentions_24h ?? "-"} />
         <KpiCard label="Drafts ready" value={k.drafts_ready ?? "-"} />
+        <KpiCard
+          label="LLM cost last run"
+          value={
+            ov.llm_last_run?.cost_usd != null
+              ? `$${Number(ov.llm_last_run.cost_usd).toFixed(
+                  Number(ov.llm_last_run.cost_usd) > 0 &&
+                    Number(ov.llm_last_run.cost_usd) < 0.01
+                    ? 4
+                    : 2,
+                )}`
+              : "-"
+          }
+          hint={
+            ov.llm_last_run
+              ? `${ov.llm_last_run.calls} calls · ${ov.llm_last_run.stages} stage${(ov.llm_last_run.stages ?? 0) !== 1 ? "s" : ""}`
+              : undefined
+          }
+        />
       </section>
 
       {ov.headline && (

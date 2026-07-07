@@ -234,9 +234,92 @@ def overview():
         "WHERE t.day = %s AND t.topic_key NOT LIKE 'other:%%' "
         "ORDER BY t.velocity_z DESC NULLS LAST, t.count DESC LIMIT 3", (movers_day,))
 
+    llm_last = db.one(
+        """
+        SELECT run_id, round(sum(cost_usd)::numeric, 6) AS cost_usd,
+               count(*) AS calls, count(DISTINCT stage) AS stages,
+               max(ts) AS ts
+        FROM llm_usage
+        WHERE run_id = (SELECT run_id FROM llm_usage ORDER BY ts DESC LIMIT 1)
+        GROUP BY run_id
+        """)
+
     return {"date": str(today), "headline": headline, "kpis": kpis,
             "top_actions": top_actions, "top_movers": top_movers,
-            "freshness": _freshness()}
+            "freshness": _freshness(), "llm_last_run": llm_last}
+
+
+# ── llm usage (N6 — cost surfacing; tracing writes via community/llm/trace) ──
+
+@app.get(API + "/llm-usage/summary")
+def llm_usage_summary(days: int = 30):
+    days = max(1, min(days, 180))
+    by_day = db.query(
+        """
+        SELECT ts::date AS day, round(sum(cost_usd)::numeric, 6) AS cost_usd,
+               sum(input_tokens)::bigint AS input_tokens,
+               sum(output_tokens)::bigint AS output_tokens, count(*) AS calls
+        FROM llm_usage WHERE ts > now() - make_interval(days => %s)
+        GROUP BY 1 ORDER BY 1
+        """, (days,))
+    by_stage = db.query(
+        """
+        SELECT stage, round(sum(cost_usd)::numeric, 6) AS cost_usd,
+               count(*) AS calls, sum(input_tokens + output_tokens)::bigint AS tokens
+        FROM llm_usage WHERE ts > now() - make_interval(days => %s)
+        GROUP BY stage ORDER BY sum(cost_usd) DESC NULLS LAST
+        """, (days,))
+    by_model = db.query(
+        """
+        SELECT model, batch, round(sum(cost_usd)::numeric, 6) AS cost_usd,
+               count(*) AS calls, sum(input_tokens)::bigint AS input_tokens,
+               sum(output_tokens)::bigint AS output_tokens
+        FROM llm_usage WHERE ts > now() - make_interval(days => %s)
+        GROUP BY model, batch ORDER BY model, batch
+        """, (days,))
+    totals = db.one(
+        """
+        SELECT round(sum(cost_usd)::numeric, 6) AS cost_usd, count(*) AS calls,
+               sum(input_tokens)::bigint AS input_tokens,
+               sum(output_tokens)::bigint AS output_tokens,
+               round(sum(cost_usd) FILTER (WHERE batch)::numeric, 6) AS batch_cost,
+               count(*) FILTER (WHERE batch) AS batch_calls,
+               count(*) FILTER (WHERE langfuse_trace_id IS NOT NULL) AS traced_calls,
+               count(*) FILTER (WHERE cost_usd IS NULL) AS unpriced_calls
+        FROM llm_usage WHERE ts > now() - make_interval(days => %s)
+        """, (days,)) or {}
+    runs = db.query(
+        """
+        SELECT run_id, min(ts) AS started, max(ts) AS ended,
+               count(*) AS calls, count(DISTINCT stage) AS stages,
+               array_agg(DISTINCT stage) AS stage_list,
+               sum(input_tokens + output_tokens)::bigint AS tokens,
+               round(sum(cost_usd)::numeric, 6) AS cost_usd
+        FROM llm_usage GROUP BY run_id ORDER BY max(ts) DESC LIMIT 15
+        """)
+    return {"window_days": days, "totals": totals, "by_day": by_day,
+            "by_stage": by_stage, "by_model": by_model, "recent_runs": runs}
+
+
+@app.get(API + "/llm-usage/last-run")
+def llm_usage_last_run():
+    last = db.one("SELECT run_id FROM llm_usage ORDER BY ts DESC LIMIT 1")
+    if not last:
+        raise HTTPException(404, "no LLM usage recorded yet")
+    rows = db.query(
+        """
+        SELECT stage, purpose, model, batch, count(*) AS calls,
+               sum(input_tokens)::bigint AS input_tokens,
+               sum(output_tokens)::bigint AS output_tokens,
+               round(sum(cost_usd)::numeric, 6) AS cost_usd
+        FROM llm_usage WHERE run_id = %s
+        GROUP BY stage, purpose, model, batch ORDER BY min(ts)
+        """, (last["run_id"],))
+    total = db.one(
+        "SELECT round(sum(cost_usd)::numeric, 6) AS cost_usd, count(*) AS calls, "
+        "min(ts) AS started, max(ts) AS ended FROM llm_usage WHERE run_id = %s",
+        (last["run_id"],))
+    return {"run_id": last["run_id"], "total": total, "breakdown": rows}
 
 
 # ── nubra mentions (the positive side; complaints live in /issues) ──────────
