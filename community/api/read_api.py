@@ -756,13 +756,13 @@ def set_status(opp_id: int, body: dict = Body(...),
 
 # ── watch sources (UI-managed collection config) ──────────────────────────
 
-_KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query")
+_KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query", "keyword")
 
 
 @app.get(API + "/sources")
 def list_sources():
     rows = db.query("SELECT id, kind, value, category, active, added_by, note, "
-                    "created_at FROM watch_sources ORDER BY kind, active DESC, value")
+                    "config, created_at FROM watch_sources ORDER BY kind, active DESC, value")
     return rows
 
 
@@ -779,14 +779,20 @@ def add_source(payload: dict = Body(...),
         if value.lower().startswith(pre):
             value = value[len(pre):]
     value = value.strip("/ ")
-    if not value or (kind != "x_query" and (" " in value or len(value) > 60)):
+    # keywords and full queries may contain spaces; handles/hashtags/subs may not
+    if not value or (kind not in ("x_query", "keyword") and (" " in value or len(value) > 60)):
         raise HTTPException(400, "value looks invalid for this kind")
+    config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
+    if kind == "keyword" and not config:
+        config = {"x": True, "reddit": True}  # default: watch everywhere
     row = db.one(
-        "INSERT INTO watch_sources (kind, value, category, added_by, note) "
-        "VALUES (%s, %s, %s, 'ui', %s) "
-        "ON CONFLICT (kind, value) DO UPDATE SET active = true "
-        "RETURNING id, kind, value, category, active",
-        (kind, value, payload.get("category") or "custom", payload.get("note")))
+        "INSERT INTO watch_sources (kind, value, category, added_by, note, config) "
+        "VALUES (%s, %s, %s, 'ui', %s, %s) "
+        "ON CONFLICT (kind, value) DO UPDATE SET active = true, "
+        "config = EXCLUDED.config "
+        "RETURNING id, kind, value, category, active, config",
+        (kind, value, payload.get("category") or "custom", payload.get("note"),
+         db.jsonb(config)))
     return row
 
 
