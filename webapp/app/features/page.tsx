@@ -4,9 +4,9 @@ import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 export default async function FeaturesPage() {
   const rows = await get<Feature[]>("/features", []);
-  // Engagement-first: the ask the community is loudest about leads the page.
+  // Mentions first, engagement as the tiebreak.
   const sorted = [...rows].sort(
-    (a, b) => (b.engagement ?? 0) - (a.engagement ?? 0) || b.count - a.count,
+    (a, b) => b.count - a.count || (b.engagement ?? 0) - (a.engagement ?? 0),
   );
 
   return (
@@ -14,7 +14,7 @@ export default async function FeaturesPage() {
       <PageHeader
         title="Feature requests"
         accent="bg-warn"
-        blurb="What traders are asking for, across any broker — sorted by how much engagement each ask is drawing. Different phrasings of the same ask are merged by meaning, so one theme = one card; even a single mention appears."
+        blurb="What traders are asking for, across any broker — sorted by mentions, then by the engagement those mentions draw. Different phrasings of the same ask are merged by meaning, so one theme = one card; even a single mention appears."
       />
 
       {sorted.length === 0 ? (
@@ -30,9 +30,17 @@ export default async function FeaturesPage() {
                 <h3 className="text-[14px] font-semibold leading-snug">
                   {f.label}
                 </h3>
-                <Badge tone="warn">
-                  {f.count} mention{f.count !== 1 ? "s" : ""}
-                </Badge>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <Badge tone="warn">
+                    {f.count} mention{f.count !== 1 ? "s" : ""}
+                  </Badge>
+                  <span
+                    className="text-[11.5px] tabular-nums text-muted"
+                    title="Total engagement index across this theme's mentions (log-scaled, same as Trends)"
+                  >
+                    {f.engagement ?? 0} eng
+                  </span>
+                </span>
               </div>
               {(f.brokers_mentioned?.length ?? 0) > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">

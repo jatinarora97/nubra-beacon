@@ -443,7 +443,7 @@ def features(from_: date | None = Query(None, alias="from"),
                            AND m.day BETWEEN %s AND %s), 0) AS engagement
         FROM feature_rollup fr WHERE fr.day BETWEEN %s AND %s
         GROUP BY fr.feature_key HAVING count(DISTINCT fr.day) >= %s
-        ORDER BY engagement DESC, sum(fr.count) DESC
+        ORDER BY sum(fr.count) DESC, engagement DESC
         """, (start, end, start, end, min_days))
     for r in rows:
         r["brokers_mentioned"] = sorted(

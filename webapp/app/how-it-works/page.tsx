@@ -31,7 +31,7 @@ const PAGES: { href: string; name: string; answers: string }[] = [
   { href: "/sources", name: "Sources", answers: "What does Beacon listen to? Add subreddits, hashtags, handles, keywords." },
   { href: "/grounding", name: "Grounding (USPs)", answers: "What is Beacon allowed to claim about Nubra in drafts?" },
   { href: "/requests", name: "Beacon requests", answers: "What should this dashboard do next? Log your asks." },
-  { href: "/llm", name: "LLM usage", answers: "What is the AI layer costing, per run and per stage?" },
+  { href: "/llm", name: "AI usage", answers: "What is the AI layer costing, per run and per stage?" },
 ];
 
 const NUMBERS: [string, string][] = [
@@ -168,7 +168,7 @@ export default function HowItWorksPage() {
       </SectionCard>
 
       <SectionCard>
-        <div className="micro mb-3">Honest FAQ</div>
+        <div className="micro mb-3">FAQ</div>
         <div className="space-y-3">
           {FAQ.map(([q, a]) => (
             <div key={q}>

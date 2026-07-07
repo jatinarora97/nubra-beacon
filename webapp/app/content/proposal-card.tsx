@@ -27,11 +27,12 @@ function toEditable(p: Proposal): Editable {
   };
 }
 
-type Mode = "view" | "manual" | "ai";
+type Mode = "ai" | "manual"; // ai = view + open Ask-Beacon panel (default)
 
 export function ProposalCard({ initial, platforms }: { initial: Proposal; platforms: string[] }) {
   const [p, setP] = useState<Proposal>(initial);
-  const [mode, setMode] = useState<Mode>("view");
+  // Ask-Beacon is the primary flow — its panel is open by default.
+  const [mode, setMode] = useState<Mode>("ai");
   const [draft, setDraft] = useState<Editable>(toEditable(initial));
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,7 +54,7 @@ export function ProposalCard({ initial, platforms }: { initial: Proposal; platfo
         setP(d);
         setDraft(toEditable(d));
         setInstruction("");
-        setMode("view");
+        setMode("ai");
       }
     } catch {
       setErr("Backend unreachable.");
@@ -72,7 +73,7 @@ export function ProposalCard({ initial, platforms }: { initial: Proposal; platfo
     if (draft.beats !== base.beats)
       manual.beats = draft.beats.split("\n").map((b) => b.trim()).filter(Boolean);
     if (!Object.keys(manual).length) {
-      setMode("view");
+      setMode("ai");
       return;
     }
     submit({ manual });
@@ -95,7 +96,7 @@ export function ProposalCard({ initial, platforms }: { initial: Proposal; platfo
     setDraft(toEditable(p));
     setInstruction("");
     setErr(null);
-    setMode((cur) => (cur === m ? "view" : m));
+    setMode((cur) => (cur === m ? "ai" : m));
   }
 
   return (
@@ -113,30 +114,19 @@ export function ProposalCard({ initial, platforms }: { initial: Proposal; platfo
           {p.window && <Badge>post {p.window}</Badge>}
           <button
             onClick={() => enter("manual")}
-            className={`rounded-md border px-2.5 py-1 text-[11.5px] transition-colors ${
+            className={`rounded-md border px-3 py-1.5 text-[12px] font-semibold transition-colors ${
               mode === "manual"
-                ? "border-content text-ink"
-                : "border-line text-muted hover:border-content hover:text-ink"
+                ? "border-line bg-surface2 text-muted"
+                : "border-content/60 bg-content/15 text-content hover:bg-content/25"
             }`}
             title="Change the words yourself — saved as-is, no AI involved"
           >
-            {mode === "manual" ? "Cancel" : "Edit fields"}
-          </button>
-          <button
-            onClick={() => enter("ai")}
-            className={`rounded-md border px-2.5 py-1 text-[11.5px] transition-colors ${
-              mode === "ai"
-                ? "border-content text-ink"
-                : "border-line text-muted hover:border-content hover:text-ink"
-            }`}
-            title="Describe a change; Beacon rewrites only that and re-checks compliance"
-          >
-            {mode === "ai" ? "Cancel" : "Ask Beacon"}
+            {mode === "manual" ? "Cancel editing" : "Edit manually"}
           </button>
         </div>
       </div>
 
-      {p.platform_why && mode === "view" && (
+      {p.platform_why && mode !== "manual" && (
         <p className="mt-1.5 text-[12.5px] text-muted">Why this platform: {p.platform_why}</p>
       )}
 
@@ -204,7 +194,6 @@ export function ProposalCard({ initial, platforms }: { initial: Proposal; platfo
                   onKeyDown={(e) => e.key === "Enter" && askBeacon()}
                   placeholder="e.g. tighten the hook, make the caption less formal, add a stat beat"
                   className={`${inputCls} min-w-64 flex-1`}
-                  autoFocus
                 />
                 <select
                   value={draft.platform}

@@ -8,6 +8,10 @@ sources:
     csv_backfill: data/twitter_pulse.csv
     queries:
       - "(zerodha OR groww OR upstox OR dhan OR \"angel one\" OR nubra) lang:en"
+    keywords:                   # kind=keyword seeds; config {x, reddit} per keyword
+      - value: nubra            # brand watch — powers Nubra mentions + Broker issues (2026-07-07)
+        x: true
+        reddit: true
     budget:
       max_items_per_run: 1500
       max_usd_per_day: 5.00     # config — start at $5, tune after shadow run

@@ -28,6 +28,15 @@ def main() -> None:
             "VALUES (%s, %s, %s, 'seed') ON CONFLICT (kind, value) DO NOTHING",
             (kind, value, cat),
         )
+    for kw in reg["twitter"].get("keywords", []):
+        n += db.execute(
+            "INSERT INTO watch_sources (kind, value, category, added_by, note, config) "
+            "VALUES ('keyword', %s, 'brand', 'seed', %s, %s) "
+            "ON CONFLICT (kind, value) DO NOTHING",
+            (kw["value"], kw.get("note"),
+             db.jsonb({"x": bool(kw.get("x", True)), "reddit": bool(kw.get("reddit", True))})),
+        )
+        rows.append(("keyword", kw["value"], "brand"))
     print(f"seeded {n} new watch_sources ({len(rows)} candidates)")
 
 
