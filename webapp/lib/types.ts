@@ -190,8 +190,25 @@ export type Opportunity = {
   status: string;
 };
 
+export type CatalogFeature = {
+  feature: string;
+  description: string;
+  status: "live" | "upcoming";
+  category?: string | null;
+  seo_keywords?: string[];
+};
+
+export type FeaturesCatalog = {
+  version?: string | null;
+  published_at?: string | null;
+  features: CatalogFeature[];
+};
+
 export type Proposal = {
+  day?: string;
   rank: number;
+  revisions_count?: number;
+  last_revised_by?: string | null;
   treatment?: string;
   format_family?: string;
   platform?: string;

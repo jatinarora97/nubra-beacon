@@ -496,30 +496,81 @@ def opportunities(date_: date | None = Query(None, alias="date"),
     return [_decorate_opportunity(r, labels, caps) for r in db.query(q, params)]
 
 
+def _flatten_proposal(r: dict) -> dict:
+    brief = r.pop("outline", None) or {}
+    if isinstance(brief, list):  # pre-taxonomy rows stored beats as a bare list
+        brief = {"beats": brief}
+    timing = r.pop("recommended_timing", None) or {}
+    revisions = brief.get("revisions", [])
+    r.update({
+        "beats": brief.get("beats", []),
+        "caption": brief.get("caption"),
+        "hashtags": brief.get("hashtags", []),
+        "cta": brief.get("cta"),
+        "visual_direction": brief.get("visual_direction"),
+        "platform_why": brief.get("platform_why"),
+        "window": timing.get("window"),
+        "revisions_count": len(revisions),
+        "last_revised_by": revisions[-1].get("by") if revisions else None,
+    })
+    return r
+
+
+_PROPOSAL_SELECT = ("SELECT day, rank, format AS treatment, format_family, platform, "
+                    "hook, outline, why, rides_signal, recommended_timing "
+                    "FROM content_proposals")
+
+
 @app.get(API + "/content-proposals")
 def content_proposals(date_: date | None = Query(None, alias="date")):
     if date_ is None:
         row = db.one("SELECT max(day) AS d FROM content_proposals")
         date_ = row["d"] if row and row["d"] else datetime.now(timezone.utc).date()
-    rows = db.query(
-        "SELECT day, rank, format AS treatment, format_family, platform, hook, "
-        "outline, why, rides_signal, recommended_timing "
-        "FROM content_proposals WHERE day=%s ORDER BY rank", (date_,))
-    for r in rows:
-        brief = r.pop("outline", None) or {}
-        if isinstance(brief, list):  # pre-taxonomy rows stored beats as a bare list
-            brief = {"beats": brief}
-        timing = r.pop("recommended_timing", None) or {}
-        r.update({
-            "beats": brief.get("beats", []),
-            "caption": brief.get("caption"),
-            "hashtags": brief.get("hashtags", []),
-            "cta": brief.get("cta"),
-            "visual_direction": brief.get("visual_direction"),
-            "platform_why": brief.get("platform_why"),
-            "window": timing.get("window"),
-        })
-    return rows
+    return [_flatten_proposal(r) for r in
+            db.query(_PROPOSAL_SELECT + " WHERE day=%s ORDER BY rank", (date_,))]
+
+
+@app.get(API + "/content-taxonomy")
+def content_taxonomy():
+    from community.config.settings import settings
+    c = settings.registry.get("content", {})
+    return {"format_families": c.get("format_families", []),
+            "platforms": c.get("platforms", [])}
+
+
+@app.post(API + "/content-proposals/revise")
+def revise_proposal(body: dict = Body(...),
+                    x_auth_request_email: str | None = Header(None)):
+    from community.recommend.revise import revise_brief
+    rank = body.get("rank")
+    if not isinstance(rank, int):
+        raise HTTPException(400, "rank (int) is required")
+    day_ = body.get("day")
+    if day_ is None:
+        row = db.one("SELECT max(day) AS d FROM content_proposals")
+        if not row or not row["d"]:
+            raise HTTPException(404, "no proposals exist")
+        day_ = row["d"]
+    else:
+        day_ = date.fromisoformat(str(day_))
+    if not (body.get("instruction") or body.get("platform") or body.get("manual")):
+        raise HTTPException(400, "nothing to apply: pass instruction, platform or manual")
+    try:
+        row = revise_brief(day_, rank,
+                           instruction=(body.get("instruction") or "").strip() or None,
+                           platform=body.get("platform"),
+                           manual=body.get("manual"),
+                           by=_who(x_auth_request_email))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    row = {"day": row["day"], "rank": row["rank"], "treatment": row["format"],
+           "format_family": row["format_family"], "platform": row["platform"],
+           "hook": row["hook"], "outline": row["outline"], "why": row["why"],
+           "rides_signal": row["rides_signal"],
+           "recommended_timing": row["recommended_timing"]}
+    return _flatten_proposal(row)
 
 
 @app.get(API + "/roundups")
@@ -752,6 +803,63 @@ def set_status(opp_id: int, body: dict = Body(...),
         (status, reason if status == "dismissed" else None,
          _who(x_auth_request_email), opp_id))
     return {"ok": True, "id": opp_id, "status": status}
+
+
+# ── features catalog (grounding editor — work plan N8) ────────────────────
+
+_FEATURE_STATUSES = ("live", "upcoming")
+
+
+@app.get(API + "/features-catalog")
+def features_catalog():
+    rows = db.query(
+        "SELECT feature, description, status, category, seo_keywords, version, "
+        "published_at FROM nubra_features WHERE is_current ORDER BY feature")
+    version = rows[0]["version"] if rows else None
+    published_at = rows[0]["published_at"] if rows else None
+    return {"version": version, "published_at": published_at, "features": rows}
+
+
+@app.post(API + "/features-catalog", status_code=201)
+def publish_features_catalog(body: dict = Body(...),
+                             x_auth_request_email: str | None = Header(None)):
+    """Full-replacement publish: the posted list becomes version v<n+1> and
+    is_current flips to it — the next draft/brief run grounds on it."""
+    features = body.get("features")
+    if not isinstance(features, list) or not features:
+        raise HTTPException(400, "features must be a non-empty list")
+    for f in features:
+        if not (f.get("feature") or "").strip() or not (f.get("description") or "").strip():
+            raise HTTPException(400, "every row needs feature and description")
+        if f.get("status") not in _FEATURE_STATUSES:
+            raise HTTPException(400, f"status must be one of {_FEATURE_STATUSES}")
+    names = [f["feature"].strip() for f in features]
+    if len(set(names)) != len(names):
+        raise HTTPException(400, "duplicate feature names")
+    # next version: v<n+1> over any existing v<int>; seed 'assumed-v0' counts as 0
+    versions = [r["version"] for r in db.query("SELECT DISTINCT version FROM nubra_features")]
+    nums = [0]
+    for v in versions:
+        tail = v.rsplit("v", 1)[-1]
+        if tail.isdigit():
+            nums.append(int(tail))
+    new_version = f"v{max(nums) + 1}"
+    for f in features:
+        kws = f.get("seo_keywords") or []
+        if not isinstance(kws, list):
+            raise HTTPException(400, "seo_keywords must be a list")
+        db.execute(
+            "INSERT INTO nubra_features (feature, description, status, category, "
+            "seo_keywords, version, is_current) VALUES (%s,%s,%s,%s,%s,%s,false) "
+            "ON CONFLICT (feature, version) DO NOTHING",
+            (f["feature"].strip(), f["description"].strip(), f["status"],
+             (f.get("category") or "").strip() or None, [str(k).strip() for k in kws if str(k).strip()],
+             new_version))
+    db.execute("UPDATE nubra_features SET is_current = false WHERE is_current")
+    db.execute("UPDATE nubra_features SET is_current = true WHERE version = %s", (new_version,))
+    n = db.one("SELECT count(*) AS n FROM nubra_features WHERE is_current")["n"]
+    return {"version": new_version, "features_current": n,
+            "published_by": _who(x_auth_request_email)}
 
 
 # ── watch sources (UI-managed collection config) ──────────────────────────
