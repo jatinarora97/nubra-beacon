@@ -174,7 +174,7 @@ export type Feature = {
   feature_key: string;
   label: string;
   count: number;
-  engagement?: number;
+  interactions?: number;
   brokers_mentioned?: string[];
   samples?: { text: string; url?: string; source?: string }[];
 };

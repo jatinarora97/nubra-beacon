@@ -172,6 +172,19 @@ product shows is DB-backed.**
 | Voices micro-communities | **SKIP for now** | low product value vs cost; voices already rank well |
 | Brief/hook dedup across days | **SKIP** | repetition guard cheaper via embedding similarity check at generation time |
 
+## 3.5 · Path to prod (agreed sequencing, 2026-07-08)
+
+1. Cron install → **shadow run 1–2 weeks** (calendar time — start first) → weight/threshold re-tune → pilot
+2. **Auth** (OIDC/SSO proxy + API reject-when-header-absent) — before rollout beyond the team
+3. Prod hardening: systemd/nginx/TLS on the prod box, docker compose DB, backups, log rotation
+4. **Rolling partition job** (monthly partitions only pre-created through 2026-10) + **180d retention purge** — both designed, neither implemented; prod blockers on a ~4-month horizon
+5. Health alerting (per-source staleness → Slack) + stage trace persistence (llm_usage done; trace_log not)
+6. Doc-sync/archive pass over stale LLDs
+
+Needs-user checklist: Slack webhook + Gmail app password, X credits, Langfuse
+nubra-beacon keys, marketing catalog + keyword excel, activate/dismiss the 2
+topic suggestions, pick the prod box.
+
 ## 4 · Parked (do NOT start; resurface after Phase 6)
 
 - Auth (SSO/OIDC proxy + API header enforcement) — before rollout beyond team

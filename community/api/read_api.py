@@ -436,21 +436,26 @@ def features(from_: date | None = Query(None, alias="from"),
                count(DISTINCT fr.day)::int AS days_requested,
                jsonb_agg(to_jsonb(fr.brokers_mentioned)) AS brokers_nested,
                jsonb_agg(to_jsonb(fr.sample_item_ids)) AS samples_nested,
-               COALESCE((SELECT sum((si.engagement->>'score')::float)
+               COALESCE((SELECT sum(
+                             COALESCE((si.engagement->'native'->>'likes')::bigint, 0)
+                           + COALESCE((si.engagement->'native'->>'upvotes')::bigint, 0)
+                           + COALESCE((si.engagement->'native'->>'replies')::bigint, 0)
+                           + COALESCE((si.engagement->'native'->>'comments')::bigint, 0)
+                           + COALESCE((si.engagement->'native'->>'retweets')::bigint, 0)
+                           + COALESCE((si.engagement->'native'->>'quotes')::bigint, 0))
                          FROM feature_item_map m
                          JOIN social_items si ON si.item_id = m.item_id
                          WHERE m.feature_key = fr.feature_key
-                           AND m.day BETWEEN %s AND %s), 0) AS engagement
+                           AND m.day BETWEEN %s AND %s), 0)::bigint AS interactions
         FROM feature_rollup fr WHERE fr.day BETWEEN %s AND %s
         GROUP BY fr.feature_key HAVING count(DISTINCT fr.day) >= %s
-        ORDER BY sum(fr.count) DESC, engagement DESC
+        ORDER BY sum(fr.count) DESC, interactions DESC
         """, (start, end, start, end, min_days))
     for r in rows:
         r["brokers_mentioned"] = sorted(
             {b for arr in (r.pop("brokers_nested") or []) for b in (arr or []) if b})
         ids = sorted({i for arr in (r.pop("samples_nested") or []) for i in (arr or [])})
         r["samples"] = _sample_items(ids, 3)
-        r["engagement"] = round(r["engagement"], 1)
     return rows
 
 

@@ -4,9 +4,9 @@ import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 export default async function FeaturesPage() {
   const rows = await get<Feature[]>("/features", []);
-  // Mentions first, engagement as the tiebreak.
+  // Mentions first, real interactions as the tiebreak.
   const sorted = [...rows].sort(
-    (a, b) => b.count - a.count || (b.engagement ?? 0) - (a.engagement ?? 0),
+    (a, b) => b.count - a.count || (b.interactions ?? 0) - (a.interactions ?? 0),
   );
 
   return (
@@ -14,7 +14,7 @@ export default async function FeaturesPage() {
       <PageHeader
         title="Feature requests"
         accent="bg-warn"
-        blurb="What traders are asking for, across any broker — sorted by mentions, then by the engagement those mentions draw. Different phrasings of the same ask are merged by meaning, so one theme = one card; even a single mention appears."
+        blurb="What traders are asking for, across any broker — sorted by mentions, then by the interactions (likes + replies + shares) those mentions draw. Different phrasings of the same ask are merged by meaning, so one theme = one card; even a single mention appears."
       />
 
       {sorted.length === 0 ? (
@@ -36,9 +36,9 @@ export default async function FeaturesPage() {
                   </Badge>
                   <span
                     className="text-[11.5px] tabular-nums text-muted"
-                    title="Total engagement index across this theme's mentions (log-scaled, same as Trends)"
+                    title="Real interactions summed across this theme's mentions: likes + upvotes + replies + comments + shares"
                   >
-                    {f.engagement ?? 0} eng
+                    {f.interactions ?? 0} interaction{(f.interactions ?? 0) !== 1 ? "s" : ""}
                   </span>
                 </span>
               </div>
