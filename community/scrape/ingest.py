@@ -80,7 +80,16 @@ def run(daily: bool = False, **_) -> dict:
     except Exception as e:  # noqa: BLE001
         refresh_stats = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
 
+    # reddit keyword search (2026-07-08) — watched keywords fetch across ALL of
+    # reddit, not just watched subs; same never-break-the-stage contract
+    try:
+        from community.scrape import keyword_search
+        keyword_stats = keyword_search.run()
+    except Exception as e:  # noqa: BLE001
+        keyword_stats = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
+
     return {"fetched": fetched, "reddit_by_category": reddit_by_category,
             "reddit_sorts": sorts, **counters,
             "x_live_note": x_live_note, "reddit_health": reddit_health,
-            "engagement_refresh": refresh_stats}
+            "engagement_refresh": refresh_stats,
+            "keyword_search": keyword_stats}
