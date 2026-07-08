@@ -17,7 +17,7 @@ def _echo(name: str, stats: dict) -> None:
 
 def run_morning_build() -> dict:
     from community.scrape import x_trends
-from community.aggregate import rollups
+    from community.aggregate import rollups
     from community.clean import dedup
     from community.compose import roundup
     from community.dispatch import local as dispatch
