@@ -1,2 +1,10 @@
 #!/bin/sh
-exec "$(dirname "$0")/.venv/bin/python" "$(dirname "$0")/runner.py" "$@"
+# Dev: uses the repo .venv. Container/prod: falls back to system python
+# (override with CM_PYTHON). Behavior identical either way.
+DIR="$(dirname "$0")"
+if [ -x "$DIR/.venv/bin/python" ]; then
+    PY="$DIR/.venv/bin/python"
+else
+    PY="${CM_PYTHON:-python3}"
+fi
+exec "$PY" "$DIR/runner.py" "$@"

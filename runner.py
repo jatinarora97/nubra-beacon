@@ -88,12 +88,18 @@ def ui(api_port: int = 8400, dash_port: int = 3000) -> None:
 
 
 @app.command()
-def schedule() -> None:
+def schedule(install: bool = typer.Option(False, "--install"),
+             docker: bool = typer.Option(False, "--docker",
+                                         help="prod flavor: exec into the api container")) -> None:
     """Print/install the cron plan (hourly scrape→dispatch 06–01 IST, heads-up
     08–20 IST, 06:00 morning build, Sat weekly, overnight pause)."""
-    from community.scheduler.cron import show_or_install
+    from community.scheduler.cron import cron_block, show_or_install
 
-    show_or_install()
+    if docker and not install:
+        print(cron_block(docker=True))
+        print("\n# canonical prod copy: deploy/crontab.prod (set APP_DIR there)")
+        return
+    show_or_install(install)
 
 
 @app.command("morning-build")

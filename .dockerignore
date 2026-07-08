@@ -1,0 +1,18 @@
+# api image context (repo root) — keep the image to code + seed data
+.git
+.venv
+.env*
+out
+backups
+poc
+docs
+webapp
+node_modules
+__pycache__
+*.pyc
+*.log
+.DS_Store
+.claude
+.dockerignore
+Dockerfile.api
+deploy

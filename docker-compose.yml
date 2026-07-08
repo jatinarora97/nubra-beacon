@@ -1,3 +1,8 @@
+# Dev: `docker compose up -d` starts ONLY postgres (api/webapp are behind the
+# "app" profile — dev runs those via `./cm ui`). Prod: COMPOSE_PROFILES=app
+# (or `docker compose --profile app up -d --build`) runs the full stack; the
+# pipeline is cron-driven via `docker compose exec -T api ./cm ...`
+# (see deploy/crontab.prod + deploy/README-prod.md).
 services:
   postgres:
     image: pgvector/pgvector:pg17
@@ -10,11 +15,61 @@ services:
       - "5544:5432"
     volumes:
       - nubra_community_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U community -d nubra_community"]
       interval: 3s
       timeout: 3s
       retries: 20
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    profiles: ["app"]
+    env_file: .env
+    environment:
+      # inside the compose network the DB lives at the service name, not localhost
+      DB_URL: postgresql://community:community@postgres:5432/nubra_community
+      TZ: Asia/Kolkata
+    ports:
+      - "8400:8400"
+    volumes:
+      - ./out:/app/out          # cron logs + message archives visible on the host
+      - hf_cache:/hf-cache      # embedding model cache survives restarts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8400/api/v1/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  webapp:
+    build:
+      context: ./webapp
+      args:
+        NEXT_PUBLIC_API_BASE: http://api:8400/api/v1   # browser-proxy rewrite target (build-time)
+    profiles: ["app"]
+    environment:
+      API_BASE: http://api:8400/api/v1                 # server-side fetches (runtime)
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e",
+             "fetch('http://localhost:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 volumes:
   nubra_community_pgdata:
+  hf_cache:

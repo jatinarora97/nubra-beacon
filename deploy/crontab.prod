@@ -1,0 +1,24 @@
+# Nubra Beacon — prod crontab (paste via `crontab -e`, or:
+#   crontab deploy/crontab.prod        # replaces the whole crontab!
+# Set APP_DIR once to wherever the repo lives on the prod machine.
+# Cadences per architecture §8, all IST. Pipeline runs inside the api
+# container; the stack itself is `docker compose --profile app up -d`.
+
+APP_DIR=/opt/nubra-beacon
+COMPOSE_PROFILES=app
+CRON_TZ=Asia/Kolkata
+TZ=Asia/Kolkata
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# hourly pipeline 07:00-23:00 + 00:00 IST (heads-up channel window 08-20 enforced in dispatch)
+0 7-23 * * * cd $APP_DIR && docker compose exec -T api ./cm run-local >> out/cron.log 2>&1
+0 0 * * * cd $APP_DIR && docker compose exec -T api ./cm run-local >> out/cron.log 2>&1
+
+# 06:00 morning build (catch-up + daily top feed + sync enrich + roundup by 07:30)
+0 6 * * * cd $APP_DIR && docker compose exec -T api ./cm morning-build >> out/cron.log 2>&1
+
+# Saturday 10:00 weekly roundup (compose regenerates the weekly row, dispatch sends once)
+0 10 * * 6 cd $APP_DIR && docker compose exec -T api ./cm stage compose >> out/cron.log 2>&1 && cd $APP_DIR && docker compose exec -T api ./cm stage dispatch >> out/cron.log 2>&1
+
+# 02:00 nightly DB backup (gzip pg_dump, keeps last 14 — deploy/backup.sh)
+0 2 * * * cd $APP_DIR && ./deploy/backup.sh >> out/cron.log 2>&1

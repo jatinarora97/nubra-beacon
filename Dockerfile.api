@@ -1,0 +1,29 @@
+# Nubra Beacon — backend image: read-API (uvicorn) + the pipeline (`./cm ...`
+# via `docker compose exec`). Playwright Chromium is installed at the pip
+# version so the Reddit transport (old.reddit) works headless in-container.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    HF_HOME=/hf-cache
+
+WORKDIR /app
+
+# CPU-only torch first (sentence-transformers dependency) — avoids the
+# multi-GB CUDA wheels the default index would pull.
+COPY requirements.txt .
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install -r requirements.txt \
+ && playwright install --with-deps chromium
+
+COPY cm runner.py ./
+COPY community ./community
+COPY migrations ./migrations
+COPY scripts ./scripts
+COPY data ./data
+RUN chmod +x cm && mkdir -p out/messages /hf-cache
+
+EXPOSE 8400
+CMD ["python", "-m", "uvicorn", "community.api.read_api:app", \
+     "--host", "0.0.0.0", "--port", "8400"]
