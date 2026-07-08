@@ -23,6 +23,9 @@ services:
       retries: 20
 
   api:
+    # RELEASE_TAG comes from .env (compose substitution) — `make pull-prod`
+    # pulls this tag from ECR; `up --build` still builds locally as fallback.
+    image: ${ECR_REGISTRY:-851725268918.dkr.ecr.ap-south-1.amazonaws.com}/zs/nubra-ai:nubra-beacon-api-${RELEASE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -50,6 +53,7 @@ services:
       start_period: 20s
 
   webapp:
+    image: ${ECR_REGISTRY:-851725268918.dkr.ecr.ap-south-1.amazonaws.com}/zs/nubra-ai:nubra-beacon-webapp-${RELEASE_TAG:-latest}
     build:
       context: ./webapp
       args:

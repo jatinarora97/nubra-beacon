@@ -1,0 +1,44 @@
+# Nubra Beacon — release flow, mirrors nubra-ai-personalization:
+#   dev Mac:  RELEASE_TAG=2026-07-09-Jatin make push-prod
+#   prod box: set RELEASE_TAG in .env, then: make pull-prod
+-include .env
+
+RELEASE_TAG  ?= latest
+ECR_REGISTRY ?= 851725268918.dkr.ecr.ap-south-1.amazonaws.com
+AWS_REGION   ?= ap-south-1
+AWS_PROFILE  ?= prod
+
+IMG_API = $(ECR_REGISTRY)/zs/nubra-ai:nubra-beacon-api-$(RELEASE_TAG)
+IMG_WEB = $(ECR_REGISTRY)/zs/nubra-ai:nubra-beacon-webapp-$(RELEASE_TAG)
+
+.PHONY: ecr-login push-prod pull-prod up down logs migrate
+
+ecr-login:
+	aws ecr get-login-password --region $(AWS_REGION) --profile $(AWS_PROFILE) \
+	  | docker login --username AWS --password-stdin $(ECR_REGISTRY)
+
+# Build both images for the prod architecture on this Mac and push to ECR.
+push-prod: ecr-login
+	docker buildx build --platform linux/amd64 -f Dockerfile.api -t $(IMG_API) --push .
+	docker buildx build --platform linux/amd64 \
+	  --build-arg NEXT_PUBLIC_API_BASE=http://api:8400/api/v1 \
+	  -t $(IMG_WEB) --push webapp
+	@echo "pushed $(RELEASE_TAG) — set RELEASE_TAG=$(RELEASE_TAG) in prod .env, then: make pull-prod"
+
+# On the prod machine: pull the tag from .env, roll the stack, apply migrations.
+pull-prod: ecr-login
+	docker compose --profile app pull api webapp
+	docker compose --profile app up -d
+	docker compose exec -T api ./cm migrate
+
+up:
+	docker compose up -d postgres
+
+down:
+	docker compose down
+
+logs:
+	docker compose logs -f
+
+migrate:
+	docker compose exec -T api ./cm migrate

@@ -47,8 +47,12 @@ cp community/config/env.example .env
 #   Email:    GMAIL_SENDER, GMAIL_APP_PASSWORD (+ recipients in registry.yaml)
 #   Traces:   LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST
 
-# full stack (postgres + api + webapp). First build ~10 min.
-docker compose --profile app up -d --build
+# full stack — two ways to get images:
+#  (a) registry pull (the normal release flow, mirrors nubra-ai-personalization):
+#      set RELEASE_TAG=<tag> in .env, then:
+make pull-prod
+#  (b) build on this machine (fallback / first bring-up without ECR access):
+#      docker compose --profile app up -d --build   (first build ~10 min)
 
 # schema + seeds (fresh DB only)
 docker compose exec api ./cm migrate
@@ -112,7 +116,7 @@ docker compose ps                                  # health (both healthchecks w
 docker compose logs -f api                         # API logs
 docker compose exec api ./cm run-local             # manual pipeline run
 docker compose exec api ./cm stage <name>          # single stage
-docker compose --profile app up -d --build         # deploy a new version (then re-run migrate)
+make pull-prod                                     # deploy the RELEASE_TAG in .env (pull + up + migrate)
 tail -f out/cron.log                               # pipeline runs
 ```
 
