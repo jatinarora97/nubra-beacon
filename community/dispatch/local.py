@@ -98,6 +98,8 @@ def run(all_stats: dict | None = None) -> dict:
         if not r:
             continue
         written.append(_archive(r["markdown"], f"{r['date']}-roundup-{period}.md"))
+        db.execute("UPDATE roundups SET markdown = %s WHERE period=%s AND date=%s",
+                   (r["markdown"], period, r["date"]))
         state = _roundup_channel_state(period, r["date"])
         subject = f"Community roundup ({period}) · {r['date']}"
         for name, sender in (("slack", slack_ch), ("email", email_ch)):
