@@ -54,17 +54,20 @@ def _lim(limit: int) -> int:
 # and cap at 180d. No params -> None -> the endpoint keeps its default
 # (pre-existing) behavior, byte-compatible for existing callers.
 
-_WINDOW_SPANS = {"1h": timedelta(hours=1), "24h": timedelta(hours=24),
-                 "1d": timedelta(hours=24),  # tolerated alias
-                 "7d": timedelta(days=7), "30d": timedelta(days=30)}
+import re as _re
+
+_WINDOW_RE = _re.compile(r"^(\d{1,4})(h|d)$")  # any "last N hours/days"
 
 
 def _window(from_ts: str | None, to_ts: str | None,
             window: str | None) -> tuple[datetime, datetime] | None:
     if window:
-        span = _WINDOW_SPANS.get(window)
-        if span is None:
-            raise HTTPException(400, "window must be one of 1h, 24h, 7d, 30d")
+        m = _WINDOW_RE.match(window)
+        if not m:
+            raise HTTPException(400, "window must look like 2h, 24h, 3d, 30d")
+        n, unit = int(m.group(1)), m.group(2)
+        span = timedelta(hours=n) if unit == "h" else timedelta(days=n)
+        span = max(timedelta(hours=1), min(span, timedelta(days=180)))
         to_dt = datetime.now(timezone.utc)
         return to_dt - span, to_dt
     if not (from_ts or to_ts):
@@ -778,6 +781,14 @@ def _flatten_proposal(r: dict) -> dict:
 _PROPOSAL_SELECT = ("SELECT day, rank, format AS treatment, format_family, platform, "
                     "hook, outline, why, rides_signal, recommended_timing "
                     "FROM content_proposals")
+
+
+@app.get(API + "/content-proposals/days")
+def content_proposal_days():
+    """Days that have briefs (newest first) — powers the day picker."""
+    return [{"day": str(r["day"]), "briefs": r["n"]} for r in db.query(
+        "SELECT day, count(*) AS n FROM content_proposals "
+        "GROUP BY day ORDER BY day DESC LIMIT 60")]
 
 
 @app.get(API + "/content-proposals")

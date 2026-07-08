@@ -4,14 +4,6 @@ import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { WINDOW_PRESETS, type WindowSearch } from "@/lib/window";
 
-const HOUR_MS = 3_600_000;
-
-/** Local datetime-input value for a Date (what <input type=datetime-local> wants). */
-function toLocalInput(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
 function fmtIst(iso?: string | null): string {
   if (!iso) return "?";
   return new Date(iso).toLocaleString("en-IN", {
@@ -36,13 +28,14 @@ export function TimeFilter({
 }) {
   const router = useRouter();
   const path = usePathname();
-  const customActive = Boolean(current.from_ts && current.to_ts);
+  // "custom" = any window that isn't one of the preset chips
+  const isPreset = WINDOW_PRESETS.some((p) => p.key === current.window);
+  const customActive = !isPreset || Boolean(current.from_ts && current.to_ts);
+  const customMatch = (current.window ?? "").match(/^(\d{1,4})([hd])$/);
   const [showCustom, setShowCustom] = useState(customActive);
-  const [fromVal, setFromVal] = useState(
-    current.from_ts ? toLocalInput(new Date(current.from_ts)) : toLocalInput(new Date(Date.now() - 24 * HOUR_MS)),
-  );
-  const [toVal, setToVal] = useState(
-    current.to_ts ? toLocalInput(new Date(current.to_ts)) : toLocalInput(new Date()),
+  const [num, setNum] = useState(customMatch ? customMatch[1] : "2");
+  const [unit, setUnit] = useState<"h" | "d">(
+    customMatch ? (customMatch[2] as "h" | "d") : "h",
   );
   const [hint, setHint] = useState<string | null>(null);
 
@@ -52,20 +45,23 @@ export function TimeFilter({
   }
 
   function applyCustom() {
-    const from = new Date(fromVal);
-    let to = new Date(toVal);
-    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
-      setHint("Pick both a start and an end.");
-      return;
-    }
-    if (to.getTime() - from.getTime() < HOUR_MS) {
-      to = new Date(from.getTime() + HOUR_MS);
-      setToVal(toLocalInput(to));
-      setHint("Minimum span is 1 hour — end adjusted.");
+    let n = Math.floor(Number(num));
+    if (!Number.isFinite(n) || n < 1) {
+      n = 1;
+      setNum("1");
+      setHint("Minimum is 1 hour.");
+    } else if (unit === "d" && n > 180) {
+      n = 180;
+      setNum("180");
+      setHint("Capped at 180 days (retention horizon).");
+    } else if (unit === "h" && n > 4320) {
+      n = 4320;
+      setNum("4320");
+      setHint("Capped at 180 days (retention horizon).");
     } else {
       setHint(null);
     }
-    go({ from_ts: from.toISOString(), to_ts: to.toISOString() });
+    go({ window: `${n}${unit}` });
   }
 
   const chipCls = (active: boolean) =>
@@ -103,21 +99,25 @@ export function TimeFilter({
       </div>
       {showCustom && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-[12.5px] text-muted">Last</span>
           <input
-            type="datetime-local"
-            value={fromVal}
-            onChange={(e) => setFromVal(e.target.value)}
-            className={inputCls}
-            aria-label="From"
+            type="number"
+            min={1}
+            value={num}
+            onChange={(e) => setNum(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && applyCustom()}
+            className={`${inputCls} w-20`}
+            aria-label="Number of hours or days"
           />
-          <span className="text-[12px] text-muted">to</span>
-          <input
-            type="datetime-local"
-            value={toVal}
-            onChange={(e) => setToVal(e.target.value)}
+          <select
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as "h" | "d")}
             className={inputCls}
-            aria-label="To"
-          />
+            aria-label="Unit"
+          >
+            <option value="h">hours</option>
+            <option value="d">days</option>
+          </select>
           <button onClick={applyCustom} className={chipCls(false)}>
             Apply
           </button>

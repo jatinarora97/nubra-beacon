@@ -14,13 +14,16 @@ type RawSearch = Record<string, string | string[] | undefined>;
 
 const one = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v);
 
+/** Any "last N hours/days" is a valid window (backend contract: \d+h|\d+d). */
+const WINDOW_RE = /^\d{1,4}[hd]$/;
+
 /** Resolve URL search params to the active window (default: last hour). */
 export function pickWindow(sp: RawSearch): WindowSearch {
   const from_ts = one(sp.from_ts);
   const to_ts = one(sp.to_ts);
   if (from_ts && to_ts) return { from_ts, to_ts };
   const w = one(sp.window);
-  if (w && WINDOW_PRESETS.some((p) => p.key === w)) return { window: w };
+  if (w && WINDOW_RE.test(w)) return { window: w };
   return { window: "1h" };
 }
 
@@ -31,15 +34,12 @@ export function windowQuery(w: WindowSearch): string {
     : `window=${w.window ?? "1h"}`;
 }
 
-/** Human phrase for blurbs/hints/empty states ("the last hour", "the custom range"). */
+/** Human phrase for blurbs/hints/empty states ("the last hour", "the last 8 hours"). */
 export function windowLabel(w: WindowSearch): string {
   if (w.from_ts && w.to_ts) return "the selected range";
-  return (
-    {
-      "1h": "the last hour",
-      "24h": "the last 24 hours",
-      "7d": "the last 7 days",
-      "30d": "the last 30 days",
-    }[w.window ?? "1h"] ?? "the window"
-  );
+  const m = (w.window ?? "1h").match(/^(\d{1,4})([hd])$/);
+  if (!m) return "the window";
+  const n = Number(m[1]);
+  const unit = m[2] === "h" ? "hour" : "day";
+  return n === 1 ? `the last ${unit}` : `the last ${n} ${unit}s`;
 }
