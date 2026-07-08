@@ -59,19 +59,19 @@ when it bites. Supersedes the backlog sections of the status doc and the
 11. **stage trace_log.** llm_usage persists; stage-level run traces are still
    stdout/cron.log only. Add a run-scoped trace_log table (mirror the
    personalization pattern) when debugging prod runs gets annoying.
-10. **`seed_features --from-xlsx` loader** — build when marketing's keyword
+12. **`seed_features --from-xlsx` loader** — build when marketing's keyword
     excel + vetted catalog arrive; publish as a new grounding version.
-11. **Weekly roundup history navigation** — the page shows the latest week
+13. **Weekly roundup history navigation** — the page shows the latest week
     only; add a week picker once 3+ weeks exist.
 
 ## P3 — product phases (unchanged design intent)
 
-12. Posting-with-approval workflow (Slack approve/edit/skip + post_executor +
-    post_log) → 13. learned posting windows (needs 12's outcome data) →
-    14. self-learning from `feedback` + dismissed reasons.
-15. More sources: YouTube / Telegram / app-store reviews (adapter contract
+14. Posting-with-approval workflow (Slack approve/edit/skip + post_executor +
+    post_log) → 15. learned posting windows (needs 14's outcome data) →
+    16. self-learning from `feedback` + dismissed reasons.
+17. More sources: YouTube / Telegram / app-store reviews (adapter contract
     ready), issue-type discovery via clustering at ~100+ complaints.
-16. Emergent-topic discovery is live; revisit HDBSCAN params (min cluster 4)
+18. Emergent-topic discovery is live; revisit HDBSCAN params (min cluster 4)
     once `other:*` volume grows past ~500 items.
 
 ## Docs state
