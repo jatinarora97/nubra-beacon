@@ -33,8 +33,8 @@ export default async function ContentPage({
 
       {sorted.length === 0 ? (
         <EmptyState
-          title="No briefs for today yet"
-          body="Briefs are generated with the daily build from the day's rising topics, issues and feature requests, then pass the compliance gate. Ideas that fail the gate are dropped, so some days ship fewer than three."
+          title={date ? `No briefs on ${date}` : "No briefs for today yet"}
+          body="Briefs are generated with the daily build from the day's rising topics, issues and feature requests, then pass the compliance gate. Ideas that fail the gate are dropped — and days before the system went live have none. Pick another day above."
         />
       ) : (
         <div className="space-y-4">

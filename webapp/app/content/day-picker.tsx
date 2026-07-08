@@ -13,7 +13,7 @@ export function DayPicker({
 }) {
   const router = useRouter();
   const path = usePathname();
-  if (days.length <= 1) return null;
+  if (days.length === 0) return null;
 
   const fmt = (d: string) =>
     new Date(`${d}T00:00:00`).toLocaleDateString("en-IN", {
@@ -23,7 +23,6 @@ export function DayPicker({
     });
   const go = (d: string) => router.push(`${path}?date=${d}`, { scroll: false });
   const chips = days.slice(0, 5);
-  const rest = days.slice(5);
 
   return (
     <div className="mb-5 flex flex-wrap items-center gap-1.5">
@@ -42,21 +41,17 @@ export function DayPicker({
           {fmt(d.day)}
         </button>
       ))}
-      {rest.length > 0 && (
-        <select
-          value={rest.some((d) => d.day === active) ? active : ""}
-          onChange={(e) => e.target.value && go(e.target.value)}
-          className="rounded-md border border-line bg-surface2 px-2.5 py-1 text-[12.5px] text-muted outline-none focus:border-content"
-          aria-label="Earlier days"
-        >
-          <option value="">earlier…</option>
-          {rest.map((d) => (
-            <option key={d.day} value={d.day}>
-              {fmt(d.day)} ({d.briefs})
-            </option>
-          ))}
-        </select>
-      )}
+      {/* calendar for anything further back — bounded by the brief history */}
+      <input
+        type="date"
+        value={active}
+        min={days[days.length - 1]?.day}
+        max={days[0]?.day}
+        onChange={(e) => e.target.value && go(e.target.value)}
+        className="rounded-md border border-line bg-surface2 px-2.5 py-1 text-[12.5px] text-muted outline-none focus:border-content"
+        aria-label="Pick any date"
+        title="Jump to any date — days without briefs show an empty state"
+      />
     </div>
   );
 }

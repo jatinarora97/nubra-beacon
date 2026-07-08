@@ -248,7 +248,7 @@ def _content_proposals(catalog: list[dict]) -> int:
             "INSERT INTO content_proposals (day, rank, format, format_family, platform, "
             "hook, outline, why, rides_signal, recommended_timing) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (today, rank, (c.get("treatment") or c["format_family"])[:120],
+            (today, rank, (c.get("treatment") or c["format_family"]),
              c["format_family"], c.get("platform"),
              c.get("hook", ""), db.jsonb({**c.get("brief", {}),
                                           "platform_why": c.get("platform_why")}),
