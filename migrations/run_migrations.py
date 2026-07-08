@@ -1,11 +1,13 @@
 """Apply numbered SQL migrations to nubra_community (LLD-01 §9).
 
-Tracking table + sha256 drift check + advisory lock; one transaction per file.
+Tracking table (version + dirty) + advisory lock; one transaction per file.
+A file is applied at most once, keyed by version. If a migration fails
+mid-flight its row is left `dirty` and the next run aborts until it's resolved
+by hand — editing an already-applied file is a no-op (it never re-runs).
 Usage: python migrations/run_migrations.py [--dry-run]
 """
 from __future__ import annotations
 
-import hashlib
 import pathlib
 import sys
 
@@ -20,7 +22,7 @@ TRACKING = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version     integer      PRIMARY KEY,
     filename    text         NOT NULL,
-    sha256      char(64)     NOT NULL,
+    dirty       boolean      NOT NULL DEFAULT false,
     applied_at  timestamptz  NOT NULL DEFAULT now()
 );
 """
@@ -33,24 +35,29 @@ def main(dry_run: bool = False) -> None:
         conn.execute(TRACKING)
         applied = {
             r[0]: r[1]
-            for r in conn.execute("SELECT version, sha256 FROM schema_migrations").fetchall()
+            for r in conn.execute("SELECT version, dirty FROM schema_migrations").fetchall()
         }
+        dirty = sorted(v for v, is_dirty in applied.items() if is_dirty)
+        if dirty:
+            raise SystemExit(
+                f"DIRTY: version(s) {dirty} left half-applied — resolve by hand before migrating"
+            )
         for f in files:
             version = int(f.name.split("_")[0])
-            sha = hashlib.sha256(f.read_bytes()).hexdigest()
             if version in applied:
-                if applied[version] != sha:
-                    raise SystemExit(f"DRIFT: {f.name} changed after being applied — aborting")
                 continue
             if dry_run:
                 print(f"pending: {f.name}")
                 continue
+            # Claim the version as dirty first (committed), then run the file in
+            # its own transaction. A crash mid-migration leaves the row dirty.
+            conn.execute(
+                "INSERT INTO schema_migrations (version, filename, dirty) VALUES (%s, %s, true)",
+                (version, f.name),
+            )
             with psycopg.connect(settings.db_url) as tx:  # one transaction per file
                 tx.execute(f.read_text())
-                tx.execute(
-                    "INSERT INTO schema_migrations (version, filename, sha256) VALUES (%s, %s, %s)",
-                    (version, f.name, sha),
-                )
+            conn.execute("UPDATE schema_migrations SET dirty = false WHERE version = %s", (version,))
             print(f"applied: {f.name}")
         conn.execute("SELECT pg_advisory_unlock(hashtext('nubra_community:migrate'))")
     print("migrations up to date")

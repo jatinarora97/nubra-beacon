@@ -450,21 +450,25 @@ privileges (`DROP TABLE` on partitions) these jobs need.
 ## 9. Migrations — convention + runner
 
 - Files: `migrations/NNNN_description.sql`, immutable once merged; `0001_init.sql` = every
-  DDL block in §§2–6 + the first three monthly partitions + roles/grants (§10).
+  DDL block in §§2–6 + the first three monthly partitions + roles/grants (§10). A file is
+  applied at most once, keyed by its leading `version` number — renaming a merged file is a
+  no-op (it never re-runs); only a new number runs.
 - Tracking table (created by the runner if absent):
 
 ```sql
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version     integer      PRIMARY KEY,
     filename    text         NOT NULL,
-    sha256      char(64)     NOT NULL,   -- drift detection: re-run fails if a merged file changed
+    dirty       boolean      NOT NULL DEFAULT false,  -- true = left half-applied; next run aborts
     applied_at  timestamptz  NOT NULL DEFAULT now()
 );
 ```
 
-- `run_migrations.py`: take `pg_advisory_lock(hashtext('nubra_community:migrate'))` →
-  apply pending files in numeric order, **one transaction per file** → insert tracking row
-  in the same transaction → release. `--dry-run` prints pending; mismatched sha256 aborts.
+- `run_migrations.py`: take `pg_advisory_lock(hashtext('nubra_community:migrate'))` → abort if any
+  row is `dirty` → apply pending files in numeric order. For each file: mark its version `dirty`
+  (committed), run the file in **one transaction per file**, then clear `dirty`. A crash
+  mid-migration leaves the row `dirty` so it must be resolved by hand before the next run.
+  `--dry-run` prints pending.
 
 ---
 

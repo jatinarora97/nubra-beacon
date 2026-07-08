@@ -3,6 +3,11 @@
 # (or `docker compose --profile app up -d --build`) runs the full stack; the
 # pipeline is cron-driven via `docker compose exec -T api ./cm ...`
 # (see deploy/crontab.prod + deploy/README-prod.md).
+#
+# Schema is owned by the one-shot `migrate` service: it runs `./cm migrate` to
+# completion and exits, and `api` won't start until it succeeds
+# (service_completed_successfully). Re-runs on every `up` are safe — the runner
+# skips already-applied versions and aborts on a dirty (half-applied) one.
 services:
   postgres:
     image: pgvector/pgvector:pg17
@@ -21,6 +26,25 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  # One-shot schema owner: applies pending migrations then exits 0. Shares the
+  # api image (same ./cm + migrations/), so no separate build/pull. api gates on
+  # this completing successfully; a DIRTY/failed migration exits non-zero and
+  # keeps api from starting against a bad schema.
+  migrate:
+    image: ${ECR_REGISTRY:-851725268918.dkr.ecr.ap-south-1.amazonaws.com}/zs/nubra-ai:nubra-beacon-api-${RELEASE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    profiles: ["app"]
+    env_file: .env   # DB_URL comes from here
+    environment:
+      TZ: Asia/Kolkata
+    command: ["./cm", "migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"   # one-shot job, not a long-running server
 
   api:
     # RELEASE_TAG comes from .env (compose substitution) — `make pull-prod`
@@ -43,6 +67,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c",

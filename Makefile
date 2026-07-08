@@ -25,11 +25,11 @@ push-prod: ecr-login
 	  -t $(IMG_WEB) --push webapp
 	@echo "pushed $(RELEASE_TAG) — set RELEASE_TAG=$(RELEASE_TAG) in prod .env, then: make pull-prod"
 
-# On the prod machine: pull the tag from .env, roll the stack, apply migrations.
+# On the prod machine: pull the tag from .env, roll the stack. The `migrate`
+# service applies migrations on the way up and api gates on it completing.
 pull-prod: ecr-login
 	docker compose --profile app pull api webapp
 	docker compose --profile app up -d
-	docker compose exec -T api ./cm migrate
 
 up:
 	docker compose up -d postgres
@@ -40,5 +40,8 @@ down:
 logs:
 	docker compose logs -f
 
+# Run migrations on their own via the dedicated one-shot service (works whether
+# or not the api container is up). Idempotent: skips applied versions. Naming
+# `migrate` auto-activates its profile, so no --profile flag is needed here.
 migrate:
-	docker compose exec -T api ./cm migrate
+	docker compose run --rm migrate
