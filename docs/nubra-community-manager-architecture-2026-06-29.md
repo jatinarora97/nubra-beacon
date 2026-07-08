@@ -1,5 +1,12 @@
 # Nubra Community Manager — Production Architecture
 
+> **STALE AS OF 2026-07-08 — kept for design rationale only.** The build
+> deviated in load-bearing ways (React UI, restructured packages, vendored
+> scraper transport, calibrations, Docker deploy). Current truth:
+> `nubra-community-manager-status-2026-07-05.md` (what is built) +
+> `nubra-beacon-tech-backlog-2026-07-08.md` (what remains). Where this file
+> disagrees with those, those win.
+
 _Design · 2026-06-29 · companion: `nubra-community-manager-posting-and-roundups-2026-06-29.md`_
 
 A always-on system that **listens** across social platforms, **understands** what the

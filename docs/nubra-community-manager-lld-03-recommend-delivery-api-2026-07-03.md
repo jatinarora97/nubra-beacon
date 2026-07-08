@@ -1,5 +1,12 @@
 # Nubra Community Manager — LLD-03: Recommend, Compliance, Delivery & Read-API
 
+> **STALE AS OF 2026-07-08 — kept for design rationale only.** The build
+> deviated in load-bearing ways (React UI, restructured packages, vendored
+> scraper transport, calibrations, Docker deploy). Current truth:
+> `nubra-community-manager-status-2026-07-05.md` (what is built) +
+> `nubra-beacon-tech-backlog-2026-07-08.md` (what remains). Where this file
+> disagrees with those, those win.
+
 _LLD · 2026-07-03 · source of truth for build-plan milestones **M3 + M4 + M5**._
 _Parents: `nubra-community-manager-architecture-2026-06-29.md` (§6–8) ·
 `…-posting-and-roundups-2026-06-29.md` (all) · `…-data-flow-2026-07-03.md` (⑤a/⑤b/⑥/⑦) ·

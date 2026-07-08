@@ -1,5 +1,12 @@
 # Nubra Community Manager — Build Plan (v1)
 
+> **STALE AS OF 2026-07-08 — kept for design rationale only.** The build
+> deviated in load-bearing ways (React UI, restructured packages, vendored
+> scraper transport, calibrations, Docker deploy). Current truth:
+> `nubra-community-manager-status-2026-07-05.md` (what is built) +
+> `nubra-beacon-tech-backlog-2026-07-08.md` (what remains). Where this file
+> disagrees with those, those win.
+
 _2026-07-03 · the how-to-build companion to the architecture / decision / data-flow docs._
 _Frontend decision: **hardened Streamlit** over a thin **FastAPI read-API** (internal, read-only)._
 

@@ -23,9 +23,12 @@ actions and content — humans post. Pipeline packages map 1:1 to stages:
   commented with dates). Collection sources are DB-managed (`watch_sources`, UI Sources
   page) — registry lists are only the seed.
 - Vendored code (comms guardrails, reddit scraper) is refreshed via
-  `scripts/sync_*.py` — never hand-edit `community/lib/*`.
-- DB: pgvector Postgres in Docker, :5544. POC archived in `poc/` (also the reddit
-  scraper upstream checkout — `git pull` there before re-vendoring).
+  `scripts/sync_*.py` — never hand-edit `community/lib/*`. Reddit-scraper upstream
+  checkout: `.vendor/reddit_scraper` (auto-cloned by the sync script, gitignored).
+- DB: pgvector Postgres in Docker, :5544 (dev). Prod: dockerized api+webapp behind
+  compose profile `app` — runbook `deploy/README-prod.md`, crontab `deploy/crontab.prod`,
+  repo github.com/jatinarora97/nubra-beacon. Backlog:
+  `docs/nubra-beacon-tech-backlog-2026-07-08.md`.
 
 ## Locked decisions — do NOT re-open
 
@@ -33,4 +36,5 @@ actions and content — humans post. Pipeline packages map 1:1 to stages:
 `assumed-v0` grounding until marketing's versioned swap · vendored zanshash scraper is
 the ONLY Reddit transport (no JSON fallback) · one prod-grade codebase, no local/prod
 forks · React UI (Streamlit rejected) · emoji-free system chrome · centroid τ=0.86 and
-action bar 60 are measured calibrations (re-tune only with shadow-run data).
+action bar 60 are measured calibrations (re-tune only with prod feedback data —
+no shadow run; straight to prod was the 2026-07-08 decision).

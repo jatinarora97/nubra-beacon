@@ -1,9 +1,9 @@
 """Vendor the zanshash/reddit_scraper into community/lib/reddit_scraper/.
 
 Source of truth: github.com/zanshash/reddit_scraper (local checkout at
-poc/reference/reddit_scraper — `git pull` there first to update). Rewrites the
-two flat imports to package-relative, applies the NESTED-REPLIES patch (below),
-and stamps provenance. Re-run to refresh; --check for CI drift detection.
+.vendor/reddit_scraper, auto-cloned on first run — `git pull` there to update).
+Rewrites the two flat imports to package-relative, applies the NESTED-REPLIES
+patch (below), and stamps provenance. Re-run to refresh; --check for CI drift.
 
 Nested-replies patch: upstream collects top-level comments only. We addition-
 ally walk ONE nested level per top comment (strict child chain
@@ -17,7 +17,12 @@ import pathlib
 import subprocess
 import sys
 
-SRC = pathlib.Path(__file__).resolve().parent.parent / "poc" / "reference" / "reddit_scraper"
+SRC = pathlib.Path(__file__).resolve().parent.parent / ".vendor" / "reddit_scraper"
+UPSTREAM = "https://github.com/zanshash/reddit_scraper"
+
+if not SRC.is_dir():  # fresh checkout (e.g. prod machine) — clone the upstream
+    SRC.parent.mkdir(exist_ok=True)
+    subprocess.run(["git", "clone", UPSTREAM, str(SRC)], check=True)
 DEST = pathlib.Path(__file__).resolve().parent.parent / "community" / "lib" / "reddit_scraper"
 FILES = ["scraper.py", "models.py", "config.py"]
 

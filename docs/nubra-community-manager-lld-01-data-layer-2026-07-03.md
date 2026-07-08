@@ -1,5 +1,12 @@
 # Nubra Community Manager — LLD-01 · Data Layer
 
+> **STALE AS OF 2026-07-08 — kept for design rationale only.** The build
+> deviated in load-bearing ways (React UI, restructured packages, vendored
+> scraper transport, calibrations, Docker deploy). Current truth:
+> `nubra-community-manager-status-2026-07-05.md` (what is built) +
+> `nubra-beacon-tech-backlog-2026-07-08.md` (what remains). Where this file
+> disagrees with those, those win.
+
 _LLD · 2026-07-03 · source of truth for M0 and the schema side of every milestone._
 _Companions: `…-architecture-2026-06-29.md` (§5 data model) · `…-data-flow-2026-07-03.md` ·
 `…-build-plan-2026-07-03.md` (M0). DB: **`nubra_community`** · PostgreSQL ≥ 15 · `pgvector`._

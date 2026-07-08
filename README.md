@@ -1,30 +1,41 @@
-# Nubra Community Manager
+# Nubra Beacon
 
-Listens to Indian trading communities (X + Reddit), understands what's trending /
-breaking / requested, and recommends compliant actions — heads-ups and roundups for
-the team. Design docs in `docs/` (build plan = master). POC archived in `poc/`.
+Community radar + marketing copilot for Nubra (Indian NSE/BSE + F&O broker).
+Listens to X + Reddit, finds trends / broker issues / feature requests,
+recommends compliant actions and content, delivers hourly heads-ups + daily
+and weekly roundups — humans post, Beacon only recommends.
 
-## Quickstart (local)
+Docs: `docs/nubra-community-manager-status-2026-07-05.md` (what is built) ·
+`docs/nubra-beacon-tech-backlog-2026-07-08.md` (what remains) ·
+`docs/api-reference-2026-07-07.md` (every endpoint, tech + PM registers).
+
+## Local development
 
 ```sh
-docker compose up -d          # pgvector Postgres on :5544 (first time)
+docker compose up -d          # pgvector Postgres on :5544 (postgres only)
 ./cm migrate                  # apply schema (first time)
-./cm run-local                # full pipeline → out/messages/*.md
+./cm run-local                # full pipeline -> out/messages/*.md + DB
+./cm ui                       # dashboard :3000 + read-API :8400 (supervised)
 ```
 
-**Always use `./cm`** (wraps the project venv) — plain `python runner.py` will hit
-missing-library errors because dependencies live in `.venv/`, not system Python.
+**Always use `./cm`** — it wraps the project venv locally (and falls back to
+system python inside containers). Setup from scratch:
+`python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+&& ./.venv/bin/python -m playwright install chromium`. Secrets in `.env`
+(never committed; template `community/config/env.example`).
 
-Setup from scratch: `python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-&& ./.venv/bin/python -m playwright install chromium`. Secrets in `.env` (never committed).
+## Production
 
-Useful:
-```sh
-./cm stage ingest|dedup|enrich|aggregate|score|recommend|roundup   # single stage
-./.venv/bin/python scripts/refresh_local_data.py   # LOCAL ONLY: re-run on existing data as if fresh
-./.venv/bin/python scripts/seed_features.py        # (re)seed assumed-v0 nubra_features
-```
+Dockerized: separate `api` and `webapp` images behind compose profile `app`;
+the pipeline runs via host cron exec'ing into the api container. Full runbook:
+**`deploy/README-prod.md`** (bring-up, data carry-over, cron, backups,
+security). Paste-ready crontab: `deploy/crontab.prod`.
 
-Local-mode notes: delivery writes markdown to `out/messages/` (prod: Slack + email);
-X live fetch is capped at 10 items (config) and flagged in every ops summary; Reddit
-live fetch requires a network that doesn't block reddit.com.
+## Layout
+
+`community/` pipeline stages (`scrape -> clean -> enrich -> aggregate ->
+recommend -> compose -> dispatch`) + `api/ llm/ store/ config/ lib/ reference/
+scheduler/` · `webapp/` Next.js dashboard · `migrations/` numbered SQL ·
+`scripts/` seeds + vendor sync + maintenance · `deploy/` prod kit.
+Vendored code in `community/lib/` is refreshed by `scripts/sync_*.py` —
+never hand-edit it.

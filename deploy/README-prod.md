@@ -5,13 +5,41 @@ orchestrated by docker compose. The pipeline is NOT a daemon — the host
 crontab execs `./cm` inside the running api container on the designed
 cadence. Everything below happens on the prod machine.
 
+## 0 · How the pieces talk (read once — everything else follows)
+
+```
+ team browser ──► webapp :3000 ──(same-origin /api/v1/* rewrite)──► api :8400 ──► postgres :5432
+                     │                                                ▲
+                     └── server-rendered pages fetch api directly ────┘   (compose network,
+                                                                           service-name DNS)
+ host cron ──► docker compose exec api ./cm run-local ──► pipeline stages write postgres
+```
+
+- **Why the dashboard never talks to Postgres:** every number on every page
+  comes through the read-API — one contract, one place to audit, and the same
+  queries feed Slack/email messages, so surfaces can never disagree.
+- **How the API "points at" the dashboard:** it's the reverse — the dashboard
+  points at the API. The browser only ever calls the webapp's own origin
+  (`/api/v1/...`); Next.js transparently proxies those calls to the api
+  container (baked in at image build as `http://api:8400`, resolved by
+  compose's service DNS). No CORS, no exposed cross-origin URLs, and the team
+  only needs to reach port 3000. Port 8400 is exposed for engineers (`/docs`),
+  not required for the dashboard to work.
+- **Why cron instead of a scheduler daemon:** one less always-on process to
+  babysit; cron is inspectable (`crontab -l`), and a wedged run cannot take
+  the API or dashboard down with it — those are separate containers.
+- **Why the pipeline runs INSIDE the api container:** it needs the exact same
+  python environment (Playwright Chromium for Reddit, torch for embeddings) —
+  one image to build, zero environment drift between serving and processing.
+
 ## 1 · Bring-up
 
 ```bash
-git clone https://github.com/jatinarora97/<repo>.git /opt/nubra-beacon
+git clone git@github.com:jatinarora97/nubra-beacon.git /opt/nubra-beacon
 cd /opt/nubra-beacon
 
-# secrets — never committed; template: community/config/env.example
+# secrets — never committed; copy your working .env from the dev Mac,
+# or start from the template: community/config/env.example
 cp community/config/env.example .env
 #   REQUIRED: ANTHROPIC_API_KEY
 #   X:        TWITTERAPI_IO_KEY            (live X collection)
@@ -29,6 +57,31 @@ docker compose exec api python scripts/seed_sources.py
 ```
 
 Dashboard: http://<prod-host>:3000 · read-API: http://<prod-host>:8400/docs
+
+After bring-up, set `delivery.dashboard_url` in
+`community/config/registry.yaml` to `http://<prod-host>:3000` — it's the link
+at the foot of every Slack message.
+
+## 1b · Carrying over the local data (instead of a fresh start)
+
+To go live with the populated dev database (items, enrichment, embeddings,
+history) rather than empty tables, dump on the dev Mac and restore on prod
+BEFORE the first cron run:
+
+```bash
+# dev Mac
+docker exec nubra-community-postgres pg_dump -U community nubra_community | gzip > beacon-dev.sql.gz
+scp beacon-dev.sql.gz produser@prodhost:/opt/nubra-beacon/
+
+# prod (fresh stack up, BEFORE migrate/seeds — the dump carries schema + data)
+gunzip -c beacon-dev.sql.gz | docker compose exec -T postgres psql -U community -d nubra_community
+docker compose exec api ./cm migrate     # no-op if the dump is current; safe either way
+```
+
+Skip the seed scripts in that case — the dump already contains sources,
+features, and all history. This is also the pattern for the "give it the
+populated postgres and test" workflow: restore any dump, then exercise
+existing/new functionality against real data.
 
 ## 2 · Cron (the heartbeat)
 

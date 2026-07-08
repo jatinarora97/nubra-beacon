@@ -1,5 +1,12 @@
 # Nubra Community Manager — End-to-End Data Flow
 
+> **STALE AS OF 2026-07-08 — kept for design rationale only.** The build
+> deviated in load-bearing ways (React UI, restructured packages, vendored
+> scraper transport, calibrations, Docker deploy). Current truth:
+> `nubra-community-manager-status-2026-07-05.md` (what is built) +
+> `nubra-beacon-tech-backlog-2026-07-08.md` (what remains). Where this file
+> disagrees with those, those win.
+
 _2026-07-03 · what happens at each stage and which table it touches._
 _DB: **`nubra_community`** (own database on Nubra's Postgres server · migrations `0001+`)._
 
