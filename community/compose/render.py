@@ -218,3 +218,99 @@ def build_roundup(period: str = "daily") -> dict | None:
     md = _env.get_template(template).render(
         date=now_ist.strftime("%a %d %b %Y"), payload=row["payload"])
     return {"markdown": md, "date": row["date"], "period": period}
+
+
+def build_overview() -> str:
+    """Slack-ready text of the Overview page (user request 2026-07-08 item 2).
+
+    Mirrors read_api.overview()'s query semantics (same tables, same filters,
+    same 'today' = UTC date) WITHOUT importing the FastAPI module, so the
+    message always matches the dashboard. Slack mrkdwn (*bold*), emoji-free,
+    hard-capped ~1,500 chars."""
+    today = datetime.now(timezone.utc).date()
+
+    def _n(sql: str, params: tuple = ()) -> int:
+        return (db.one(sql, params) or {}).get("n", 0)
+
+    items_today = _n("SELECT count(*) AS n FROM social_items WHERE ingested_at::date = %s", (today,))
+    items_hour = _n("SELECT count(*) AS n FROM social_items WHERE ingested_at > now() - interval '1 hour'")
+    analyzed = _n("SELECT count(*) AS n FROM item_enrichment WHERE enriched_at::date = %s", (today,))
+    actions = _n("SELECT count(*) AS n FROM opportunities WHERE status='suggested' AND priority >= 40")
+    actions_hour = _n("SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
+                      "AND updated_at > now() - interval '1 hour'")
+    high_prio = _n("SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
+                   "AND priority >= 60 AND updated_at::date = %s", (today,))
+    mentions = _n("SELECT count(*) AS n FROM conversations WHERE is_nubra_watch "
+                  "AND last_seen > now() - interval '24 hours'")
+    drafts = _n("SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
+                "AND brand_reply IS NOT NULL")
+
+    llm = db.one(
+        "SELECT round(sum(cost_usd)::numeric, 4) AS cost, count(*) AS calls FROM llm_usage "
+        "WHERE run_id = (SELECT run_id FROM llm_usage ORDER BY ts DESC LIMIT 1)")
+    llm_line = (f" · AI cost last run ${llm['cost']} "
+                f"({llm['calls']} call{'s' if llm['calls'] != 1 else ''})"
+                if llm and llm["cost"] is not None else "")
+
+    headline = ((db.one("SELECT payload FROM roundups WHERE period='daily' "
+                        "ORDER BY date DESC LIMIT 1") or {}).get("payload") or {}).get("headline")
+
+    labels = {r["topic_key"]: r["label"] for r in
+              db.query("SELECT topic_key, label FROM topic_taxonomy")}
+
+    def _why(insight: dict) -> str:
+        # compact clone of read_api._why_engage (kind base + interactions)
+        kind = insight.get("kind", "topic")
+        topic = labels.get(insight.get("topic_key") or "",
+                           insight.get("topic_key") or "the topic")
+        phrase = (insight.get("feature_phrase") or "")[:60]
+        base = {
+            "broker_issue": f"Competitor complaint about {insight.get('broker', 'a broker')}",
+            "feature_request": f"Feature ask we can speak to — {phrase or topic}",
+            "question": f"Question in our wheelhouse — {topic}",
+            "comparison": f"Broker comparison in play — {topic}",
+        }.get(kind, f"Active discussion on {topic}")
+        inter = insight.get("interactions")
+        return base + (f" ({inter} interactions)" if inter else "")
+
+    top = db.query(
+        "SELECT o.priority, o.matched_insight AS insight FROM opportunities o "
+        "WHERE o.status='suggested' ORDER BY o.priority DESC LIMIT 3")
+    action_lines = [f"{i + 1}. {_why(r['insight'] or {})}" for i, r in enumerate(top)]
+
+    movers_day = (db.one("SELECT max(day) AS d FROM topic_daily") or {}).get("d") or today
+    movers = db.query(
+        "SELECT t.topic_key, x.label, t.count FROM topic_daily t "
+        "LEFT JOIN topic_taxonomy x ON x.topic_key = t.topic_key "
+        "WHERE t.day = %s AND t.topic_key NOT LIKE 'other:%%' "
+        "ORDER BY t.velocity_z DESC NULLS LAST, t.count DESC LIMIT 3", (movers_day,))
+    movers_line = " · ".join(
+        f"{(m['label'] or m['topic_key']).replace('_', ' ')} ({m['count']})" for m in movers)
+
+    fresh = db.query("SELECT source, max(ingested_at) AS last FROM social_items GROUP BY source")
+    fresh_line = " · ".join(
+        f"{'X' if f['source'] == 'twitter' else f['source']} {f['last'].astimezone(IST):%d %b %H:%M}"
+        for f in fresh if f["last"])
+
+    now_ist = datetime.now(IST)
+    parts = [
+        f"*Nubra Beacon — overview* · {now_ist:%a %d %b %Y, %H:%M} IST",
+        f"*Today:* {items_today} items collected (+{items_hour} last hour) · "
+        f"{analyzed} analyzed · {actions} actions on table ({actions_hour} new last hour) · "
+        f"{high_prio} new high-priority · {mentions} Nubra mentions 24h · "
+        f"{drafts} drafts ready{llm_line}",
+    ]
+    if headline:
+        parts.append(f"*Headline:* {headline}")
+    if action_lines:
+        parts.append("*Top actions:*\n" + "\n".join(action_lines))
+    if movers_line:
+        parts.append(f"*Moving topics:* {movers_line}")
+    if fresh_line:
+        parts.append(f"*Freshness:* {fresh_line}")
+    dash = settings.registry["delivery"].get("dashboard_url") or ""
+    if dash:
+        parts.append(f"Dashboard: {dash}")
+
+    text = "\n\n".join(parts)
+    return text[:1497] + "…" if len(text) > 1500 else text

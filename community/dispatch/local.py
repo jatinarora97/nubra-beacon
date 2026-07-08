@@ -17,7 +17,7 @@ from community.compose import render
 from community.config.settings import settings
 from community.dispatch import email as email_ch
 from community.dispatch import slack as slack_ch
-from community.store import db
+from community.store import db, repositories as repo
 
 IST = timezone(timedelta(hours=5, minutes=30))
 SEND_WINDOW = (8, 20)  # heads-up channel window, IST hours [start, end)
@@ -111,4 +111,34 @@ def run(all_stats: dict | None = None) -> dict:
             if status == "sent":
                 _record_roundup_delivery(period, r["date"], name, "sent")
 
+    # ── overview message (Slack; cadence via delivery.overview) ──────────
+    try:
+        channels.update(_dispatch_overview(datetime.now(IST), written))
+    except Exception as e:  # noqa: BLE001 — overview must never break dispatch
+        channels["overview"] = f"error: {type(e).__name__}: {str(e)[:80]}"
+
     return {"written": written, "channels": channels}
+
+
+def _dispatch_overview(now_ist: datetime, written: list[str]) -> dict:
+    """Compose + archive + Slack-send the overview snapshot.
+
+    daily (default): once per IST day, guarded by a pipeline_state row
+    (stage='dispatch', source='overview') — DB-backed so it survives out/
+    cleanup and container restarts, and reuses existing state machinery
+    instead of a new table. The watermark advances on COMPOSE (archive), not
+    on successful send: one deterministic artifact per day; if Slack creds
+    land mid-day, sending starts with the next day's message."""
+    cadence = settings.registry["delivery"].get("overview", "daily")
+    if cadence == "off":
+        return {"overview": "off (delivery.overview)"}
+    if cadence == "daily":
+        state = repo.get_state("dispatch", "overview")
+        wm = (state or {}).get("watermark")
+        if wm and wm.astimezone(IST).date() == now_ist.date():
+            return {"overview": "already sent today"}
+    text = render.build_overview()
+    written.append(_archive(text, f"{now_ist:%Y-%m-%d-%H%M}-overview.md"))
+    status = slack_ch.send(text, f"Beacon overview · {now_ist:%d %b %Y}")
+    repo.advance_state("dispatch", "overview", watermark=datetime.now(timezone.utc))
+    return {"overview_slack": status}
