@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import Body, FastAPI, Header, HTTPException, Query
+from fastapi import Response as FastResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -45,6 +46,51 @@ def _who(email: str | None) -> str:
 
 def _lim(limit: int) -> int:
     return max(1, min(limit, 100))
+
+
+# ── shared time-window contract (dashboard date filter, 2026-07-08) ─────────
+# Endpoints accept EITHER ?window=1h|24h|7d|30d OR ?from_ts=&to_ts= (ISO-8601;
+# naive = UTC). window wins when both are sent. Custom spans clamp to >= 1h
+# and cap at 180d. No params -> None -> the endpoint keeps its default
+# (pre-existing) behavior, byte-compatible for existing callers.
+
+_WINDOW_SPANS = {"1h": timedelta(hours=1), "24h": timedelta(hours=24),
+                 "1d": timedelta(hours=24),  # tolerated alias
+                 "7d": timedelta(days=7), "30d": timedelta(days=30)}
+
+
+def _window(from_ts: str | None, to_ts: str | None,
+            window: str | None) -> tuple[datetime, datetime] | None:
+    if window:
+        span = _WINDOW_SPANS.get(window)
+        if span is None:
+            raise HTTPException(400, "window must be one of 1h, 24h, 7d, 30d")
+        to_dt = datetime.now(timezone.utc)
+        return to_dt - span, to_dt
+    if not (from_ts or to_ts):
+        return None
+    if not (from_ts and to_ts):
+        raise HTTPException(400, "from_ts and to_ts must be given together")
+
+    def _parse(s: str, name: str) -> datetime:
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            raise HTTPException(400, f"{name} is not an ISO-8601 datetime")
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    f, t = _parse(from_ts, "from_ts"), _parse(to_ts, "to_ts")
+    if t <= f:
+        raise HTTPException(400, "to_ts must be after from_ts")
+    if t - f < timedelta(hours=1):   # minimum granularity: 1 hour
+        f = t - timedelta(hours=1)
+    if t - f > timedelta(days=180):  # retention horizon
+        f = t - timedelta(days=180)
+    return f, t
+
+
+def _window_echo(w: tuple[datetime, datetime]) -> dict:
+    return {"from": w[0].isoformat(), "to": w[1].isoformat()}
 
 
 # ── shared lookups (tiny tables — fetched per request batch, not per row) ────
@@ -189,8 +235,10 @@ def _freshness() -> dict:
 # ── overview (landing page) ──────────────────────────────────────────────────
 
 @app.get(API + "/overview")
-def overview():
+def overview(window: str | None = None,
+             from_ts: str | None = None, to_ts: str | None = None):
     today = datetime.now(timezone.utc).date()
+    w = _window(from_ts, to_ts, window)
     labels, caps = _taxonomy_labels(), _capabilities()
 
     headline_row = db.one(
@@ -200,23 +248,47 @@ def overview():
     def _n(sql: str, params: tuple = ()) -> int:
         return (db.one(sql, params) or {}).get("n", 0)
 
+    if w is None:
+        flow_kpis = {
+            "items_today": _n(
+                "SELECT count(*) AS n FROM social_items WHERE ingested_at::date = %s", (today,)),
+            "analyzed_today": _n(
+                "SELECT count(*) AS n FROM item_enrichment WHERE enriched_at::date = %s", (today,)),
+            "new_high_priority_today": _n(
+                "SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
+                "AND priority >= 60 AND updated_at::date = %s", (today,)),
+            "nubra_mentions_24h": _n(
+                "SELECT count(*) AS n FROM conversations WHERE is_nubra_watch "
+                "AND last_seen > now() - interval '24 hours'"),
+        }
+    else:
+        # same kpi keys, window semantics (flow within [from, to])
+        flow_kpis = {
+            "items_today": _n(
+                "SELECT count(*) AS n FROM social_items "
+                "WHERE ingested_at >= %s AND ingested_at < %s", w),
+            "analyzed_today": _n(
+                "SELECT count(*) AS n FROM item_enrichment "
+                "WHERE enriched_at >= %s AND enriched_at < %s", w),
+            "new_high_priority_today": _n(
+                "SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
+                "AND priority >= 60 AND updated_at >= %s AND updated_at < %s", w),
+            "nubra_mentions_24h": _n(
+                "SELECT count(*) AS n FROM social_items si "
+                "LEFT JOIN item_enrichment e ON e.item_id = si.item_id "
+                "WHERE si.duplicate_of IS NULL AND COALESCE(e.is_noise, false) = false "
+                "AND si.text ~* '(?<![a-z])nubra(?![a-z])' "
+                "AND si.created_at >= %s AND si.created_at < %s", w),
+        }
+
     kpis = {
-        "items_today": _n(
-            "SELECT count(*) AS n FROM social_items WHERE ingested_at::date = %s", (today,)),
-        "analyzed_today": _n(
-            "SELECT count(*) AS n FROM item_enrichment WHERE enriched_at::date = %s", (today,)),
+        **flow_kpis,
+        # inventory (current-open) + fixed last-hour deltas — never windowed
         "actions_on_table": _n(
             "SELECT count(*) AS n FROM opportunities WHERE status='suggested' AND priority >= 40"),
-        "new_high_priority_today": _n(
-            "SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
-            "AND priority >= 60 AND updated_at::date = %s", (today,)),
-        "nubra_mentions_24h": _n(
-            "SELECT count(*) AS n FROM conversations WHERE is_nubra_watch "
-            "AND last_seen > now() - interval '24 hours'"),
         "drafts_ready": _n(
             "SELECT count(*) AS n FROM opportunities WHERE status='suggested' "
             "AND brand_reply IS NOT NULL"),
-        # last-hour deltas — the hourly cadence the tiles should surface
         "items_last_hour": _n(
             "SELECT count(*) AS n FROM social_items "
             "WHERE ingested_at > now() - interval '1 hour'"),
@@ -239,12 +311,23 @@ def overview():
                   "status", "dismissed_reason", "when_action", "when_window", "when_why"):
             a.pop(k, None)
 
-    movers_day = (db.one("SELECT max(day) AS d FROM topic_daily") or {}).get("d") or today
-    top_movers = db.query(
-        "SELECT t.topic_key, x.label, t.count FROM topic_daily t "
-        "LEFT JOIN topic_taxonomy x ON x.topic_key = t.topic_key "
-        "WHERE t.day = %s AND t.topic_key NOT LIKE 'other:%%' "
-        "ORDER BY t.velocity_z DESC NULLS LAST, t.count DESC LIMIT 3", (movers_day,))
+    if w is None:
+        movers_day = (db.one("SELECT max(day) AS d FROM topic_daily") or {}).get("d") or today
+        top_movers = db.query(
+            "SELECT t.topic_key, x.label, t.count FROM topic_daily t "
+            "LEFT JOIN topic_taxonomy x ON x.topic_key = t.topic_key "
+            "WHERE t.day = %s AND t.topic_key NOT LIKE 'other:%%' "
+            "ORDER BY t.velocity_z DESC NULLS LAST, t.count DESC LIMIT 3", (movers_day,))
+    else:
+        top_movers = db.query(
+            "SELECT e.topic_key, max(x.label) AS label, count(*)::int AS count "
+            "FROM item_enrichment e "
+            "JOIN social_items si ON si.item_id = e.item_id "
+            "LEFT JOIN topic_taxonomy x ON x.topic_key = e.topic_key "
+            "WHERE NOT e.is_noise AND si.duplicate_of IS NULL "
+            "AND e.topic_key NOT LIKE 'other:%%' "
+            "AND si.created_at >= %s AND si.created_at < %s "
+            "GROUP BY e.topic_key ORDER BY count(*) DESC LIMIT 3", w)
 
     llm_last = db.one(
         """
@@ -256,9 +339,12 @@ def overview():
         GROUP BY run_id
         """)
 
-    return {"date": str(today), "headline": headline, "kpis": kpis,
-            "top_actions": top_actions, "top_movers": top_movers,
-            "freshness": _freshness(), "llm_last_run": llm_last}
+    out = {"date": str(today), "headline": headline, "kpis": kpis,
+           "top_actions": top_actions, "top_movers": top_movers,
+           "freshness": _freshness(), "llm_last_run": llm_last}
+    if w is not None:
+        out["window"] = _window_echo(w)
+    return out
 
 
 # ── llm usage (N6 — cost surfacing; tracing writes via community/llm/trace) ──
@@ -337,10 +423,19 @@ def llm_usage_last_run():
 # ── nubra mentions (the positive side; complaints live in /issues) ──────────
 
 @app.get(API + "/nubra-mentions")
-def nubra_mentions(days: int = 7, limit: int = 30):
+def nubra_mentions(days: int = 7, limit: int = 30,
+                   window: str | None = None,
+                   from_ts: str | None = None, to_ts: str | None = None):
     """People talking about Nubra: positive/neutral quotes + KPIs. Negative
-    items are counted (visibility) but rendered on the Broker-issues page."""
+    items are counted (visibility) but rendered on the Broker-issues page.
+    window/from_ts+to_ts win over the legacy `days` param."""
+    w = _window(from_ts, to_ts, window)
     days = max(1, min(days, 90))
+    if w is None:
+        now = datetime.now(timezone.utc)
+        w_from, w_to = now - timedelta(days=days), now
+    else:
+        w_from, w_to = w
     base = """
         FROM social_items si
         JOIN authors a ON a.author_id = si.author_id
@@ -350,23 +445,24 @@ def nubra_mentions(days: int = 7, limit: int = 30):
     """
     kpi = db.one(f"""
         SELECT count(*) FILTER (WHERE si.created_at > now() - interval '24 hours') AS h24,
-               count(*) FILTER (WHERE si.created_at > now() - interval '%s days') AS win,
-               count(*) FILTER (WHERE si.created_at > now() - interval '%s days'
+               count(*) FILTER (WHERE si.created_at >= %s AND si.created_at < %s) AS win,
+               count(*) FILTER (WHERE si.created_at >= %s AND si.created_at < %s
                                 AND COALESCE(e.sentiment, 0) >= 0) AS win_pos
-        {base}""" % (days, days)) or {}
+        {base}""", (w_from, w_to, w_from, w_to)) or {}
     positives = db.query(f"""
         SELECT si.source, si.external_id, left(si.text, 300) AS text, si.url,
                si.created_at, a.handle AS author, e.sentiment, e.intent, e.topic_key
         {base}
           AND COALESCE(e.sentiment, 0) >= 0
-          AND si.created_at > now() - interval '{days} days'
+          AND si.created_at >= %s AND si.created_at < %s
         ORDER BY e.sentiment DESC NULLS LAST, si.created_at DESC LIMIT %s
-        """, (_lim(limit),))
+        """, (w_from, w_to, _lim(limit)))
     complaints = db.one(
         "SELECT COALESCE(sum(count), 0) AS n FROM issue_rollup "
-        "WHERE broker = 'nubra' AND day > current_date - %s", (days,)) or {}
-    return {
-        "window_days": days,
+        "WHERE broker = 'nubra' AND day BETWEEN %s AND %s",
+        (w_from.date(), w_to.date())) or {}
+    out = {
+        "window_days": max(1, round((w_to - w_from).total_seconds() / 86400)),
         "kpis": {
             "mentions_24h": kpi.get("h24", 0),
             "mentions_window": kpi.get("win", 0),
@@ -376,58 +472,186 @@ def nubra_mentions(days: int = 7, limit: int = 30):
         },
         "positives": positives,
     }
+    if w is not None:
+        out["window"] = _window_echo(w)
+    return out
 
 
 # ── core reads ───────────────────────────────────────────────────────────────
 
 @app.get(API + "/trends")
-def trends(date_: date | None = Query(None, alias="date"),
-           window: Literal["1d", "7d"] = "7d", limit: int = 20):
-    end = date_ or datetime.now(timezone.utc).date()
-    start = end - timedelta(days=6 if window == "7d" else 0)
-    return db.query(
+def trends(response: FastResponse,
+           date_: date | None = Query(None, alias="date"),
+           window: str | None = None,
+           from_ts: str | None = None, to_ts: str | None = None,
+           limit: int = 20):
+    w = _window(from_ts, to_ts, window)
+    if w is None:
+        # legacy path (no window params): topic_daily rollups, 7-day span
+        end = date_ or datetime.now(timezone.utc).date()
+        start = end - timedelta(days=6)
+        return db.query(
+            """
+            SELECT t.topic_key, max(x.label) AS label, sum(t.count)::int AS count,
+                   max(t.velocity_z) AS velocity_z, max(t.spread)::int AS spread,
+                   sum(t.engagement_sum)::bigint AS engagement_sum
+            FROM topic_daily t LEFT JOIN topic_taxonomy x ON x.topic_key = t.topic_key
+            WHERE t.day BETWEEN %s AND %s AND t.topic_key NOT LIKE 'other:%%'
+            GROUP BY t.topic_key
+            ORDER BY max(t.velocity_z) DESC NULLS LAST, sum(t.count) DESC LIMIT %s
+            """, (start, end, _lim(limit)))
+
+    # windowed path: live from enrichment (any span down to 1 hour)
+    response.headers["X-Window-From"] = w[0].isoformat()
+    response.headers["X-Window-To"] = w[1].isoformat()
+    rows = db.query(
         """
-        SELECT t.topic_key, max(x.label) AS label, sum(t.count)::int AS count,
-               max(t.velocity_z) AS velocity_z, max(t.spread)::int AS spread,
-               sum(t.engagement_sum)::bigint AS engagement_sum
-        FROM topic_daily t LEFT JOIN topic_taxonomy x ON x.topic_key = t.topic_key
-        WHERE t.day BETWEEN %s AND %s AND t.topic_key NOT LIKE 'other:%%'
-        GROUP BY t.topic_key
-        ORDER BY max(t.velocity_z) DESC NULLS LAST, sum(t.count) DESC LIMIT %s
-        """, (start, end, _lim(limit)))
+        SELECT e.topic_key, max(x.label) AS label, count(*)::int AS count,
+               count(DISTINCT si.source)::int AS spread,
+               COALESCE(sum((si.engagement->>'score')::float), 0)::bigint AS engagement_sum
+        FROM item_enrichment e
+        JOIN social_items si ON si.item_id = e.item_id
+        LEFT JOIN topic_taxonomy x ON x.topic_key = e.topic_key
+        WHERE NOT e.is_noise AND si.duplicate_of IS NULL
+          AND e.topic_key NOT LIKE 'other:%%'
+          AND si.created_at >= %s AND si.created_at < %s
+        GROUP BY e.topic_key
+        ORDER BY count(*) DESC, engagement_sum DESC LIMIT %s
+        """, (w[0], w[1], _lim(limit)))
+    if (w[1] - w[0]) >= timedelta(days=2) and rows:
+        vz = {r["topic_key"]: r["v"] for r in db.query(
+            "SELECT topic_key, max(velocity_z) AS v FROM topic_daily "
+            "WHERE day BETWEEN %s AND %s AND topic_key = ANY(%s) GROUP BY topic_key",
+            (w[0].date(), w[1].date(), [r["topic_key"] for r in rows]))}
+    else:
+        vz = {}
+    for r in rows:
+        r["velocity_z"] = vz.get(r["topic_key"])
+    return rows
 
 
 @app.get(API + "/issues")
 def issues(broker: str | None = None,
            from_: date | None = Query(None, alias="from"),
-           to: date | None = Query(None, alias="to")):
-    end = to or datetime.now(timezone.utc).date()
-    start = from_ or end - timedelta(days=6)
-    rows = db.query(
-        """
-        SELECT broker, issue_key, sum(count)::int AS count,
-               jsonb_agg(jsonb_build_object('day', day, 'count', count) ORDER BY day) AS day_counts,
-               max(severity) AS severity, avg(sentiment_avg) AS sentiment_avg,
-               jsonb_agg(to_jsonb(sample_item_ids)) AS samples_nested
-        FROM issue_rollup WHERE day BETWEEN %s AND %s
-        GROUP BY broker, issue_key
-        ORDER BY sum(count) DESC
-        """, (start, end))
-    for r in rows:  # flatten + dedup the per-day sample arrays, resolve quotes
-        nested = r.pop("samples_nested") or []
-        ids = sorted({i for arr in nested for i in (arr or [])})
-        r["sample_item_ids"] = ids
-        r["samples"] = _sample_items(ids, 5)
+           to: date | None = Query(None, alias="to"),
+           window: str | None = None,
+           from_ts: str | None = None, to_ts: str | None = None):
+    from community.reference.taxonomy import BROKER_GAZETTEER
+    w = _window(from_ts, to_ts, window)
+
+    if w is not None:
+        rows = _issues_live(w)
+    else:
+        end = to or datetime.now(timezone.utc).date()
+        start = from_ or end - timedelta(days=6)
+        rows = db.query(
+            """
+            SELECT broker, issue_key, sum(count)::int AS count,
+                   jsonb_agg(jsonb_build_object('day', day, 'count', count) ORDER BY day) AS day_counts,
+                   max(severity) AS severity, avg(sentiment_avg) AS sentiment_avg,
+                   jsonb_agg(to_jsonb(sample_item_ids)) AS samples_nested
+            FROM issue_rollup WHERE day BETWEEN %s AND %s
+            GROUP BY broker, issue_key
+            ORDER BY sum(count) DESC
+            """, (start, end))
+        for r in rows:  # flatten + dedup the per-day sample arrays, resolve quotes
+            nested = r.pop("samples_nested") or []
+            ids = sorted({i for arr in nested for i in (arr or [])})
+            r["sample_item_ids"] = ids
+            r["samples"] = _sample_items(ids, 5)
     if broker:
         rows = [r for r in rows if r["broker"] == broker]
-    # full watched-broker list so the heatmap can show clean rows (0 complaints)
-    from community.reference.taxonomy import BROKER_GAZETTEER
-    return {"segments": rows, "brokers": list(BROKER_GAZETTEER)}
+    out = {"segments": rows, "brokers": list(BROKER_GAZETTEER)}
+    if w is not None:
+        out["window"] = _window_echo(w)
+    return out
+
+
+def _issues_live(w: tuple[datetime, datetime]) -> list[dict]:
+    """Windowed issue segments computed live from enrichment — same severity
+    formula as aggregate/rollups._rollup_issues (log1p(reach) * neg share)."""
+    import math
+    from collections import defaultdict
+
+    items = db.query(
+        """
+        SELECT ie.item_id, ie.sentiment, ie.entities,
+               (si.engagement->>'score')::float AS score,
+               COALESCE((si.engagement->'native'->>'views')::bigint, 0) AS views,
+               a.followers, si.created_at::date AS d
+        FROM item_enrichment ie
+        JOIN social_items si ON si.item_id = ie.item_id
+        JOIN authors a ON a.author_id = si.author_id
+        WHERE NOT ie.is_noise AND ie.intent = 'complaint'
+          AND ie.entities->>'broker' IS NOT NULL
+          AND si.created_at >= %s AND si.created_at < %s
+        """, w)
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in items:
+        ents = r["entities"] or {}
+        groups[(ents["broker"], ents.get("issue_type") or "support")].append(r)
+    rows = []
+    for (brk, issue_key), grp in groups.items():
+        sentiments = [i["sentiment"] for i in grp if i["sentiment"] is not None]
+        neg_share = (sum(1 for s in sentiments if s < -0.3) / len(sentiments)) if sentiments else 0
+        reach = sum(max(i["followers"] or 0, i["views"] or 0) for i in grp)
+        day_counts: dict = {}
+        for i in grp:
+            day_counts[i["d"]] = day_counts.get(i["d"], 0) + 1
+        ids = [i["item_id"] for i in sorted(grp, key=lambda x: -(x["score"] or 0))]
+        rows.append({
+            "broker": brk, "issue_key": issue_key, "count": len(grp),
+            "day_counts": [{"day": str(d), "count": n} for d, n in sorted(day_counts.items())],
+            "severity": math.log1p(reach) * neg_share,
+            "sentiment_avg": sum(sentiments) / len(sentiments) if sentiments else None,
+            "sample_item_ids": ids[:5],
+            "samples": _sample_items(ids[:5], 5),
+        })
+    rows.sort(key=lambda r: -r["count"])
+    return rows
+
+
+_NATIVE_INTERACTIONS_SQL = """(
+      COALESCE((si.engagement->'native'->>'likes')::bigint, 0)
+    + COALESCE((si.engagement->'native'->>'upvotes')::bigint, 0)
+    + COALESCE((si.engagement->'native'->>'replies')::bigint, 0)
+    + COALESCE((si.engagement->'native'->>'comments')::bigint, 0)
+    + COALESCE((si.engagement->'native'->>'retweets')::bigint, 0)
+    + COALESCE((si.engagement->'native'->>'quotes')::bigint, 0))"""
 
 
 @app.get(API + "/features")
-def features(from_: date | None = Query(None, alias="from"),
-             to: date | None = Query(None, alias="to"), min_days: int = 1):
+def features(response: FastResponse,
+             from_: date | None = Query(None, alias="from"),
+             to: date | None = Query(None, alias="to"), min_days: int = 1,
+             window: str | None = None,
+             from_ts: str | None = None, to_ts: str | None = None):
+    w = _window(from_ts, to_ts, window)
+    if w is not None:
+        # windowed path: live from the exactly-once item->key map
+        response.headers["X-Window-From"] = w[0].isoformat()
+        response.headers["X-Window-To"] = w[1].isoformat()
+        rows = db.query(f"""
+            SELECT m.feature_key, max(fk.canonical_label) AS label,
+                   count(*)::int AS count,
+                   count(DISTINCT m.day)::int AS days_requested,
+                   COALESCE(sum({_NATIVE_INTERACTIONS_SQL}), 0)::bigint AS interactions,
+                   array_agg(m.item_id) AS item_ids,
+                   array_agg(DISTINCT e.entities->>'broker')
+                     FILTER (WHERE e.entities->>'broker' IS NOT NULL) AS brokers
+            FROM feature_item_map m
+            JOIN social_items si ON si.item_id = m.item_id
+            JOIN feature_keys fk ON fk.feature_key = m.feature_key
+            LEFT JOIN item_enrichment e ON e.item_id = m.item_id
+            WHERE si.created_at >= %s AND si.created_at < %s
+            GROUP BY m.feature_key
+            ORDER BY count(*) DESC, interactions DESC
+            """, w)
+        for r in rows:
+            r["brokers_mentioned"] = sorted(r.pop("brokers") or [])
+            r["samples"] = _sample_items(r.pop("item_ids") or [], 3)
+        return rows
+
     end = to or datetime.now(timezone.utc).date()
     start = from_ or end - timedelta(days=6)
     rows = db.query(
@@ -506,11 +730,21 @@ def voices(limit: int = 20, min_score: float = 0):
 
 
 @app.get(API + "/opportunities")
-def opportunities(date_: date | None = Query(None, alias="date"),
-                  status: str | None = None, min_priority: int = 0, limit: int = 50):
+def opportunities(response: FastResponse,
+                  date_: date | None = Query(None, alias="date"),
+                  status: str | None = None, min_priority: int = 0,
+                  window: str | None = None,
+                  from_ts: str | None = None, to_ts: str | None = None,
+                  limit: int = 50):
     labels, caps = _taxonomy_labels(), _capabilities()
+    w = _window(from_ts, to_ts, window)
     q = _OPP_SELECT + " WHERE o.priority >= %(minp)s"
     params: dict = {"minp": min_priority, "limit": _lim(limit)}
+    if w is not None:
+        response.headers["X-Window-From"] = w[0].isoformat()
+        response.headers["X-Window-To"] = w[1].isoformat()
+        q += " AND o.updated_at >= %(w_from)s AND o.updated_at < %(w_to)s"
+        params.update({"w_from": w[0], "w_to": w[1]})
     if date_:
         q += " AND o.day = %(day)s"
         params["day"] = date_
@@ -663,7 +897,8 @@ def _week_stats(window: dict) -> dict:
 
 def _item_filters(topic: str | None, broker: str | None, intent: str | None,
                   audience: str | None, q: str | None, min_engagement: float,
-                  source: str | None) -> tuple[str, dict]:
+                  source: str | None,
+                  w: tuple[datetime, datetime] | None = None) -> tuple[str, dict]:
     """Shared FROM/WHERE for /items and /items/export — one filter semantic."""
     sql = """
         FROM social_items si
@@ -673,6 +908,9 @@ def _item_filters(topic: str | None, broker: str | None, intent: str | None,
           AND (si.engagement->>'score')::float >= %(mine)s
     """
     params: dict = {"mine": min_engagement}
+    if w is not None:
+        sql += " AND si.created_at >= %(w_from)s AND si.created_at < %(w_to)s"
+        params.update({"w_from": w[0], "w_to": w[1]})
     for name, val, clause in (
         ("topic", topic, " AND e.topic_key = %(topic)s"),
         ("intent", intent, " AND e.intent = %(intent)s"),
@@ -702,8 +940,11 @@ def items(topic: str | None = None, broker: str | None = None,
           q: str | None = None, min_engagement: float = 0,
           source: str | None = None,
           sort: Literal["engagement", "recent"] = "engagement",
+          window: str | None = None,
+          from_ts: str | None = None, to_ts: str | None = None,
           limit: int = 20, offset: int = 0):
-    body, params = _item_filters(topic, broker, intent, audience, q, min_engagement, source)
+    body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
+                                 source, _window(from_ts, to_ts, window))
     params.update({"limit": _lim(limit), "offset": max(offset, 0)})
     sql = """
         SELECT si.source, si.external_id, si.thread_id, left(si.text, 300) AS text,
@@ -729,6 +970,8 @@ def items_export(format: Literal["csv", "xlsx"] = "csv",
                  q: str | None = None, min_engagement: float = 0,
                  source: str | None = None,
                  sort: Literal["engagement", "recent"] = "engagement",
+                 window: str | None = None,
+                 from_ts: str | None = None, to_ts: str | None = None,
                  limit: int = 2000):
     """Same filters as /items, but full text and spreadsheet-shaped rows."""
     import csv
@@ -739,7 +982,8 @@ def items_export(format: Literal["csv", "xlsx"] = "csv",
 
     from fastapi.responses import Response
 
-    body, params = _item_filters(topic, broker, intent, audience, q, min_engagement, source)
+    body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
+                                 source, _window(from_ts, to_ts, window))
     params["limit"] = max(1, min(limit, 10000))
     rows = db.query("""
         SELECT si.source, si.external_id, si.thread_id, si.text, si.url,
@@ -975,6 +1219,67 @@ def add_source(payload: dict = Body(...),
         (kind, value, payload.get("category") or "custom", payload.get("note"),
          db.jsonb(config)))
     return row
+
+
+@app.get(API + "/sources/export")
+def sources_export(format: Literal["csv", "xlsx"] = "csv"):
+    """All watch_sources rows, spreadsheet-shaped (mirrors /items/export)."""
+    import csv
+    import io
+    import json as _json
+    import re as _re
+    from zoneinfo import ZoneInfo
+
+    from fastapi.responses import Response
+
+    rows = db.query("SELECT kind, value, category, active, added_by, note, config, "
+                    "created_at FROM watch_sources ORDER BY kind, active DESC, value")
+    ist = ZoneInfo("Asia/Kolkata")
+    ctrl = _re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+    def _cell(v, guard_formula: bool = False):
+        if v is None:
+            return ""
+        s = ctrl.sub(" ", str(v))
+        if guard_formula and s[:1] in "=+-@":
+            s = "'" + s
+        return s
+
+    cols = ["kind", "value", "category", "active", "added_by", "note", "config",
+            "created_at_ist"]
+    flat = [[r["kind"], _cell(r["value"], True), r["category"] or "",
+             "yes" if r["active"] else "no", r["added_by"], _cell(r["note"], True),
+             _json.dumps(r["config"]) if r["config"] else "{}",
+             r["created_at"].astimezone(ist).strftime("%Y-%m-%d %H:%M")
+             if r["created_at"] else ""] for r in rows]
+
+    stamp = datetime.now(ist).strftime("%Y%m%d-%H%M")
+    if format == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(cols)
+        w.writerows(flat)
+        return Response(
+            buf.getvalue().encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition":
+                     f'attachment; filename="beacon-sources-{stamp}.csv"'})
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "sources"
+    ws.append(cols)
+    for row in flat:
+        ws.append(row)
+    ws.freeze_panes = "A2"
+    out = io.BytesIO()
+    wb.save(out)
+    return Response(
+        out.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f'attachment; filename="beacon-sources-{stamp}.xlsx"'})
 
 
 @app.post(API + "/sources/{source_id}/toggle")

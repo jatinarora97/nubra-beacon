@@ -1,10 +1,17 @@
 import { get } from "@/lib/api";
 import type { Trend } from "@/lib/types";
 import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
+import { TimeFilter } from "@/components/time-filter";
+import { pickWindow, windowLabel, windowQuery } from "@/lib/window";
 import { TopicSuggestions } from "./topic-suggestions";
 
-export default async function TrendsPage() {
-  const rows = await get<Trend[]>("/trends?limit=20", []);
+export default async function TrendsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const w = pickWindow(await searchParams);
+  const rows = await get<Trend[]>(`/trends?limit=20&${windowQuery(w)}`, []);
   const sorted = [...rows].sort((a, b) => b.count - a.count);
   const max = sorted[0]?.count ?? 1;
   const anyMomentum = sorted.some((t) => t.velocity_z != null);
@@ -14,13 +21,15 @@ export default async function TrendsPage() {
       <PageHeader
         title="Trending topics"
         accent="bg-trends"
-        blurb="What the community is talking about, ranked by volume. A topic needs at least 3 items to count as a trend — one person is not a trend."
+        blurb="What the community is talking about, ranked by volume within the window you pick below. A topic needs at least 3 items to count as a trend — one person is not a trend."
       />
+
+      <TimeFilter current={w} />
 
       {sorted.length === 0 ? (
         <EmptyState
-          title="Nothing crossed the trending bar yet"
-          body="Trends require at least 3 items on a topic in the window. Check back after the next hourly run."
+          title={`Nothing crossed the trending bar in ${windowLabel(w)}`}
+          body="Trends require at least 3 items on a topic in the window. Widen the window above, or check back after the next hourly run."
         />
       ) : (
         <SectionCard>

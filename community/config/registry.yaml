@@ -42,8 +42,8 @@ sources:
         - IndiaAlgoTrading
     max_posts_per_sub: 10
     comments_per_post: 15
-    refresh_max_threads: 20
-    keyword_max_posts: 10      # old.reddit search results per watched keyword (0 disables; 2026-07-08)   # engagement re-poll of suggested-opportunity root posts per scrape run; 0 disables (B4, 2026-07-07)
+    refresh_max_threads: 20    # engagement re-poll of suggested-opportunity root posts per scrape run; 0 disables (B4, 2026-07-07)
+    keyword_max_posts: 10      # old.reddit search results per watched keyword; 0 disables (2026-07-08)
     sort_types_hourly: [new, hot, rising]   # every hourly scrape; scraper de-dups across sorts
     sort_types_daily_extra: [top]           # 1×/day — old.reddit /top = past 24h (verified 2026-07-05)
     budget:
@@ -66,7 +66,7 @@ delivery:
   headsup_on_empty: ops_summary    # ops_summary | skip
   nubra_watch_mention: ""          # empty = plain post (v1); set to e.g. "@community-support" later
   # channels are config-gated: missing creds -> channel skipped, archive always written
-  overview: daily                  # overview Slack message: daily | hourly | off
+  overview: hourly                 # overview Slack message: daily | hourly | off (hourly per user 2026-07-08)
   dashboard_url: http://localhost:3000          # linked at the bottom of the overview message (set to the prod URL on deploy)
   slack_webhook_env: SLACK_WEBHOOK_URL          # .env key holding the incoming-webhook URL
   gmail_sender_env: GMAIL_SENDER                # .env key: from-address

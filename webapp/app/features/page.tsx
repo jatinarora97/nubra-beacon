@@ -1,9 +1,16 @@
 import { get } from "@/lib/api";
 import type { Feature } from "@/lib/types";
 import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
+import { TimeFilter } from "@/components/time-filter";
+import { pickWindow, windowLabel, windowQuery } from "@/lib/window";
 
-export default async function FeaturesPage() {
-  const rows = await get<Feature[]>("/features", []);
+export default async function FeaturesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const w = pickWindow(await searchParams);
+  const rows = await get<Feature[]>(`/features?${windowQuery(w)}`, []);
   // Mentions first, real interactions as the tiebreak.
   const sorted = [...rows].sort(
     (a, b) => b.count - a.count || (b.interactions ?? 0) - (a.interactions ?? 0),
@@ -17,10 +24,12 @@ export default async function FeaturesPage() {
         blurb="What traders are asking for, across any broker — sorted by mentions, then by the interactions (likes + replies + shares) those mentions draw. Different phrasings of the same ask are merged by meaning, so one theme = one card; even a single mention appears."
       />
 
+      <TimeFilter current={w} />
+
       {sorted.length === 0 ? (
         <EmptyState
-          title="No feature requests in the window"
-          body="Feature asks are extracted from posts where someone is requesting a capability. They appear here as soon as one is picked up."
+          title={`No feature requests in ${windowLabel(w)}`}
+          body="Feature asks are extracted from posts where someone is requesting a capability. Nothing new in this window — widen it above; the pipeline runs hourly."
         />
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">

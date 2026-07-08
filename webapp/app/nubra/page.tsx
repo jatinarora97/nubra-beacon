@@ -2,11 +2,19 @@ import Link from "next/link";
 import { get } from "@/lib/api";
 import type { NubraMentions } from "@/lib/types";
 import { Badge, EmptyState, KpiCard, PageHeader, SectionCard } from "@/components/ui";
+import { TimeFilter } from "@/components/time-filter";
+import { pickWindow, windowLabel, windowQuery } from "@/lib/window";
 
 export const dynamic = "force-dynamic";
 
-export default async function NubraPage() {
-  const data = await get<NubraMentions>("/nubra-mentions", { window_days: 7 });
+export default async function NubraPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const w = pickWindow(await searchParams);
+  const label = windowLabel(w);
+  const data = await get<NubraMentions>(`/nubra-mentions?${windowQuery(w)}`, {});
   const k = data.kpis ?? {};
   const positives = data.positives ?? [];
 
@@ -15,28 +23,30 @@ export default async function NubraPage() {
       <PageHeader
         title="Nubra mentions"
         accent="bg-opps"
-        blurb={`What people say about Nubra — the positive and neutral side: praise, organic recommendations, honest questions. Complaints are tracked with the same machinery as every competitor and appear on the Broker issues page. Window: last ${data.window_days} days.`}
+        blurb="What people say about Nubra — the positive and neutral side: praise, organic recommendations, honest questions. Complaints are tracked with the same machinery as every competitor and appear on the Broker issues page. The filter below controls the window."
       />
 
+      <TimeFilter current={w} resolved={data.window} />
+
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard label="Mentions 24h" value={k.mentions_24h ?? 0} />
-        <KpiCard label={`Mentions ${data.window_days}d`} value={k.mentions_window ?? 0} />
+        <KpiCard label="Mentions" value={k.mentions_window ?? 0} hint={`in ${label}`} />
+        <KpiCard label="Mentions 24h" value={k.mentions_24h ?? 0} hint="fixed reference" />
         <KpiCard
           label="Positive share"
           value={k.positive_share != null ? `${Math.round(k.positive_share * 100)}%` : "–"}
           hint="of window mentions with non-negative sentiment"
         />
         <KpiCard
-          label={`Complaints ${data.window_days}d`}
+          label="Complaints"
           value={k.complaints_window ?? 0}
-          hint="rendered on Broker issues"
+          hint={`in ${label} — on Broker issues`}
         />
       </section>
 
       {positives.length === 0 ? (
         <EmptyState
-          title="No Nubra mentions captured yet"
-          body="Beacon watches for Nubra across everything it collects, on every source. Mentions appear here the moment they are picked up."
+          title={`No Nubra mentions in ${label}`}
+          body="Beacon watches for Nubra across everything it collects, on every source. Nothing in this window — widen it above; mentions appear the moment they are picked up."
         />
       ) : (
         <SectionCard>

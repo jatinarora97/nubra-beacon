@@ -2,6 +2,8 @@ import { get } from "@/lib/api";
 import type { Issue } from "@/lib/types";
 import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 import { Expandable } from "@/components/client";
+import { TimeFilter } from "@/components/time-filter";
+import { pickWindow, windowLabel, windowQuery } from "@/lib/window";
 
 function sevTone(s?: number | null): { label: string; cls: string } {
   if (s == null) return { label: "n/a", cls: "text-muted" };
@@ -10,11 +12,16 @@ function sevTone(s?: number | null): { label: string; cls: string } {
   return { label: "low", cls: "text-muted" };
 }
 
-export default async function IssuesPage() {
-  const data = await get<{ segments: Issue[]; brokers: string[] }>("/issues", {
-    segments: [],
-    brokers: [],
-  });
+export default async function IssuesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const w = pickWindow(await searchParams);
+  const data = await get<{ segments: Issue[]; brokers: string[]; window?: { from?: string; to?: string } }>(
+    `/issues?${windowQuery(w)}`,
+    { segments: [], brokers: [] },
+  );
   const rows = data.segments;
   // Only brokers with complaints in the window; Nubra pinned first when present.
   const brokers = [...new Set(rows.map((r) => r.broker))].sort(
@@ -41,10 +48,12 @@ export default async function IssuesPage() {
         blurb="What traders complain about, per broker — including Nubra, which is watched with the same machinery (its row pins to the top when complaints exist; the positive side lives on Nubra mentions). No minimum bar here — a single high-severity complaint is worth knowing about. Severity blends reach with how negative the sentiment is."
       />
 
+      <TimeFilter current={w} resolved={data.window} />
+
       {rows.length === 0 ? (
         <EmptyState
-          title="No broker complaints in the window"
-          body={`All ${data.brokers.length} watched brokers are clean this window. Complaints are extracted from posts where the intent is a complaint and a broker is explicitly identified.`}
+          title={`No broker complaints in ${windowLabel(w)}`}
+          body={`All ${data.brokers.length} watched brokers are clean in this window — widen it above to look further back. Complaints are extracted from posts where the intent is a complaint and a broker is explicitly identified.`}
         />
       ) : (
         <div className="space-y-5">

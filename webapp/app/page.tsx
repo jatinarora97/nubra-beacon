@@ -2,6 +2,8 @@ import Link from "next/link";
 import { get } from "@/lib/api";
 import type { Overview } from "@/lib/types";
 import { Badge, KpiCard, SectionCard } from "@/components/ui";
+import { TimeFilter } from "@/components/time-filter";
+import { pickWindow, windowLabel, windowQuery } from "@/lib/window";
 
 const NAV_CARDS = [
   {
@@ -47,8 +49,14 @@ function fmtIst(iso?: string | null): string {
   });
 }
 
-export default async function Home() {
-  const ov = await get<Overview>("/overview", {});
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const w = pickWindow(await searchParams);
+  const label = windowLabel(w);
+  const ov = await get<Overview>(`/overview?${windowQuery(w)}`, {});
   const k = ov.kpis ?? {};
   const f = ov.freshness;
   return (
@@ -83,6 +91,8 @@ export default async function Home() {
         ))}
       </section>
 
+      <TimeFilter current={w} resolved={ov.window} />
+
       {f && (
         <section className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-[10px] border border-line bg-surface/50 px-4 py-2.5 text-[12px] text-muted">
           <span className="micro">freshness</span>
@@ -105,23 +115,15 @@ export default async function Home() {
       )}
 
       <section className="grid grid-cols-3 gap-3 lg:grid-cols-7">
-        <KpiCard
-          label="Items today"
-          value={k.items_today ?? "-"}
-          hint={`+${k.items_last_hour ?? 0} in the last hour`}
-        />
-        <KpiCard
-          label="Analyzed"
-          value={k.analyzed_today ?? "-"}
-          hint={`+${k.analyzed_last_hour ?? 0} in the last hour`}
-        />
+        <KpiCard label="Items collected" value={k.items_today ?? "-"} hint={`in ${label}`} />
+        <KpiCard label="Analyzed" value={k.analyzed_today ?? "-"} hint={`in ${label}`} />
         <KpiCard
           label="Actions on table"
           value={k.actions_on_table ?? "-"}
-          hint={`${k.new_actions_last_hour ?? 0} new in the last hour`}
+          hint="open recommendations (all time)"
         />
-        <KpiCard label="New high-priority" value={k.new_high_priority_today ?? "-"} hint="today" />
-        <KpiCard label="Nubra mentions" value={k.nubra_mentions_24h ?? "-"} hint="last 24 hours" />
+        <KpiCard label="New high-priority" value={k.new_high_priority_today ?? "-"} hint={`in ${label}`} />
+        <KpiCard label="Nubra mentions" value={k.nubra_mentions_24h ?? "-"} hint={`in ${label}`} />
         <KpiCard label="Drafts ready" value={k.drafts_ready ?? "-"} hint="compliant, awaiting a human" />
         <KpiCard
           label="AI cost, last run"

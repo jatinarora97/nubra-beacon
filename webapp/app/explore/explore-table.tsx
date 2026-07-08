@@ -5,6 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { get } from "@/lib/api";
 import type { Item } from "@/lib/types";
 import { Badge, EmptyState } from "@/components/ui";
+import { pickWindow, windowQuery } from "@/lib/window";
+
+const PAGE = 50;
 
 const INTENTS = ["", "complaint", "feature_request", "question", "praise",
   "comparison", "how_to", "news_opinion", "spam"];
@@ -16,10 +19,22 @@ function interactions(it: Item): number {
 }
 
 export function ExploreTable() {
-  // ?q= deep-links (e.g. keyword chips on the Sources page) seed the search box
-  const initialQ = useSearchParams().get("q") ?? "";
+  // ?q= deep-links (e.g. keyword chips on the Sources page) seed the search box;
+  // window/from_ts/to_ts come from the TimeFilter above the table.
+  const sp = useSearchParams();
+  const initialQ = sp.get("q") ?? "";
+  const windowQS = windowQuery(
+    pickWindow({
+      window: sp.get("window") ?? undefined,
+      from_ts: sp.get("from_ts") ?? undefined,
+      to_ts: sp.get("to_ts") ?? undefined,
+    }),
+  );
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [source, setSource] = useState("");
   const [intent, setIntent] = useState("");
   const [q, setQ] = useState(initialQ);
@@ -31,36 +46,58 @@ export function ExploreTable() {
     return () => clearTimeout(t);
   }, [qLive]);
 
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    const params = new URLSearchParams({ sort: "engagement", limit: "50" });
+  function pageUrl(off: number): string {
+    const params = new URLSearchParams({
+      sort: "engagement",
+      limit: String(PAGE),
+      offset: String(off),
+    });
     if (source) params.set("source", source);
     if (intent) params.set("intent", intent);
     if (q) params.set("q", q);
-    get<Item[]>(`/items?${params}`, []).then((rows) => {
+    return `/items?${params}&${windowQS}`;
+  }
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setOffset(0);
+    get<Item[]>(pageUrl(0), []).then((rows) => {
       if (alive) {
         setItems(rows);
+        setHasMore(rows.length === PAGE);
         setLoading(false);
       }
     });
     return () => {
       alive = false;
     };
-  }, [source, intent, q]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, intent, q, windowQS]);
+
+  async function loadMore() {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    const next = offset + PAGE;
+    const rows = await get<Item[]>(pageUrl(next), []);
+    setItems((prev) => [...prev, ...rows]);
+    setOffset(next);
+    setHasMore(rows.length === PAGE);
+    setLoadingMore(false);
+  }
 
   const sorted = useMemo(
     () => [...items].sort((a, b) => interactions(b) - interactions(a)),
     [items],
   );
 
-  // Server-side export honouring the active filters (full text, higher row cap).
+  // Server-side export honouring the active filters + window (full text).
   function exportUrl(format: "csv" | "xlsx"): string {
     const params = new URLSearchParams({ sort: "engagement", limit: "2000", format });
     if (source) params.set("source", source);
     if (intent) params.set("intent", intent);
     if (q) params.set("q", q);
-    return `/api/v1/items/export?${params}`;
+    return `/api/v1/items/export?${params}&${windowQS}`;
   }
 
   return (
@@ -114,8 +151,8 @@ export function ExploreTable() {
         <div className="py-16 text-center text-[13px] text-muted">loading…</div>
       ) : sorted.length === 0 ? (
         <EmptyState
-          title="No items match"
-          body="Loosen the filters — or Beacon genuinely hasn't seen matching items in the window."
+          title="No items match in this window"
+          body="Loosen the filters or widen the time window above — or Beacon genuinely hasn't seen matching items yet."
         />
       ) : (
         <div className="overflow-hidden rounded-[10px] border border-line">
@@ -163,6 +200,18 @@ export function ExploreTable() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!loading && hasMore && (
+        <div className="mt-4 text-center">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="rounded-[10px] border border-line bg-surface px-4 py-2 text-[12.5px] font-medium text-muted transition-colors hover:border-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loadingMore ? "Loading…" : `Load ${PAGE} more`}
+          </button>
         </div>
       )}
 

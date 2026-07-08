@@ -123,22 +123,29 @@ def run(all_stats: dict | None = None) -> dict:
 def _dispatch_overview(now_ist: datetime, written: list[str]) -> dict:
     """Compose + archive + Slack-send the overview snapshot.
 
-    daily (default): once per IST day, guarded by a pipeline_state row
-    (stage='dispatch', source='overview') — DB-backed so it survives out/
-    cleanup and container restarts, and reuses existing state machinery
-    instead of a new table. The watermark advances on COMPOSE (archive), not
-    on successful send: one deterministic artifact per day; if Slack creds
-    land mid-day, sending starts with the next day's message."""
+    Cadence (registry delivery.overview): hourly | daily | off, guarded by a
+    pipeline_state row (stage='dispatch', source='overview') — DB-backed so it
+    survives out/ cleanup and container restarts. hourly = at most one message
+    per IST clock-hour (a rerun within the hour skips); daily = one per IST
+    day. Both respect the same 08:00-20:00 IST window as heads-ups — outside
+    it nothing composes or sends (no 3am Slack messages). The watermark
+    advances on COMPOSE (archive), not on successful send: deterministic
+    artifacts; if Slack creds land mid-day, sending starts at the next slot."""
     cadence = settings.registry["delivery"].get("overview", "daily")
     if cadence == "off":
         return {"overview": "off (delivery.overview)"}
-    if cadence == "daily":
-        state = repo.get_state("dispatch", "overview")
-        wm = (state or {}).get("watermark")
-        if wm and wm.astimezone(IST).date() == now_ist.date():
+    if not _in_headsup_window(now_ist):
+        return {"overview": f"outside {SEND_WINDOW[0]:02d}-{SEND_WINDOW[1]:02d} IST window"}
+    state = repo.get_state("dispatch", "overview")
+    wm = (state or {}).get("watermark")
+    if wm:
+        wm_ist = wm.astimezone(IST)
+        if cadence == "daily" and wm_ist.date() == now_ist.date():
             return {"overview": "already sent today"}
+        if cadence == "hourly" and (wm_ist.date(), wm_ist.hour) == (now_ist.date(), now_ist.hour):
+            return {"overview": "already sent this hour"}
     text = render.build_overview()
     written.append(_archive(text, f"{now_ist:%Y-%m-%d-%H%M}-overview.md"))
-    status = slack_ch.send(text, f"Beacon overview · {now_ist:%d %b %Y}")
+    status = slack_ch.send(text, f"Beacon overview · {now_ist:%d %b %H:%M} IST")
     repo.advance_state("dispatch", "overview", watermark=datetime.now(timezone.utc))
     return {"overview_slack": status}

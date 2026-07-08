@@ -48,7 +48,15 @@ when it bites. Supersedes the backlog sections of the status doc and the
    gated. Add pagination + optional comment fetch for high-signal keywords if
    brand-watch volume justifies it. DOM-selector fragility degrades to
    `found: 0` — pair with backlog item 3's alerting.
-9. **stage trace_log.** llm_usage persists; stage-level run traces are still
+9. **Enrichment prompt tightening.** The 2026-07-08 E2E (1,299 items) showed
+   batch chunks inventing intent labels (`pnl_sharing`, `opinion`, `other`) —
+   validation caught all and sync-retried (resilience worked), but each retry
+   costs. Tighten the prompt's intent instruction if prod shows the same rate.
+10. **Enrichment per-run cap.** `LOCAL_MAX_ITEMS = 600` in enrich/tagger.py
+    protected local spend but also throttles backlog drains (the E2E left
+    ~595 items for later runs). Make it registry-configurable; hourly prod
+    volume (~50–100) never hits it, only outage recovery does.
+11. **stage trace_log.** llm_usage persists; stage-level run traces are still
    stdout/cron.log only. Add a run-scoped trace_log table (mirror the
    personalization pattern) when debugging prod runs gets annoying.
 10. **`seed_features --from-xlsx` loader** — build when marketing's keyword

@@ -29,6 +29,9 @@ export type Freshness = {
   next_morning_build?: string;
 };
 
+/** Window echo returned by windowed endpoints (dashboard date filter). */
+export type WindowEcho = { from?: string | null; to?: string | null };
+
 export type Overview = {
   date?: string;
   headline?: string;
@@ -36,6 +39,7 @@ export type Overview = {
   top_actions?: TopAction[];
   top_movers?: { topic_key: string; label?: string; count: number }[];
   freshness?: Freshness;
+  window?: WindowEcho;
   llm_last_run?: {
     run_id: string;
     cost_usd?: string | number | null;
@@ -91,7 +95,8 @@ export type LlmUsageSummary = {
 };
 
 export type NubraMentions = {
-  window_days: number;
+  window_days?: number;
+  window?: WindowEcho;
   kpis?: {
     mentions_24h?: number;
     mentions_window?: number;

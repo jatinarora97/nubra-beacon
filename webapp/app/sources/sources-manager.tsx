@@ -81,6 +81,19 @@ export function SourcesManager() {
 
   return (
     <div className="space-y-6">
+      <div className="-mt-2 flex justify-end gap-2">
+        {(["csv", "xlsx"] as const).map((fmt) => (
+          <a
+            key={fmt}
+            href={`/api/v1/sources/export?format=${fmt}`}
+            download
+            title={`Download the full source list (all kinds, incl. paused) as ${fmt === "csv" ? "CSV" : "Excel"}`}
+            className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:border-muted hover:text-ink"
+          >
+            Export {fmt === "csv" ? "CSV" : "Excel"}
+          </a>
+        ))}
+      </div>
       <SectionCard>
         <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-muted">Add a source</h2>
         <div className="flex flex-wrap items-center gap-3">
