@@ -5,7 +5,7 @@
 RELEASE_TAG  ?= latest
 ECR_REGISTRY ?= 851725268918.dkr.ecr.ap-south-1.amazonaws.com
 AWS_REGION   ?= ap-south-1
-AWS_PROFILE  ?= dev
+AWS_PROFILE  ?= prod
 
 IMG_API = $(ECR_REGISTRY)/zs/nubra-ai:nubra-beacon-api-$(RELEASE_TAG)
 IMG_WEB = $(ECR_REGISTRY)/zs/nubra-ai:nubra-beacon-webapp-$(RELEASE_TAG)

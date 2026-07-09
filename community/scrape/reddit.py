@@ -87,18 +87,7 @@ def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[s
                     "— crawl skipped; verify with: curl -sI -A Mozilla "
                     "https://old.reddit.com/r/IndianStockMarket/new/"]
 
-    # Watchdog: the whole crawl must finish inside fetch_max_minutes (registry;
-    # default 25) — partial results beat a runaway that blocks the hourly slot.
-    budget_min = float(reg.get("fetch_max_minutes", 25))
-
-    async def _crawl_with_deadline():
-        return await asyncio.wait_for(zs.run(), timeout=budget_min * 60)
-
-    try:
-        combined = asyncio.run(_crawl_with_deadline())
-    except asyncio.TimeoutError:
-        return [], [f"reddit crawl exceeded {budget_min:.0f}min watchdog — aborted "
-                    "for this run (items already fetched are lost; next run retries)"]
+    combined = asyncio.run(zs.run())
 
     items: list[SocialItem] = []
     health: list[str] = []

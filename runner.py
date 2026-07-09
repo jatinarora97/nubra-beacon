@@ -104,6 +104,14 @@ def stage(name: str) -> None:
         raise SystemExit(1)
 
 
+@app.command()
+def doctor() -> None:
+    """In-container health checks: DB, seeds, reddit reachability, chromium,
+    LLM/X/Langfuse keys, channels. PASS/FAIL per line; exit 1 on any FAIL."""
+    from community.diagnostics import run_doctor
+    raise SystemExit(run_doctor())
+
+
 @app.command("run-local")
 def run_local(skip_scrape: bool = False, skip_enrich: bool = False) -> None:
     """End-to-end run: scrape → clean → enrich → aggregate → score → draft →
