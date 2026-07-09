@@ -41,6 +41,20 @@ def _comment_id(author: str, body: str) -> str:
     return hashlib.sha1(f"{author}|{body[:120]}".encode()).hexdigest()[:12]
 
 
+def _preflight() -> bool:
+    """One old.reddit listing page via httpx: True when it looks like a real
+    listing (post links present), False when blocked/challenged/unreachable."""
+    import httpx
+    try:
+        r = httpx.get("https://old.reddit.com/r/IndianStockMarket/new/",
+                      headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
+                               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"},
+                      timeout=15.0, follow_redirects=True)
+        return r.status_code == 200 and 'data-fullname="t3_' in r.text
+    except Exception:  # noqa: BLE001 — unreachable network = don't crawl
+        return False
+
+
 def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[str]]:
     """Fetch posts + comments (+ one level of replies) for every registry sub.
     Returns (items, health_notes) — a failing sub is a note, never an exception."""
@@ -64,7 +78,27 @@ def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[s
         "SELECT external_id FROM social_items WHERE source='reddit' AND source_type='post'")}
     pkg.config.OUTPUT_DIR = zs.OUTPUT_DIR
 
-    combined = asyncio.run(zs.run())
+    # Preflight (2026-07-09, prod incident): old.reddit serves block/challenge
+    # pages to some datacenter IPs — every selector-wait then burns its full
+    # timeout and a "fetch" grinds for hours before yielding nothing. One cheap
+    # page decides in seconds whether crawling is worth it at all.
+    if not _preflight():
+        return [], ["reddit BLOCKED from this network (preflight page had no posts) "
+                    "— crawl skipped; verify with: curl -sI -A Mozilla "
+                    "https://old.reddit.com/r/IndianStockMarket/new/"]
+
+    # Watchdog: the whole crawl must finish inside fetch_max_minutes (registry;
+    # default 25) — partial results beat a runaway that blocks the hourly slot.
+    budget_min = float(reg.get("fetch_max_minutes", 25))
+
+    async def _crawl_with_deadline():
+        return await asyncio.wait_for(zs.run(), timeout=budget_min * 60)
+
+    try:
+        combined = asyncio.run(_crawl_with_deadline())
+    except asyncio.TimeoutError:
+        return [], [f"reddit crawl exceeded {budget_min:.0f}min watchdog — aborted "
+                    "for this run (items already fetched are lost; next run retries)"]
 
     items: list[SocialItem] = []
     health: list[str] = []
