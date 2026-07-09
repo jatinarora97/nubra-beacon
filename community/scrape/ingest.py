@@ -73,7 +73,10 @@ def run(daily: bool = False, **_) -> dict:
     sorts = list(r_reg.get("sort_types_hourly", ["new"]))
     if daily:
         sorts += list(r_reg.get("sort_types_daily_extra", []))
-    log.info("reddit: fetching feeds %s across watched subs (daily=%s)", sorts, daily)
+    log.info("reddit: fetching feeds %s across watched subs (daily=%s) — the crawl "
+             "is silent while it works and can take 10-30+ min depending on the "
+             "machine; progress visible via file mtimes in out/reddit_scraper/",
+             sorts, daily)
     reddit_items, reddit_health = reddit.fetch_live(sorts=sorts)
     log.info("reddit: %d items fetched (health: %s)", len(reddit_items),
              str(reddit_health)[:150])

@@ -15,6 +15,17 @@ sources:
       - value: nubra            # brand watch — powers Nubra mentions + Broker issues (2026-07-07)
         x: true
         reddit: true
+    # hashtag/handle seeds (researched 2026-07-05; were DB-only until the prod
+    # fresh-start showed seeds must live here — 2026-07-09). category: value
+    hashtags:
+      market_trading: [Nifty, Nifty50, Sensex, ShareMarket, StockMarketIndia, IPO]
+      fno_algo: [BankNifty, FinNifty, FnO, IntradayTrading, OptionsTrading, AlgoTrading]
+      investing_pf: [MutualFunds, SIP]
+    handles:
+      official: [NSEIndia, BSEIndia, SEBI_India]
+      brokers: [zerodhaonline, Nithin0dha]
+      finfluencers: [deepakshenoy, dmuthuk, kyalashish, MashraniVivek, Mitesh_Engr, safalniveshak]
+      fno_algo: [marketcallsHQ]
     budget:
       max_items_per_run: 1500
       max_usd_per_day: 1.00     # ~= the $29 plan's daily allowance; raise if X volume earns it

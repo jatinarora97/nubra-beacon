@@ -21,6 +21,10 @@ def main() -> None:
     else:
         rows += [("subreddit", s, None) for s in subs]
     rows += [("x_query", q, None) for q in reg["twitter"].get("queries", [])]
+    tw = reg["twitter"]
+    for kind_key, kind in (("hashtags", "x_hashtag"), ("handles", "x_handle")):
+        for cat, values in (tw.get(kind_key) or {}).items():
+            rows += [(kind, v, cat) for v in values]
     n = 0
     for kind, value, cat in rows:
         n += db.execute(
