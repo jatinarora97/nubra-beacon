@@ -3,8 +3,11 @@
 sources:
   twitter:
     enabled: true
-    live_fetch: true            # local: try live, but hard-capped — API credits are scarce
-    x_live_cap: 10              # stop after 10 live items (user decision 2026-07-03); flagged in ops summary
+    live_fetch: true
+    x_live_cap: 300             # backstop, not a throttle: $29/mo twitterapi plan = ~3.13M
+                                # credits (~2,088 tweets/day at 15 cr/tweet). 300/run caps a
+                                # runaway query at $0.045; normal runs collect far less.
+                                # (was 10 during the free-trial era; raised 2026-07-09)
     csv_backfill: data/twitter_pulse.csv
     queries:
       - "(zerodha OR groww OR upstox OR dhan OR \"angel one\" OR nubra) lang:en"
@@ -14,7 +17,7 @@ sources:
         reddit: true
     budget:
       max_items_per_run: 1500
-      max_usd_per_day: 5.00     # config — start at $5, tune after shadow run
+      max_usd_per_day: 1.00     # ~= the $29 plan's daily allowance; raise if X volume earns it
   reddit:
     enabled: true
     subreddits:                 # category -> subs (category stored on items as raw.category)
