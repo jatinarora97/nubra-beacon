@@ -17,26 +17,29 @@ const one = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v);
 /** Any "last N hours/days" is a valid window (backend contract: \d+h|\d+d). */
 const WINDOW_RE = /^\d{1,4}[hd]$/;
 
-/** Resolve URL search params to the active window (default: last hour). */
-export function pickWindow(sp: RawSearch): WindowSearch {
+/** Resolve URL search params to the active window.
+ *  Default: last hour (flow pages). Inventory pages (Opportunities) pass
+ *  defaultAll=true — no params resolves to {} = no window = everything open. */
+export function pickWindow(sp: RawSearch, defaultAll = false): WindowSearch {
   const from_ts = one(sp.from_ts);
   const to_ts = one(sp.to_ts);
   if (from_ts && to_ts) return { from_ts, to_ts };
   const w = one(sp.window);
   if (w && WINDOW_RE.test(w)) return { window: w };
-  return { window: "1h" };
+  return defaultAll ? {} : { window: "1h" };
 }
 
-/** Query-string fragment for API calls (no leading ?/&). */
+/** Query-string fragment for API calls (empty string = unwindowed). */
 export function windowQuery(w: WindowSearch): string {
-  return w.from_ts && w.to_ts
-    ? `from_ts=${encodeURIComponent(w.from_ts)}&to_ts=${encodeURIComponent(w.to_ts)}`
-    : `window=${w.window ?? "1h"}`;
+  if (w.from_ts && w.to_ts)
+    return `from_ts=${encodeURIComponent(w.from_ts)}&to_ts=${encodeURIComponent(w.to_ts)}`;
+  return w.window ? `window=${w.window}` : "";
 }
 
 /** Human phrase for blurbs/hints/empty states ("the last hour", "the last 8 hours"). */
 export function windowLabel(w: WindowSearch): string {
   if (w.from_ts && w.to_ts) return "the selected range";
+  if (!w.window && !w.from_ts) return "all time";
   const m = (w.window ?? "1h").match(/^(\d{1,4})([hd])$/);
   if (!m) return "the window";
   const n = Number(m[1]);

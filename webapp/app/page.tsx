@@ -115,8 +115,12 @@ export default async function Home({
       )}
 
       <section className="grid grid-cols-3 gap-3 lg:grid-cols-7">
-        <KpiCard label="Items collected" value={k.items_today ?? "-"} hint={`in ${label}`} />
-        <KpiCard label="Analyzed" value={k.analyzed_today ?? "-"} hint={`in ${label}`} />
+        <KpiCard label="Items posted" value={k.items_today ?? "-"} hint={`in ${label}`} />
+        <KpiCard
+          label="Analyzed"
+          value={k.analyzed_today ?? "-"}
+          hint={`analysis completed in ${label}`}
+        />
         <KpiCard
           label="Actions on table"
           value={k.actions_on_table ?? "-"}

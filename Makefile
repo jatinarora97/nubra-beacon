@@ -28,7 +28,23 @@ push-prod: ecr-login
 
 # On the prod machine: pull the tag from .env, roll the stack. The `migrate` service applies migrations on the way up and api gates on it completing.
 pull-prod: ecr-login
-	docker compose app pull api webapp
+	docker compose --profile app pull api webapp
+	docker compose --profile app up -d
+
+# Restore a prod dump into the LOCAL docker postgres (the dev workflow:
+# prod scrapes, local analyzes/builds on restored prod data). WIPES local data.
+#   make restore-local DUMP=beacon-prod-2026-07-09.sql.gz
+restore-local:
+	@test -n "$(DUMP)" || { echo "usage: make restore-local DUMP=<prod-dump.sql.gz>"; exit 1; }
+	@printf "This WIPES the local nubra_community DB and restores %s. Continue? [y/N] " "$(DUMP)"; \
+	  read a; [ "$$a" = "y" ] || { echo "aborted"; exit 1; }
+	docker exec -i nubra-community-postgres psql -U community -d postgres \
+	  -c "DROP DATABASE IF EXISTS nubra_community WITH (FORCE)"
+	docker exec -i nubra-community-postgres psql -U community -d postgres \
+	  -c "CREATE DATABASE nubra_community OWNER community"
+	gunzip -c $(DUMP) | docker exec -i nubra-community-postgres psql -q -U community -d nubra_community
+	./cm migrate
+	@echo "restored — local Beacon now mirrors the dump; ./cm ui to browse it"
 
 up:
 	docker compose up -d ${S}

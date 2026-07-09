@@ -158,7 +158,11 @@ def build_weekly(today: date) -> dict:
 def run() -> dict:
     today = datetime.now(timezone.utc).date()
     payload = _daily_payload(today)
-    payload["headline"] = _headline(payload)
+    # Headline is one Sonnet call per day (morning build); hourly composes
+    # refresh the payload but reuse the day's existing headline.
+    prior = db.one("SELECT payload->>'headline' AS h FROM roundups "
+                   "WHERE period='daily' AND date=%s", (today,))
+    payload["headline"] = (prior or {}).get("h") or _headline(payload)
     db.execute(
         "INSERT INTO roundups (period, date, payload) VALUES ('daily', %s, %s) "
         "ON CONFLICT (period, date) DO UPDATE SET payload = EXCLUDED.payload",

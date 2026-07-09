@@ -8,7 +8,7 @@ from community.config.settings import settings
 from community.clean.normalize import norm
 from community.scrape import reddit, twitter
 from community.scrape.base import SocialItem
-from community.store import repositories as repo
+from community.store import db, repositories as repo
 
 
 def _store(item: SocialItem, counters: dict) -> None:
@@ -43,12 +43,21 @@ def run(daily: bool = False, **_) -> dict:
     fetched = {"twitter_csv": 0, "twitter_live": 0, "reddit": 0}
     reddit_by_category: dict[str, int] = {}
 
-    # X backfill (CSV is the main X source locally — user decision 2026-07-03)
+    # X backfill (CSV is the main X source locally — user decision 2026-07-03).
+    # ONE-TIME: once any CSV row is in the DB, skip the whole file — re-reading
+    # it hourly re-asserted stale June author fields (followers/verified) over
+    # fresher live-X values and bumped last_seen for 400 authors every run.
     csv_path = settings.registry["sources"]["twitter"].get("csv_backfill")
     if csv_path:
-        for item in twitter.iter_csv_backfill(csv_path):
-            fetched["twitter_csv"] += 1
-            _store(item, counters)
+        already = db.one(
+            "SELECT 1 AS x FROM social_items "
+            "WHERE source='twitter' AND raw->>'backfill' IS NOT NULL LIMIT 1")
+        if already:
+            fetched["twitter_csv"] = "already backfilled (skipped)"
+        else:
+            for item in twitter.iter_csv_backfill(csv_path):
+                fetched["twitter_csv"] += 1
+                _store(item, counters)
 
     # Reddit live — all feeds: hourly new+hot+rising, +top when daily
     r_reg = settings.registry["sources"]["reddit"]

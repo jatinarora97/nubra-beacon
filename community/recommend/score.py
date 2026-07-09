@@ -45,11 +45,13 @@ def _matched_insight(rows: list[dict]) -> tuple[dict, float, float]:
     for r in rows:
         e = r.get("entities") or {}
         intent = r.get("intent")
-        issue = e.get("issue") or {}
-        broker = issue.get("broker") or (e.get("brokers") or [None])[0]
+        # enricher writes FLAT entities: {"broker": ..., "issue_type": ...}
+        # (llm/client.py Entities model) — was reading a nested shape that
+        # never existed, so broker_issue opportunities never fired.
+        broker = e.get("broker")
         if intent == "complaint" and broker and broker != "nubra":
             return ({"kind": "broker_issue", "broker": broker,
-                     "issue_key": issue.get("issue_key")}, 1.0, 1.0)
+                     "issue_key": e.get("issue_type")}, 1.0, 1.0)
         if intent == "feature_request":
             feature_phrase = e.get("feature_phrase") or feature_phrase
     intents = {r.get("intent") for r in rows}

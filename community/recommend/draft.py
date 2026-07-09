@@ -159,6 +159,14 @@ def _draft_one(opp: dict, catalog: list[dict]) -> tuple[dict | None, dict]:
 
 def _content_proposals(catalog: list[dict]) -> int:
     today = datetime.now(timezone.utc).date()
+    # Once per day: briefs regenerate with the morning build only. The hourly
+    # draft stage must NOT delete+regenerate — that would destroy human edits
+    # (Ask-Beacon revisions, outline.revisions history) and burn Sonnet 18x/day.
+    # Manual re-generation = delete today's rows first, then rerun the stage.
+    existing = db.one(
+        "SELECT count(*) AS n FROM content_proposals WHERE day=%s", (today,))["n"]
+    if existing:
+        return existing
     # "Day's signal" tolerates quiet mornings/backfill: trailing 14d window,
     # today's rows naturally rank first via velocity/count.
     topics = db.query(

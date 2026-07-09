@@ -32,16 +32,21 @@ def _old_reddit(url: str) -> str:
 def _candidates(limit: int) -> list[dict]:
     return db.query(
         """
-        SELECT DISTINCT ON (si.item_id) si.item_id, si.url, si.engagement,
-               o.priority
-        FROM opportunities o
-        JOIN conversations c ON (c.source, c.thread_id) = (o.source, o.thread_id)
-        JOIN social_items si ON si.item_id = c.root_item_id
-        WHERE o.status = 'suggested' AND o.source = 'reddit'
-          AND si.url ~* 'reddit\\.com/r/.+/comments/'
-        ORDER BY si.item_id, o.priority DESC
+        SELECT item_id, url, engagement, priority FROM (
+            SELECT DISTINCT ON (si.item_id) si.item_id, si.url, si.engagement,
+                   o.priority
+            FROM opportunities o
+            JOIN conversations c ON (c.source, c.thread_id) = (o.source, o.thread_id)
+            JOIN social_items si ON si.item_id = c.root_item_id
+            WHERE o.status = 'suggested' AND o.source = 'reddit'
+              AND si.url ~* 'reddit\\.com/r/.+/comments/'
+            ORDER BY si.item_id, o.priority DESC
+        ) t
+        ORDER BY priority DESC NULLS LAST  -- highest-priority threads refresh first
+        LIMIT %s
         """,
-    )[:limit]
+        (limit,),
+    )
 
 
 async def _fetch_counts(page, url: str) -> dict | None:

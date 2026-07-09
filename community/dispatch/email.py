@@ -48,6 +48,9 @@ def _to_html(md: str) -> str:
 
 def send(markdown: str, subject: str) -> str:
     """Returns 'sent' | 'skipped (no creds)' | 'skipped (no recipients)' | 'error: …'."""
+    from community.config.settings import settings
+    if settings.mode != "prod":  # dump-restored laptops must never message the team
+        return "skipped (local mode — archive only)"
     sender, password, recipients = _creds()
     if not sender or not password:
         return "skipped (no creds)"

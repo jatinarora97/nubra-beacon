@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { get } from "@/lib/api";
 import type { Item } from "@/lib/types";
@@ -58,38 +58,41 @@ export function ExploreTable() {
     return `/items?${params}&${windowQS}`;
   }
 
+  // Monotonic id per filter-state: a Load-more response landing after the
+  // filters changed is stale and must be dropped, not appended.
+  const fetchGen = useRef(0);
+
   useEffect(() => {
-    let alive = true;
+    const gen = ++fetchGen.current;
     setLoading(true);
     setOffset(0);
     get<Item[]>(pageUrl(0), []).then((rows) => {
-      if (alive) {
+      if (fetchGen.current === gen) {
         setItems(rows);
         setHasMore(rows.length === PAGE);
         setLoading(false);
       }
     });
-    return () => {
-      alive = false;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, intent, q, windowQS]);
 
   async function loadMore() {
     if (loadingMore) return;
     setLoadingMore(true);
+    const gen = fetchGen.current;
     const next = offset + PAGE;
     const rows = await get<Item[]>(pageUrl(next), []);
-    setItems((prev) => [...prev, ...rows]);
-    setOffset(next);
-    setHasMore(rows.length === PAGE);
+    if (fetchGen.current === gen) {
+      setItems((prev) => [...prev, ...rows]);
+      setOffset(next);
+      setHasMore(rows.length === PAGE);
+    }
     setLoadingMore(false);
   }
 
-  const sorted = useMemo(
-    () => [...items].sort((a, b) => interactions(b) - interactions(a)),
-    [items],
-  );
+  // Server order (engagement-scored pages) — no client re-sort, so Load more
+  // appends instead of reshuffling the whole table.
+  const sorted = items;
 
   // Server-side export honouring the active filters + window (full text).
   function exportUrl(format: "csv" | "xlsx"): string {

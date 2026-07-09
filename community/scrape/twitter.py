@@ -82,6 +82,8 @@ def iter_csv_backfill(path: str | Path) -> Iterator[SocialItem]:
 # ── Live fetch (capped) ───────────────────────────────────────────────────
 
 def _live_item(t: dict, query: str) -> SocialItem | None:
+    if not t.get("id"):  # API shape drift: never mint external_id "None"
+        return None
     text = (t.get("text") or "").strip()
     if not text:
         return None
@@ -135,12 +137,20 @@ def fetch_live_capped() -> tuple[list[SocialItem], str]:
     try:
         with httpx.Client(timeout=20.0,
                           headers={"X-API-Key": settings.twitterapi_key}) as client:
+            failed: list[str] = []
             for q in queries:
                 if len(items) >= cap:
                     break
-                r = client.get(ENDPOINT, params={"query": q, "queryType": "Latest"})
-                r.raise_for_status()
-                for t in r.json().get("tweets") or []:
+                try:
+                    r = client.get(ENDPOINT, params={"query": q, "queryType": "Latest"})
+                    r.raise_for_status()
+                    tweets = r.json().get("tweets") or []
+                except Exception as qe:  # noqa: BLE001 — one bad query (user typo,
+                    # 400) must not starve the queries behind it; 402/credit
+                    # errors will fail every query and surface via `failed`.
+                    failed.append(f"{q[:60]!r} ({type(qe).__name__})")
+                    continue
+                for t in tweets:
                     it = _live_item(t, q)
                     if it is not None:
                         items.append(it)
@@ -149,6 +159,8 @@ def fetch_live_capped() -> tuple[list[SocialItem], str]:
                 time.sleep(1.0)
         note = (f"X live fetch capped at {cap} by config — API credits scarce; "
                 f"got {len(items)} live tweets; main X data via CSV backfill")
+        if failed:
+            note += f" | {len(failed)} quer{'y' if len(failed)==1 else 'ies'} failed: " + "; ".join(failed[:3])
     except Exception as e:  # noqa: BLE001 — any live failure degrades to a note
         note = (f"X live fetch unavailable ({type(e).__name__}: {str(e)[:120]}) — "
                 f"X data via CSV backfill only")

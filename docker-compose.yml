@@ -37,8 +37,10 @@ services:
       context: .
       dockerfile: Dockerfile.api
     profiles: ["app"]
-    env_file: .env   # DB_URL comes from here
+    env_file: .env
     environment:
+      # container-internal DB host, independent of the .env flavor (dev/prod)
+      DB_URL: postgresql://community:community@postgres:5432/nubra_community
       TZ: Asia/Kolkata
     command: ["./cm", "migrate"]
     depends_on:
@@ -58,12 +60,17 @@ services:
     environment:
       # inside the compose network the DB lives at the service name, not localhost
       DB_URL: postgresql://community:community@postgres:5432/nubra_community
+      MODE: prod
       TZ: Asia/Kolkata
     ports:
       - "8400:8400"
     volumes:
       - ./out:/app/out          # cron logs + message archives visible on the host
       - hf_cache:/hf-cache      # embedding model cache survives restarts
+      # registry is CONFIG, not code: bind-mount so prod edits (thresholds,
+      # dashboard_url, weight re-tunes) apply on the next run without an
+      # image release. Read-only — the pipeline never writes it.
+      - ./community/config/registry.yaml:/app/community/config/registry.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -13,15 +13,16 @@ export default async function OpportunitiesPage({
 }) {
   const sp = await searchParams;
   const status = (Array.isArray(sp.status) ? sp.status[0] : sp.status) ?? "suggested";
-  const w = pickWindow(sp);
+  // Inventory page: default is ALL open recommendations; the window is opt-in.
+  const w = pickWindow(sp, true);
   const qs = windowQuery(w);
   const rows = await get<Opportunity[]>(
-    `/opportunities?status=${encodeURIComponent(status)}&limit=50&${qs}`,
+    `/opportunities?status=${encodeURIComponent(status)}&limit=50${qs ? `&${qs}` : ""}`,
     [],
   );
   const sorted = [...rows].sort((a, b) => b.priority - a.priority);
   // status tabs keep the active window; window chips keep the active status
-  const tabQs = (s: string) => `status=${s}&${qs}`;
+  const tabQs = (s: string) => `status=${s}${qs ? `&${qs}` : ""}`;
 
   return (
     <div>
@@ -31,7 +32,7 @@ export default async function OpportunitiesPage({
         blurb="Conversations worth joining, ranked by a 0-100 relevance score. Every card explains why it's worth engaging and carries pre-gated brand and rep drafts — copy, adapt, post. Low-engagement threads never rank top."
       />
 
-      <TimeFilter current={w} extra={{ status }} />
+      <TimeFilter current={w} extra={{ status }} allowAll="All open" />
 
       <div className="mb-4 flex gap-1.5">
         {["suggested", "acted", "dismissed"].map((s) => (
@@ -51,8 +52,16 @@ export default async function OpportunitiesPage({
 
       {sorted.length === 0 ? (
         <EmptyState
-          title={`No ${status} opportunities in ${windowLabel(w)}`}
-          body="New opportunities appear after each hourly scoring pass when a conversation crosses the relevance bar. Widen the window above to look further back."
+          title={
+            w.window || w.from_ts
+              ? `No ${status} opportunities in ${windowLabel(w)}`
+              : `No ${status} opportunities`
+          }
+          body={
+            w.window || w.from_ts
+              ? "New opportunities appear after each hourly scoring pass when a conversation crosses the relevance bar. Widen the window above to look further back."
+              : "New opportunities appear after each hourly scoring pass when a conversation crosses the relevance bar."
+          }
         />
       ) : (
         <div className="space-y-3">

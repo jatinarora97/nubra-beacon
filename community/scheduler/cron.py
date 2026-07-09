@@ -24,7 +24,7 @@ def cron_block(docker: bool = False) -> str:
     flavor where every pipeline command execs into the running api container
     (canonical hand-editable copy: deploy/crontab.prod)."""
     root = str(ROOT)
-    run = "docker compose exec -T api ./cm" if docker else "./cm"
+    run = "docker compose exec -T api flock -n /tmp/beacon.lock ./cm" if docker else "./cm"
     prelude = ("COMPOSE_PROFILES=app\nPATH=/usr/local/bin:/usr/bin:/bin\n"
                if docker else "")
     backup = (f"# 02:00 nightly DB backup (gzip pg_dump, keeps last 14)\n"

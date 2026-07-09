@@ -18,6 +18,23 @@ docker compose up -d          # pgvector Postgres on :5544 (postgres only)
 ./cm ui                       # dashboard :3000 + read-API :8400 (supervised)
 ```
 
+### Working from prod dumps (the normal dev workflow)
+
+Prod is the only environment that scrapes; local development runs on restored
+prod data. Grab a nightly dump from the prod box (`backups/`), then:
+
+```sh
+make restore-local DUMP=beacon-prod-<date>.sql.gz   # wipes + restores local DB
+./cm ui                                             # browse real prod data
+./cm run-local --skip-scrape                        # re-run analysis stages on it
+./cm stage <name>                                   # or one stage at a time
+```
+
+Local scraping (`./cm run-local` without the flag, or `./cm stage scrape`)
+is only for testing scraper changes. Notes: analysis stages spend real LLM
+money even locally; dispatch on a local machine is archive-only (channel sends
+are prod-gated), so restored data can be worked on safely.
+
 **Always use `./cm`** — it wraps the project venv locally (and falls back to
 system python inside containers). Setup from scratch:
 `python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt

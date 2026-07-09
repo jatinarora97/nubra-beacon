@@ -47,3 +47,18 @@ def executemany(sql: str, seq: list[tuple]) -> None:
 def jsonb(value: Any) -> Json:
     """Wrap a python object for a jsonb parameter."""
     return Json(value)
+
+
+@contextmanager
+def tx() -> Iterator[psycopg.Connection]:
+    """One transaction for multi-statement invariants (e.g. a rollup's
+    DELETE+INSERT recompute): commit on clean exit, rollback on exception —
+    a crash mid-recompute must never leave the day half-rewritten. Everything
+    else keeps the module's per-call autocommit semantics."""
+    with psycopg.connect(settings.db_url, row_factory=dict_row) as c:
+        try:
+            yield c
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise

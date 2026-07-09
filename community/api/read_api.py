@@ -265,11 +265,14 @@ def overview(window: str | None = None,
                 "AND last_seen > now() - interval '24 hours'"),
         }
     else:
-        # same kpi keys, window semantics (flow within [from, to])
+        # same kpi keys, window semantics (flow within [from, to]).
+        # Windowed flow counts use AUTHORSHIP time (created_at) so Overview
+        # reconciles with Trends/Features/Explore; the legacy no-window path
+        # (and the Slack overview) keeps today-by-arrival semantics.
         flow_kpis = {
             "items_today": _n(
                 "SELECT count(*) AS n FROM social_items "
-                "WHERE ingested_at >= %s AND ingested_at < %s", w),
+                "WHERE created_at >= %s AND created_at < %s", w),
             "analyzed_today": _n(
                 "SELECT count(*) AS n FROM item_enrichment "
                 "WHERE enriched_at >= %s AND enriched_at < %s", w),
@@ -460,10 +463,20 @@ def nubra_mentions(days: int = 7, limit: int = 30,
           AND si.created_at >= %s AND si.created_at < %s
         ORDER BY e.sentiment DESC NULLS LAST, si.created_at DESC LIMIT %s
         """, (w_from, w_to, _lim(limit)))
-    complaints = db.one(
-        "SELECT COALESCE(sum(count), 0) AS n FROM issue_rollup "
-        "WHERE broker = 'nubra' AND day BETWEEN %s AND %s",
-        (w_from.date(), w_to.date())) or {}
+    if (w_to - w_from) < timedelta(days=1):
+        # issue_rollup is daily — a sub-day window would over-count by pulling
+        # the whole day; count live from enrichment at hour scale instead
+        complaints = db.one(
+            "SELECT count(*) AS n FROM item_enrichment ie "
+            "JOIN social_items si ON si.item_id = ie.item_id "
+            "WHERE NOT ie.is_noise AND ie.intent = 'complaint' "
+            "AND ie.entities->>'broker' = 'nubra' "
+            "AND si.created_at >= %s AND si.created_at < %s", (w_from, w_to)) or {}
+    else:
+        complaints = db.one(
+            "SELECT COALESCE(sum(count), 0) AS n FROM issue_rollup "
+            "WHERE broker = 'nubra' AND day BETWEEN %s AND %s",
+            (w_from.date(), w_to.date())) or {}
     out = {
         "window_days": max(1, round((w_to - w_from).total_seconds() / 86400)),
         "kpis": {
@@ -822,9 +835,14 @@ def revise_proposal(body: dict = Body(...),
             raise HTTPException(404, "no proposals exist")
         day_ = row["d"]
     else:
-        day_ = date.fromisoformat(str(day_))
+        try:
+            day_ = date.fromisoformat(str(day_))
+        except ValueError:
+            raise HTTPException(400, "day must be an ISO date (YYYY-MM-DD)")
     if not (body.get("instruction") or body.get("platform") or body.get("manual")):
         raise HTTPException(400, "nothing to apply: pass instruction, platform or manual")
+    if len(body.get("instruction") or "") > 500:
+        raise HTTPException(400, "instruction too long (max 500 characters)")
     try:
         row = revise_brief(day_, rank,
                            instruction=(body.get("instruction") or "").strip() or None,
@@ -1161,31 +1179,42 @@ def publish_features_catalog(body: dict = Body(...),
             raise HTTPException(400, "every row needs feature and description")
         if f.get("status") not in _FEATURE_STATUSES:
             raise HTTPException(400, f"status must be one of {_FEATURE_STATUSES}")
-    names = [f["feature"].strip() for f in features]
+    names = [f["feature"].strip().lower() for f in features]
     if len(set(names)) != len(names):
-        raise HTTPException(400, "duplicate feature names")
-    # next version: v<n+1> over any existing v<int>; seed 'assumed-v0' counts as 0
-    versions = [r["version"] for r in db.query("SELECT DISTINCT version FROM nubra_features")]
-    nums = [0]
-    for v in versions:
-        tail = v.rsplit("v", 1)[-1]
-        if tail.isdigit():
-            nums.append(int(tail))
-    new_version = f"v{max(nums) + 1}"
+        raise HTTPException(400, "duplicate feature names (case-insensitive)")
     for f in features:
-        kws = f.get("seo_keywords") or []
-        if not isinstance(kws, list):
+        if not isinstance(f.get("seo_keywords") or [], list):
             raise HTTPException(400, "seo_keywords must be a list")
-        db.execute(
-            "INSERT INTO nubra_features (feature, description, status, category, "
-            "seo_keywords, version, is_current) VALUES (%s,%s,%s,%s,%s,%s,false) "
-            "ON CONFLICT (feature, version) DO NOTHING",
-            (f["feature"].strip(), f["description"].strip(), f["status"],
-             (f.get("category") or "").strip() or None, [str(k).strip() for k in kws if str(k).strip()],
-             new_version))
-    db.execute("UPDATE nubra_features SET is_current = false WHERE is_current")
-    db.execute("UPDATE nubra_features SET is_current = true WHERE version = %s", (new_version,))
-    n = db.one("SELECT count(*) AS n FROM nubra_features WHERE is_current")["n"]
+    # One transaction: version-compute + inserts + is_current flip. Prevents two
+    # concurrent publishes merging into one version, and removes the instant
+    # where zero rows are current (a concurrent draft run would ground on
+    # an empty catalog).
+    with db.conn() as c:
+        # FOR UPDATE serializes concurrent publishes (DISTINCT disallows it,
+        # so lock the rows and dedupe here — the table is tiny)
+        versions = {r["version"] for r in
+                    c.execute("SELECT version FROM nubra_features "
+                              "FOR UPDATE").fetchall()}
+        nums = [0]  # seed 'assumed-v0' counts as 0
+        for v in versions:
+            tail = v.rsplit("v", 1)[-1]
+            if tail.isdigit():
+                nums.append(int(tail))
+        new_version = f"v{max(nums) + 1}"
+        for f in features:
+            kws = f.get("seo_keywords") or []
+            c.execute(
+                "INSERT INTO nubra_features (feature, description, status, category, "
+                "seo_keywords, version, is_current) VALUES (%s,%s,%s,%s,%s,%s,false) "
+                "ON CONFLICT (feature, version) DO NOTHING",
+                (f["feature"].strip(), f["description"].strip(), f["status"],
+                 (f.get("category") or "").strip() or None,
+                 [str(k).strip() for k in kws if str(k).strip()], new_version))
+        c.execute("UPDATE nubra_features SET is_current = false WHERE is_current")
+        c.execute("UPDATE nubra_features SET is_current = true WHERE version = %s",
+                  (new_version,))
+        n = c.execute("SELECT count(*) AS n FROM nubra_features "
+                      "WHERE is_current").fetchone()["n"]
     return {"version": new_version, "features_current": n,
             "published_by": _who(x_auth_request_email)}
 

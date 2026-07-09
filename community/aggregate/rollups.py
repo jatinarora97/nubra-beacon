@@ -206,24 +206,25 @@ def _rollup_issues(days: set) -> int:
         for r in items:
             ents = r["entities"] or {}
             groups[(ents["broker"], ents.get("issue_type") or "support")].append(r)
-        db.execute("DELETE FROM issue_rollup WHERE day = %s", (day,))
-        for (broker, issue_key), grp in groups.items():
-            sentiments = [i["sentiment"] for i in grp if i["sentiment"] is not None]
-            neg_share = (sum(1 for s in sentiments if s < -0.3) / len(sentiments)) if sentiments else 0
-            reach = sum(max(i["followers"] or 0, i["views"] or 0) for i in grp)
-            severity = math.log1p(reach) * neg_share
-            samples = [i["item_id"] for i in
-                       sorted(grp, key=lambda x: -(x["score"] or 0))[:5]]
-            db.execute(
-                """
-                INSERT INTO issue_rollup (broker, issue_key, day, count, severity,
-                                          sentiment_avg, sample_item_ids)
-                VALUES (%s,%s,%s,%s,%s,%s,%s)
-                """,
-                (broker, issue_key, day, len(grp), severity,
-                 sum(sentiments) / len(sentiments) if sentiments else None, samples),
-            )
-            n_groups += 1
+        with db.tx() as c:  # per-day DELETE+INSERT atomically
+            c.execute("DELETE FROM issue_rollup WHERE day = %s", (day,))
+            for (broker, issue_key), grp in groups.items():
+                sentiments = [i["sentiment"] for i in grp if i["sentiment"] is not None]
+                neg_share = (sum(1 for s in sentiments if s < -0.3) / len(sentiments)) if sentiments else 0
+                reach = sum(max(i["followers"] or 0, i["views"] or 0) for i in grp)
+                severity = math.log1p(reach) * neg_share
+                samples = [i["item_id"] for i in
+                           sorted(grp, key=lambda x: -(x["score"] or 0))[:5]]
+                c.execute(
+                    """
+                    INSERT INTO issue_rollup (broker, issue_key, day, count, severity,
+                                              sentiment_avg, sample_item_ids)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    """,
+                    (broker, issue_key, day, len(grp), severity,
+                     sum(sentiments) / len(sentiments) if sentiments else None, samples),
+                )
+                n_groups += 1
     return n_groups
 
 
@@ -294,23 +295,23 @@ def recompute_feature_day(key: str, day) -> None:
         """,
         (key, day),
     )
-    db.execute("DELETE FROM feature_rollup WHERE feature_key=%s AND day=%s", (key, day))
-    if not stats:
-        return
     label = (db.one("SELECT canonical_label FROM feature_keys WHERE feature_key=%s",
                     (key,)) or {}).get("canonical_label") or key
     brokers = sorted({(s["entities"] or {}).get("broker") for s in stats
                       if (s["entities"] or {}).get("broker")})
     samples = [s["item_id"] for s in
                sorted(stats, key=lambda x: -(x["score"] or 0))[:5]]
-    db.execute(
-        """
-        INSERT INTO feature_rollup (feature_key, day, canonical_label, count,
-                                    brokers_mentioned, sample_item_ids)
-        VALUES (%s,%s,%s,%s,%s,%s)
-        """,
-        (key, day, label[:120], len(stats), brokers, samples),
-    )
+    with db.tx() as c:  # DELETE+INSERT atomically — no half-rewritten day
+        c.execute("DELETE FROM feature_rollup WHERE feature_key=%s AND day=%s", (key, day))
+        if stats:
+            c.execute(
+                """
+                INSERT INTO feature_rollup (feature_key, day, canonical_label, count,
+                                            brokers_mentioned, sample_item_ids)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                """,
+                (key, day, label[:120], len(stats), brokers, samples),
+            )
 
 
 def _rollup_features(rows: list[dict]) -> int:
@@ -347,7 +348,8 @@ def _rollup_features(rows: list[dict]) -> int:
 
 def _score_authors(author_ids: set[int]) -> int:
     now = datetime.now(timezone.utc)
-    taxonomy = set(TOPICS)
+    from community.enrich.topics import active_topics
+    taxonomy = set(active_topics())  # live taxonomy: activated topics count as relevant
     for aid in author_ids:
         rows = db.query(
             """

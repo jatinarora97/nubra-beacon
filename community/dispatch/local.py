@@ -76,7 +76,8 @@ def run(all_stats: dict | None = None) -> dict:
     else:
         written.append(_archive(md, f"{now_ist:%Y-%m-%d-%H%M}-headsup.md"))
         subject = f"Community heads-up · {now_ist:%d %b %H:%M} IST"
-        if _in_headsup_window(now_ist):
+        in_window = _in_headsup_window(now_ist)
+        if in_window:
             channels["headsup_slack"] = slack_ch.send(md, subject)
             channels["headsup_email"] = email_ch.send(md, subject)
         else:
@@ -89,8 +90,11 @@ def run(all_stats: dict | None = None) -> dict:
             (db.jsonb(_json.loads(_json.dumps(payload, default=str))), md,
              db.jsonb({k: v for k, v in channels.items() if k.startswith("headsup")})),
         )
-        # novelty consumed only after ≥1 successful delivery (archive counts)
-        _apply_stamping(plan)
+        # Novelty is consumed only INSIDE the send window: an evening (20:00+)
+        # archive-only heads-up must not eat items that would otherwise appear
+        # in the next morning's real send — they stay pending until 08:00.
+        if in_window:
+            _apply_stamping(plan)
 
     # ── roundups (daily + weekly when present) ──────────────────────────
     for period in ("daily", "weekly"):

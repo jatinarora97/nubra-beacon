@@ -49,6 +49,38 @@ def _run_stage(name: str, **kwargs) -> dict:
     return stats
 
 
+# One pipeline at a time: the 06:00 morning build (runs to ~07:30) overlaps the
+# 07:00 hourly by design, and Saturday's weekly compose collides with the 10:00
+# hourly. Concurrent pipelines double-submit LLM batches, race feature-key
+# minting, and double-send heads-ups — so acquire a session-scoped Postgres
+# advisory lock and SKIP (exit 0) when another run holds it. The lock dies with
+# the connection, so a killed run can never wedge the next one.
+_PIPELINE_LOCK_KEY = 0x6E756272  # "nubr"
+
+
+def _acquire_pipeline_lock():
+    """Returns the lock-holding connection, or None if another run is active."""
+    import psycopg
+
+    conn = psycopg.connect(settings.db_url, autocommit=True)
+    got = conn.execute("SELECT pg_try_advisory_lock(%s)", (_PIPELINE_LOCK_KEY,)).fetchone()[0]
+    if not got:
+        conn.close()
+        return None
+    return conn
+
+
+def _with_pipeline_lock(label: str, fn) -> None:
+    lock = _acquire_pipeline_lock()
+    if lock is None:
+        typer.echo(f"[{label}] another pipeline run is active — skipping this run")
+        raise typer.Exit(0)
+    try:
+        fn()
+    finally:
+        lock.close()  # releases the advisory lock
+
+
 @app.command()
 def migrate() -> None:
     from migrations.run_migrations import main
@@ -67,6 +99,10 @@ def stage(name: str) -> None:
 def run_local(skip_scrape: bool = False, skip_enrich: bool = False) -> None:
     """End-to-end run: scrape → clean → enrich → aggregate → score → draft →
     compose → dispatch (messages to Slack/Gmail when configured + out/messages/)."""
+    _with_pipeline_lock("run-local", lambda: _run_local_inner(skip_scrape, skip_enrich))
+
+
+def _run_local_inner(skip_scrape: bool, skip_enrich: bool) -> None:
     settings.out_dir.mkdir(parents=True, exist_ok=True)
     all_stats: dict[str, dict] = {}
     for name in STAGE_MODULES:
@@ -74,7 +110,14 @@ def run_local(skip_scrape: bool = False, skip_enrich: bool = False) -> None:
             typer.echo(f"[{name}] skipped by flag")
             continue
         kwargs = {"all_stats": all_stats} if name == "dispatch" else {}
-        all_stats[name] = _run_stage(name, **kwargs)
+        # Per-stage isolation: watermarks make every stage independently safe,
+        # so one failing stage (chromium crash, LLM outage) degrades the run
+        # instead of forfeiting every stage behind it for the hour.
+        try:
+            all_stats[name] = _run_stage(name, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            all_stats[name] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+            typer.echo(f"[{name}] STAGE FAILED — continuing: {all_stats[name]['error']}")
     for p in (all_stats.get("dispatch") or {}).get("written", []):
         typer.echo(f"  {p}")
 
@@ -108,7 +151,7 @@ def morning_build() -> None:
     enrich → aggregate → score → drafts → compose → dispatch roundup."""
     from community.scheduler.morning import run_morning_build
 
-    run_morning_build()
+    _with_pipeline_lock("morning-build", run_morning_build)
 
 
 if __name__ == "__main__":

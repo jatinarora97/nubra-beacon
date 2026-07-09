@@ -8,9 +8,15 @@ export function apiBase(): string {
 export async function get<T>(path: string, fallback: T): Promise<T> {
   try {
     const res = await fetch(`${apiBase()}${path}`, { cache: "no-store" });
-    if (!res.ok) return fallback;
+    if (!res.ok) {
+      // Soft-fail by design, but never silently: a failing endpoint would
+      // otherwise be indistinguishable from a genuinely empty window.
+      console.error(`[api] GET ${path} -> ${res.status}`);
+      return fallback;
+    }
     return (await res.json()) as T;
-  } catch {
+  } catch (e) {
+    console.error(`[api] GET ${path} unreachable:`, e);
     return fallback;
   }
 }

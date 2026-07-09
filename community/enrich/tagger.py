@@ -153,11 +153,18 @@ def run(sync: bool = False) -> dict:
               "text": b["text"][:1500], "thread_hint": b["thread_id"]} for b in chunk]
             for chunk in chunks
         ]
-        results, usage = llm.enrich_via_batch_api(
-            payload_chunks,
-            sla_minutes=float(cfg.get("batch_sla_minutes", 25)),
-            poll_seconds=float(cfg.get("poll_seconds", 20)),
-        )
+        try:
+            results, usage = llm.enrich_via_batch_api(
+                payload_chunks,
+                sla_minutes=float(cfg.get("batch_sla_minutes", 25)),
+                poll_seconds=float(cfg.get("poll_seconds", 20)),
+            )
+        except Exception as e:  # noqa: BLE001 — submit/poll blip must not kill the hour
+            print(f"[enrich] batch API unavailable ({type(e).__name__}: {str(e)[:120]}) "
+                  "— falling back to sync for this pass")
+            stats["batch_fallback"] = f"{type(e).__name__}"
+            results = {i: None for i in range(len(chunks))}  # every chunk → sync retry
+            usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "batch_id": None}
         stats["llm_calls"] += usage["calls"]
         stats["tokens_in"] += usage["input_tokens"]
         stats["tokens_out"] += usage["output_tokens"]

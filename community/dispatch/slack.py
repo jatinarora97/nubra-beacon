@@ -48,7 +48,10 @@ def _chunks(text: str) -> list[str]:
 
 
 def send(markdown: str, subject: str) -> str:
-    """Returns 'sent' | 'skipped (no creds)' | 'error: …'."""
+    """Returns 'sent' | 'skipped (no creds)' | 'skipped (local mode)' | 'error: …'."""
+    from community.config.settings import settings
+    if settings.mode != "prod":  # dump-restored laptops must never message the team
+        return "skipped (local mode — archive only)"
     url = _webhook()
     if not url:
         return "skipped (no creds)"

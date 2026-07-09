@@ -21,16 +21,20 @@ export function TimeFilter({
   current,
   extra = {},
   resolved,
+  allowAll,
 }: {
   current: WindowSearch;
   extra?: Record<string, string>;
   resolved?: { from?: string | null; to?: string | null } | null;
+  /** Inventory pages: prepend an "All open" chip (no window = everything). */
+  allowAll?: string;
 }) {
   const router = useRouter();
   const path = usePathname();
-  // "custom" = any window that isn't one of the preset chips
+  // "custom" = an explicit window that isn't one of the preset chips
   const isPreset = WINDOW_PRESETS.some((p) => p.key === current.window);
-  const customActive = !isPreset || Boolean(current.from_ts && current.to_ts);
+  const customActive =
+    (Boolean(current.window) && !isPreset) || Boolean(current.from_ts && current.to_ts);
   const customMatch = (current.window ?? "").match(/^(\d{1,4})([hd])$/);
   const [showCustom, setShowCustom] = useState(customActive);
   const [num, setNum] = useState(customMatch ? customMatch[1] : "2");
@@ -73,9 +77,22 @@ export function TimeFilter({
   const inputCls =
     "rounded-md border border-line bg-surface2 px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-trends";
 
+  const allActive = !current.window && !current.from_ts;
+
   return (
     <div className="mb-5">
       <div className="flex flex-wrap items-center gap-1.5">
+        {allowAll && (
+          <button
+            onClick={() => {
+              setShowCustom(false);
+              go({});
+            }}
+            className={chipCls(allActive)}
+          >
+            {allowAll}
+          </button>
+        )}
         {WINDOW_PRESETS.map((p) => (
           <button
             key={p.key}

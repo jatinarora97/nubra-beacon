@@ -74,6 +74,36 @@ when it bites. Supersedes the backlog sections of the status doc and the
 18. Emergent-topic discovery is live; revisit HDBSCAN params (min cluster 4)
     once `other:*` volume grows past ~500 items.
 
+## Accepted P2s from the pre-prod review (2026-07-08, four-segment bug hunt)
+
+Fixed in the same pass: run lock + watermark regression, morning-build import
+crash, dead broker_issue scoring, hourly brief regeneration destroying edits,
+per-stage isolation, batch-submit sync fallback, evening novelty consumption,
+backup pipefail, registry bind-mount, refresh priority order, CSV one-time
+backfill, per-query X isolation, author scoring on active topics, transactional
+recomputes/publishes, revise 500→400 + instruction cap, two-clocks
+standardization, Opportunities all-open default, Load-more race. Deliberately
+NOT fixed (tracked here):
+
+- Keyword-found Reddit posts keep snippet text forever if later reachable via
+  subreddit collection (insert-if-absent skips the fuller copy) — revisit with
+  keyword-search depth (item 8).
+- Derived Reddit comment-id collisions (same author, near-identical short
+  replies) silently drop a comment; edited comments re-fetch as new rows.
+- Explore offset pagination can duplicate a row across pages while the table
+  moves under it (live inserts / engagement refresh reordering).
+- Single-endpoint failures render as truthful-looking empty states (get()
+  fallback); only full API/DB-down shows the red banner. Now at least logged
+  client-side; a per-page "could not load" state is the real fix.
+- serve.py dev supervisor has no crash-loop backoff (prod uses compose).
+- Windowed /features builds unbounded item_id arrays before sampling (fine at
+  current scale).
+- Brief revisions have no row lock — simultaneous revisions last-write-win.
+- est_llm_usd stage stat hardcodes Haiku rates (llm_usage is the real meter);
+  score stats key still says new_ge70 though the bar is 60.
+- `make pull-prod` mid-cron-run kills that run; watermarks recover next hour
+  (in-flight Anthropic batch is paid-but-discarded). Operational note.
+
 ## Docs state
 
 - `nubra-community-manager-status-2026-07-05.md` — "what is built" authority.

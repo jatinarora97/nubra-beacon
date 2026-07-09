@@ -31,7 +31,10 @@ def advance_state(stage: str, source: str, *, watermark: datetime | None = None,
                 CASE WHEN %(error)s::text IS NULL THEN now() END,
                 %(error)s::text, CASE WHEN %(error)s::text IS NOT NULL THEN now() END, %(items)s)
         ON CONFLICT (stage, source) DO UPDATE SET
-            watermark       = COALESCE(EXCLUDED.watermark, pipeline_state.watermark),
+            -- GREATEST: a slow run finishing late must never regress the
+            -- watermark set by a faster overlapping run (re-feeds items)
+            watermark       = GREATEST(COALESCE(EXCLUDED.watermark, pipeline_state.watermark),
+                                       COALESCE(pipeline_state.watermark, EXCLUDED.watermark)),
             cursor          = COALESCE(EXCLUDED.cursor, pipeline_state.cursor),
             last_success_at = COALESCE(EXCLUDED.last_success_at, pipeline_state.last_success_at),
             last_error      = EXCLUDED.last_error,
