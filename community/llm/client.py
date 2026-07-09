@@ -17,6 +17,9 @@ from community.config.settings import settings
 from community.enrich.topics import active_topics
 from community.llm import trace
 from community.reference.taxonomy import ISSUE_TYPES
+from community.config.log import get_logger
+
+log = get_logger("enrich.batch")
 
 _PROMPT = (pathlib.Path(__file__).parent / "prompts" / "enrich.txt").read_text()
 
@@ -138,7 +141,7 @@ def enrich_via_batch_api(
     t0 = _time.monotonic()
     batch = client().messages.batches.create(requests=requests)
     usage["batch_id"] = batch.id
-    print(f"[enrich] batch {batch.id} submitted ({len(chunks)} chunks) — polling")
+    log.info("batch %s submitted (%d chunks) — polling every %ss", batch.id, len(chunks), poll_seconds)
 
     deadline = _time.monotonic() + sla_minutes * 60
     while True:
@@ -150,8 +153,7 @@ def enrich_via_batch_api(
                 client().messages.batches.cancel(batch.id)
             except Exception:  # noqa: BLE001 — cancel is best-effort
                 pass
-            print(f"[enrich] batch {batch.id} exceeded {sla_minutes}min SLA — "
-                  "cancelled, falling back to sync for this pass")
+            log.warning("batch %s exceeded %smin SLA — cancelled, falling back to sync for this pass", batch.id, sla_minutes)
             trace.record(model=settings.enrich_model, input_tokens=0, output_tokens=0,
                          duration_ms=int((_time.monotonic() - t0) * 1000), batch=True,
                          metadata={"batch_id": batch.id, "chunks": len(chunks),
@@ -163,7 +165,7 @@ def enrich_via_batch_api(
     for result in client().messages.batches.results(batch.id):
         idx = int(result.custom_id.split("_")[1])
         if result.result.type != "succeeded":
-            print(f"[enrich] batch chunk {idx}: {result.result.type} — sync retry")
+            log.warning("batch chunk %d: %s — sync retry", idx, result.result.type)
             continue
         msg = result.result.message
         usage["input_tokens"] += msg.usage.input_tokens
@@ -174,7 +176,7 @@ def enrich_via_batch_api(
         try:
             out[idx] = _validate(raw, expected)
         except (ValueError, ValidationError, json.JSONDecodeError) as e:
-            print(f"[enrich] batch chunk {idx} failed validation ({e}) — sync retry")
+            log.warning("batch chunk %d failed validation (%s) — sync retry", idx, str(e)[:200])
     # one llm_usage row per submitted batch: aggregate tokens, -50% batch pricing
     trace.record(model=settings.enrich_model,
                  input_tokens=usage["input_tokens"],

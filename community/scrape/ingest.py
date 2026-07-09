@@ -4,6 +4,7 @@ Idempotent: insert-if-absent on (source, external_id); reruns insert ~0.
 """
 from __future__ import annotations
 
+from community.config.log import get_logger
 from community.config.settings import settings
 from community.clean.normalize import norm
 from community.scrape import reddit, twitter
@@ -36,6 +37,9 @@ def _store(item: SocialItem, counters: dict) -> None:
     counters["inserted" if item_id else "skipped_existing"] += 1
 
 
+log = get_logger("scrape")
+
+
 def run(daily: bool = False, **_) -> dict:
     """daily=True adds the once-a-day sorts (top = past-24h best) to the hourly
     new+hot+rising feeds; the scheduler passes it on the morning build."""
@@ -48,23 +52,31 @@ def run(daily: bool = False, **_) -> dict:
     # it hourly re-asserted stale June author fields (followers/verified) over
     # fresher live-X values and bumped last_seen for 400 authors every run.
     csv_path = settings.registry["sources"]["twitter"].get("csv_backfill")
+    csv_note = None
     if csv_path:
         already = db.one(
             "SELECT 1 AS x FROM social_items "
             "WHERE source='twitter' AND raw->>'backfill' IS NOT NULL LIMIT 1")
         if already:
-            fetched["twitter_csv"] = "already backfilled (skipped)"
+            # keep the counter an int — it is summed for the watermark below
+            csv_note = "already backfilled (skipped)"
+            log.info("X csv backfill: already in DB — skipped")
         else:
+            log.info("X csv backfill: importing %s", csv_path)
             for item in twitter.iter_csv_backfill(csv_path):
                 fetched["twitter_csv"] += 1
                 _store(item, counters)
+            log.info("X csv backfill: %d rows imported", fetched["twitter_csv"])
 
     # Reddit live — all feeds: hourly new+hot+rising, +top when daily
     r_reg = settings.registry["sources"]["reddit"]
     sorts = list(r_reg.get("sort_types_hourly", ["new"]))
     if daily:
         sorts += list(r_reg.get("sort_types_daily_extra", []))
+    log.info("reddit: fetching feeds %s across watched subs (daily=%s)", sorts, daily)
     reddit_items, reddit_health = reddit.fetch_live(sorts=sorts)
+    log.info("reddit: %d items fetched (health: %s)", len(reddit_items),
+             str(reddit_health)[:150])
     for item in reddit_items:
         fetched["reddit"] += 1
         cat = (item.raw or {}).get("category", "uncategorized")
@@ -72,7 +84,9 @@ def run(daily: bool = False, **_) -> dict:
         _store(item, counters)
 
     # X live — capped, degrade-to-note
+    log.info("X live: fetching (budget-capped)")
     live_items, x_live_note = twitter.fetch_live_capped()
+    log.info("X live: %d items — %s", len(live_items), (x_live_note or "ok")[:150])
     for item in live_items:
         fetched["twitter_live"] += 1
         _store(item, counters)
@@ -85,18 +99,26 @@ def run(daily: bool = False, **_) -> dict:
     # failure here must never fail the scrape stage
     try:
         from community.scrape import refresh
+        log.info("engagement refresh: starting")
         refresh_stats = refresh.run()
-    except Exception as e:  # noqa: BLE001
-        refresh_stats = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
+        log.info("engagement refresh: %s", refresh_stats)
+    except Exception:  # noqa: BLE001
+        log.exception("engagement refresh failed — scrape stage continues")
+        refresh_stats = {"error": "see traceback in log"}
 
     # reddit keyword search (2026-07-08) — watched keywords fetch across ALL of
     # reddit, not just watched subs; same never-break-the-stage contract
     try:
         from community.scrape import keyword_search
+        log.info("keyword search: starting")
         keyword_stats = keyword_search.run()
-    except Exception as e:  # noqa: BLE001
-        keyword_stats = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
+        log.info("keyword search: %s", keyword_stats)
+    except Exception:  # noqa: BLE001
+        log.exception("keyword search failed — scrape stage continues")
+        keyword_stats = {"error": "see traceback in log"}
 
+    if csv_note:
+        fetched["twitter_csv_note"] = csv_note
     return {"fetched": fetched, "reddit_by_category": reddit_by_category,
             "reddit_sorts": sorts, **counters,
             "x_live_note": x_live_note, "reddit_health": reddit_health,

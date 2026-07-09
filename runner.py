@@ -41,11 +41,13 @@ STAGE_MODULES = {
 def _run_stage(name: str, **kwargs) -> dict:
     import importlib
 
+    from community.config.log import get_logger
+
     mod = importlib.import_module(STAGE_MODULES[name])
     t0 = time.time()
     stats = mod.run(**kwargs) or {}
     stats["_seconds"] = round(time.time() - t0, 1)
-    typer.echo(f"[{name}] {json.dumps(stats, default=str)[:400]}")
+    get_logger(name).info("%s", json.dumps(stats, default=str)[:400])
     return stats
 
 
@@ -92,7 +94,14 @@ def migrate() -> None:
 def stage(name: str) -> None:
     if name not in STAGE_MODULES:
         raise typer.BadParameter(f"unknown stage {name!r}; one of {list(STAGE_MODULES)}")
-    _run_stage(name)
+    from community.config.log import get_logger
+    log = get_logger("runner")
+    log.info("stage %s starting (single-stage run)", name)
+    try:
+        _run_stage(name)
+    except Exception:  # noqa: BLE001
+        log.exception("stage %s FAILED", name)
+        raise SystemExit(1)
 
 
 @app.command("run-local")
@@ -103,23 +112,43 @@ def run_local(skip_scrape: bool = False, skip_enrich: bool = False) -> None:
 
 
 def _run_local_inner(skip_scrape: bool, skip_enrich: bool) -> None:
+    import json as _json
+    import time as _time
+
+    from community.config.log import get_logger
+    log = get_logger("runner")
+
     settings.out_dir.mkdir(parents=True, exist_ok=True)
     all_stats: dict[str, dict] = {}
+    run_t0 = _time.time()
+    skipped = [n for n, s in (("scrape", skip_scrape), ("enrich", skip_enrich)) if s]
+    log.info("run-local starting (stages: %s)%s", " ".join(STAGE_MODULES),
+             " — skipping " + ",".join(skipped) if skipped else "")
     for name in STAGE_MODULES:
         if (name == "scrape" and skip_scrape) or (name == "enrich" and skip_enrich):
-            typer.echo(f"[{name}] skipped by flag")
+            log.info("stage %-9s skipped by flag", name)
             continue
         kwargs = {"all_stats": all_stats} if name == "dispatch" else {}
         # Per-stage isolation: watermarks make every stage independently safe,
         # so one failing stage (chromium crash, LLM outage) degrades the run
         # instead of forfeiting every stage behind it for the hour.
+        log.info("stage %-9s starting", name)
+        t0 = _time.time()
         try:
             all_stats[name] = _run_stage(name, **kwargs)
-        except Exception as e:  # noqa: BLE001
-            all_stats[name] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
-            typer.echo(f"[{name}] STAGE FAILED — continuing: {all_stats[name]['error']}")
+            log.info("stage %-9s done in %5.1fs — %s", name, _time.time() - t0,
+                     _json.dumps(all_stats[name], default=str)[:400])
+        except Exception:  # noqa: BLE001
+            all_stats[name] = {"error": "see traceback above"}
+            # full traceback: the whole point is pinpointing the break
+            log.exception("stage %-9s FAILED after %.1fs — continuing with later stages",
+                          name, _time.time() - t0)
+    errors = [n for n, s in all_stats.items() if "error" in s]
+    log.info("run-local complete in %.0fs — %d/%d stages ok%s",
+             _time.time() - run_t0, len(all_stats) - len(errors), len(all_stats),
+             f" (FAILED: {', '.join(errors)})" if errors else "")
     for p in (all_stats.get("dispatch") or {}).get("written", []):
-        typer.echo(f"  {p}")
+        log.info("archived %s", p)
 
 
 @app.command()

@@ -18,6 +18,9 @@ import re
 from datetime import datetime, timezone
 
 from community.store import db
+from community.config.log import get_logger
+
+log = get_logger("discover")
 
 MIN_CLUSTER_SIZE = 4
 WINDOW_DAYS = 30
@@ -86,7 +89,7 @@ def discover_topics() -> dict:
             label, why = str(out["label"]).strip()[:80], str(out["why"]).strip()[:200]
         except Exception as e:  # noqa: BLE001 — one bad label never kills the run
             stats["label_failures"] += 1
-            print(f"[discover] cluster {c} label failed: {type(e).__name__}: {str(e)[:80]}")
+            log.warning("cluster %s label failed: %s: %s", c, type(e).__name__, str(e)[:80])
             continue
         if not key or key in existing:
             stats["skipped_existing"] += 1

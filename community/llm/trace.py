@@ -39,6 +39,9 @@ nubra-ai-personalization pattern, adapted to this stage-based pipeline):
               wrapped; failures log to stdout and the call proceeds.
 """
 from __future__ import annotations
+from community.config.log import get_logger
+
+log = get_logger("trace")
 
 import contextvars
 import os
@@ -129,7 +132,7 @@ def _langfuse():
         return Langfuse(public_key=pk, secret_key=sk,
                         host=os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"))
     except Exception as e:  # noqa: BLE001 — observability must not break calls
-        print(f"[trace] langfuse init failed ({e}) — continuing without")
+        log.warning("langfuse init failed (%s) — continuing without", e)
         return None
 
 
@@ -158,7 +161,7 @@ def _record_langfuse(purpose: str, model: str, prompt: str, system: str,
             pass
         return trace_id
     except Exception as e:  # noqa: BLE001
-        print(f"[trace] langfuse record failed ({e}) — continuing without")
+        log.warning("langfuse record failed (%s) — continuing without", e)
         return None
 
 
@@ -190,7 +193,7 @@ def record(*, model: str, input_tokens: int, output_tokens: int,
              batch, lf_id, db.jsonb(meta) if meta else None),
         )
     except Exception as e:  # noqa: BLE001
-        print(f"[trace] llm_usage write failed ({e}) — call unaffected")
+        log.error("llm_usage write failed (%s) — call unaffected", e)
 
 
 class timer:

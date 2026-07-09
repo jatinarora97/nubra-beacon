@@ -18,6 +18,9 @@ from community.llm import client as llm
 from community.clean import prefilter
 from community.reference.taxonomy import resolve_broker, seed_taxonomy
 from community.store import db, repositories as repo
+from community.config.log import get_logger
+
+log = get_logger("enrich")
 
 BATCH_SIZE = 20
 LOCAL_MAX_ITEMS = 600  # local-mode spend cap; noted in ops stats when it bites
@@ -105,7 +108,7 @@ def _sync_chunk(chunk: list[dict], stats: dict) -> None:
         stats["tokens_out"] += usage["output_tokens"]
         stats["llm_enriched"] += _write_enriched(result, by_id)
     except llm.EnrichError as err:
-        print(f"[enrich] chunk failed → kw-fallback: {err}")
+        log.warning("chunk failed → kw-fallback: %s", err)
         stats["fallback_batches"] += 1
         _write_kw_fallback(chunk)
 
@@ -160,7 +163,7 @@ def run(sync: bool = False) -> dict:
                 poll_seconds=float(cfg.get("poll_seconds", 20)),
             )
         except Exception as e:  # noqa: BLE001 — submit/poll blip must not kill the hour
-            print(f"[enrich] batch API unavailable ({type(e).__name__}: {str(e)[:120]}) "
+            log.warning(f"batch API unavailable ({type(e).__name__}: {str(e)[:120]}) "
                   "— falling back to sync for this pass")
             stats["batch_fallback"] = f"{type(e).__name__}"
             results = {i: None for i in range(len(chunks))}  # every chunk → sync retry
@@ -189,6 +192,6 @@ def run(sync: bool = False) -> dict:
     rate = 0.5 if not sync else 1.0
     est = (stats["tokens_in"] / 1e6 * 1.0 + stats["tokens_out"] / 1e6 * 5.0) * rate
     stats["est_llm_usd"] = round(est, 3)
-    print(f"[enrich] tokens in={stats['tokens_in']} out={stats['tokens_out']} "
+    log.info(f"tokens in={stats['tokens_in']} out={stats['tokens_out']} "
           f"est ${stats['est_llm_usd']} ({stats['transport']})")
     return stats

@@ -14,6 +14,9 @@ from community.llm.client import complete
 from community.recommend import compliance
 from community.reference import features
 from community.store import db
+from community.config.log import get_logger
+
+log = get_logger("draft")
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -222,7 +225,7 @@ def _content_proposals(catalog: list[dict]) -> int:
     try:
         cands = _parse_json(raw)["candidates"]
     except (ValueError, KeyError, json.JSONDecodeError) as e:
-        print(f"[recommend] content proposals: LLM output unparsable ({e}) — 0 proposals this run")
+        log.error("content proposals: LLM output unparsable (%s) — 0 proposals this run", e)
         return 0
 
     def score(c):

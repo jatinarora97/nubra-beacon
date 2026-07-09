@@ -16,6 +16,9 @@ from datetime import datetime, timedelta, timezone
 
 from community.reference.taxonomy import TOPICS, seed_taxonomy
 from community.store import db, repositories as repo
+from community.config.log import get_logger
+
+log = get_logger("aggregate")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
@@ -276,7 +279,7 @@ def _feature_key_for(phrase: str) -> str:
             )
             return best["feature_key"]
         if tau - 0.03 <= best["sim"] < tau:  # near-miss band, e5 range is compressed
-            print(f"[aggregate] feature near-miss {best['sim']:.2f}: "
+            log.info(f"feature near-miss {best['sim']:.2f}: "
                   f"{phrase[:50]!r} vs {best['canonical_label'][:50]!r} "
                   f"({best['feature_key']}) — below τ={tau}")
     return _mint_key(phrase, vec)

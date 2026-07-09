@@ -8,11 +8,15 @@ drafts → compose (daily; weekly on Saturdays, inside compose) → dispatch.
 from __future__ import annotations
 
 import json
+
+from community.config.log import get_logger
+
+log = get_logger("morning")
 import time
 
 
 def _echo(name: str, stats: dict) -> None:
-    print(f"[morning:{name}] {json.dumps(stats, default=str)[:300]}")
+    log.info("%s — %s", name, json.dumps(stats, default=str)[:300])
 
 
 def run_morning_build() -> dict:
@@ -29,9 +33,9 @@ def run_morning_build() -> dict:
     t0 = time.time()
 
     all_stats["scrape"] = ingest.run(daily=True)  # daily=True → include `top` feed (scrape stage owns it)
-    print('[morning] trend discovery:', x_trends.discover())
+    log.info("trend discovery — %s", x_trends.discover())
     from community.aggregate import discover
-    print('[morning] topic discovery:', discover.discover_topics())
+    log.info("topic discovery — %s", discover.discover_topics())
     _echo("scrape", all_stats["scrape"])
     all_stats["clean"] = dedup.run()
     _echo("clean", all_stats["clean"])
@@ -51,5 +55,5 @@ def run_morning_build() -> dict:
     all_stats["dispatch"] = dispatch.run(all_stats)
     _echo("dispatch", all_stats["dispatch"])
 
-    print(f"[morning] complete in {time.time() - t0:.0f}s")
+    log.info("morning build complete in %.0fs", time.time() - t0)
     return all_stats
