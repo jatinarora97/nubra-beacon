@@ -140,12 +140,19 @@ python runner.py stage clean
 python runner.py stage enrich
 python runner.py stage aggregate
 python runner.py stage recommend
+python runner.py stage social
 ```
 
 For all local stages:
 
 ```powershell
 python runner.py run-local
+```
+
+Inspect generated social post recommendations through the API:
+
+```text
+GET http://127.0.0.1:8400/api/v1/social-recommendations
 ```
 
 ---
@@ -203,4 +210,3 @@ Set:
 ```env
 GITHUB_TOKEN=
 ```
-

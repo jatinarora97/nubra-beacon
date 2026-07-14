@@ -1219,6 +1219,87 @@ def publish_features_catalog(body: dict = Body(...),
             "published_by": _who(x_auth_request_email)}
 
 
+# ── social recommendations (human-approved posting workflow) ────────────────
+
+_SOCIAL_STATUSES = (
+    "suggested", "shortlisted", "needs_design", "draft_ready",
+    "approved", "published", "rejected",
+)
+
+
+@app.get(API + "/social-recommendations")
+def social_recommendations(status: str | None = None, limit: int = 30):
+    if status and status not in _SOCIAL_STATUSES:
+        raise HTTPException(400, f"status must be one of {_SOCIAL_STATUSES}")
+    where = "WHERE r.status = %s" if status else ""
+    params = (status, _lim(limit)) if status else (_lim(limit),)
+    rows = db.query(
+        f"""
+        SELECT r.id, r.recommendation_key, r.title, r.summary,
+               r.recommendation_type, r.target_persona, r.platform,
+               r.format_family, r.priority_score, r.status,
+               r.mapped_features, r.source_signals, r.reason, r.post_angle,
+               r.created_at, r.updated_at,
+               d.draft_copy, d.creative_brief, d.prompt_version
+        FROM social_post_recommendations r
+        LEFT JOIN LATERAL (
+            SELECT draft_copy, creative_brief, prompt_version
+            FROM social_post_drafts d
+            WHERE d.recommendation_id = r.id
+            ORDER BY d.created_at DESC
+            LIMIT 1
+        ) d ON true
+        {where}
+        ORDER BY r.priority_score DESC, r.updated_at DESC
+        LIMIT %s
+        """,
+        params,
+    )
+    return {"recommendations": rows}
+
+
+@app.post(API + "/social-recommendations/generate")
+def generate_social_recommendations(body: dict = Body(default={})):
+    from community.social_recommend.generate import run
+
+    return run(
+        days=int(body.get("days") or 7),
+        limit=int(body.get("limit") or 500),
+        max_recommendations=int(body.get("max_recommendations") or 12),
+    )
+
+
+@app.post(API + "/social-recommendations/{recommendation_id}/status")
+def update_social_recommendation_status(
+    recommendation_id: int,
+    body: dict = Body(...),
+    x_auth_request_email: str | None = Header(default=None),
+):
+    new_status = body.get("status")
+    if new_status not in _SOCIAL_STATUSES:
+        raise HTTPException(400, f"status must be one of {_SOCIAL_STATUSES}")
+    note = body.get("note")
+    with db.conn() as c:
+        old = c.execute(
+            "SELECT status FROM social_post_recommendations WHERE id=%s FOR UPDATE",
+            (recommendation_id,),
+        ).fetchone()
+        if not old:
+            raise HTTPException(404, "no such recommendation")
+        row = c.execute(
+            "UPDATE social_post_recommendations SET status=%s, updated_at=now() "
+            "WHERE id=%s RETURNING id, status",
+            (new_status, recommendation_id),
+        ).fetchone()
+        c.execute(
+            "INSERT INTO social_post_approval_events "
+            "(recommendation_id, old_status, new_status, actor, note) "
+            "VALUES (%s,%s,%s,%s,%s)",
+            (recommendation_id, old["status"], new_status, _who(x_auth_request_email), note),
+        )
+    return row
+
+
 # ── watch sources (UI-managed collection config) ──────────────────────────
 
 _KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query", "keyword")

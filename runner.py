@@ -12,6 +12,7 @@ Pipeline stages map 1:1 to packages under community/:
     enrich/    tag topic/intent/entities (LLM)       → community.enrich.tagger
     aggregate/ trends · issues · features · voices   → community.aggregate.rollups
     recommend/ score + draft + compliance            → …recommend.score, …recommend.draft
+    social/    social post recommendations           -> community.social_recommend.generate
     compose/   build messages (analytics + actions)  → community.compose.roundup
     dispatch/  send: Slack · Gmail · archive         → community.dispatch.local
 """
@@ -33,6 +34,7 @@ STAGE_MODULES = {
     "aggregate": "community.aggregate.rollups",
     "score": "community.recommend.score",
     "draft": "community.recommend.draft",
+    "social": "community.social_recommend.generate",
     "compose": "community.compose.roundup",
     "dispatch": "community.dispatch.local",
 }
