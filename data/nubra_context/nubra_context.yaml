@@ -70,6 +70,534 @@ feature_metadata_fields:
     allowed_values: [product_context_file, product_team, marketing_team, design_file, api_docs, internal_note]
     purpose: Captures where the feature information came from.
 
+keyword_banks:
+  retail_trading:
+    - best trading app India
+    - stock trading app India
+    - Indian stock market app
+    - broker app India
+    - trading platform India
+    - NSE trading app
+    - BSE trading app
+    - demat trading app
+    - retail trading platform
+    - active trader app
+  options_core:
+    - Nifty options
+    - BankNifty options
+    - FinNifty options
+    - option chain India
+    - option chain analysis
+    - options trading app
+    - F&O trading app
+    - expiry day trading
+    - intraday options trading
+    - derivatives trading
+  option_chain_analytics:
+    - OI bars
+    - open interest bars
+    - total OI
+    - OI buildup
+    - OI concentration
+    - PCR
+    - put call ratio
+    - max pain
+    - IV
+    - implied volatility
+    - IV change
+    - IV rank
+    - volume spike
+    - option volume
+    - delta
+    - gamma
+    - theta
+    - vega
+    - bid ask spread
+    - ITM options
+    - ATM options
+    - OTM options
+  strategy_trading:
+    - strategy builder
+    - options strategy builder
+    - strategy appstore
+    - prebuilt options strategies
+    - straddle
+    - strangle
+    - iron condor
+    - bull call spread
+    - bear put spread
+    - calendar spread
+    - payoff graph
+    - payoff analysis
+    - breakeven
+    - max profit
+    - max loss
+    - risk reward
+    - strategy-level P&L
+    - strategy-level stop loss
+  execution_orders:
+    - OMS
+    - order management system
+    - order placement
+    - order modification
+    - basket order
+    - iceberg order
+    - AMO
+    - GTT
+    - Good Till Triggered
+    - After Market Order
+    - one click trading
+    - scalper mode
+    - best fill
+    - fill price
+    - slippage
+    - liquidity
+    - quick order
+    - order presets
+  risk_controls:
+    - stop loss
+    - take profit
+    - target
+    - SL TP
+    - P&L based stop loss
+    - trailing stop loss
+    - position sizing
+    - quantity by amount
+    - quantity by margin
+    - margin requirement
+    - exposure
+    - portfolio risk
+    - hedging
+    - risk management
+  api_algo:
+    - trading API
+    - broker API
+    - market data API
+    - historical data API
+    - websocket
+    - reliable websocket
+    - order placement API
+    - algo trading
+    - automated trading
+    - backtesting
+    - paper trading
+    - UAT
+    - sandbox
+    - TOTP
+    - static IP
+    - IP whitelist
+    - multi session
+    - SDK
+    - MCP
+  funds_pricing:
+    - instant withdrawal
+    - add funds
+    - instant fund addition
+    - UPI fund transfer
+    - payout
+    - brokerage calculator
+    - brokerage charges
+    - charges calculator
+    - contract note
+    - flexible brokerage
+  alerts_scanners:
+    - technical alerts
+    - price alerts
+    - indicator alerts
+    - option chain alerts
+    - OI alerts
+    - IV alerts
+    - volume alerts
+    - stock scanner
+    - screener
+    - AI scanner
+    - query based scanner
+    - natural language scanner
+  market_context:
+    - FII data
+    - DII data
+    - institutional flows
+    - market breadth
+    - market news
+    - corporate actions
+    - fundamentals
+    - sector analysis
+    - index analysis
+    - market sentiment
+  competitor_context:
+    - Zerodha Kite
+    - Sensibull
+    - Opstra
+    - Dhan
+    - Upstox
+    - Angel One
+    - FYERS
+    - Groww
+    - TradingView
+    - StockEdge
+    - AlgoTest
+    - OpenAlgo
+
+feature_enrichment:
+  F&O trading on NSE and BSE:
+    keyword_banks: [retail_trading, options_core]
+    detail: >
+      Core derivatives capability for retail and active traders. The context
+      should cover NSE/BSE derivatives, index options, stock futures/options,
+      expiry-day behaviour, intraday F&O workflows and the need for fast,
+      reliable execution during high-volume market hours.
+    extra_keywords: [NSE F&O, BSE F&O, index options, stock options, futures and options, derivatives broker]
+  API and algo trading access:
+    keyword_banks: [api_algo]
+    detail: >
+      Developer-facing access layer for users who want to place orders,
+      consume market data, run algos, build tools, integrate SDKs and automate
+      workflows. User expectations include clear docs, stable websocket,
+      historical data clarity, sandbox/UAT, backtesting support, scanner APIs,
+      indicator APIs and predictable authentication/security flows.
+    extra_keywords: [REST API, streaming API, API docs, developer portal, algo platform, API users, scanner API, indicator API]
+  Nubra UAT:
+    keyword_banks: [api_algo]
+    detail: >
+      Testing and forward-testing environment that can satisfy paper-trading
+      and sandbox expectations. This should be marketed clearly because users
+      repeatedly ask for safe testing before touching live capital or live API
+      execution.
+    extra_keywords: [Nubra UAT, UAT environment, paper trade, simulated execution, forward test, test account]
+  OMS V3:
+    keyword_banks: [execution_orders, api_algo]
+    detail: >
+      Order-management foundation for live order placement, modification,
+      execution reliability and API/order workflows. OMS V3 should be mapped
+      to user expectations around order lifecycle, strategy execution, order
+      status clarity, retries, reconciliation and safer automation.
+    extra_keywords: [OMS V3, order lifecycle, order status, execution reliability, order reconciliation, strategy execution]
+  Flat low brokerage:
+    keyword_banks: [funds_pricing]
+    detail: >
+      Pricing proposition for traders who compare brokers on charges, contract
+      notes, break-even, brokerage calculators, hidden charges and F&O cost per
+      trade. The context should support content around transparent charges and
+      P&L impact.
+    extra_keywords: [transparent charges, F&O charges, breakeven charges, low cost broker, discount broker]
+  Flexible brokerage:
+    keyword_banks: [funds_pricing]
+    detail: >
+      Pricing flexibility for different trader segments such as scalpers,
+      high-frequency retail users, option sellers and occasional investors.
+      This connects to acquisition messaging where users complain about rigid
+      brokerage plans or high charges during frequent trading.
+    extra_keywords: [custom brokerage plan, trader pricing plan, high volume trader pricing, brokerage flexibility]
+  Watchlist 250 instruments:
+    keyword_banks: [retail_trading]
+    detail: >
+      Expanded watchlist capacity for users who track many stocks, indices,
+      F&O instruments or sector baskets. Important for investors, intraday
+      traders and option users who monitor multiple underlyings and expiries.
+    extra_keywords: [250 stocks watchlist, large watchlist, multi watchlist, instrument tracking, stock tracking]
+  Auto-refresh watchlist:
+    keyword_banks: [retail_trading]
+    detail: >
+      Live watchlist refresh prevents stale quote confusion and reduces manual
+      reloads. This matters for fast-moving markets where traders expect price,
+      change, volume and bid/ask context to update automatically.
+    extra_keywords: [live price refresh, auto updating watchlist, real time quotes, stale quotes]
+  Option-chain analytics:
+    keyword_banks: [options_core, option_chain_analytics]
+    detail: >
+      Central analytics surface for option buyers, sellers and OI traders.
+      Should include OI, OI bars, PCR, total OI, max pain, IV, IV change,
+      Greeks, volume, volume spike, bid-ask spread, ITM highlighting and fast
+      strike comparison.
+    extra_keywords: [option chain customization, option chain columns, strike analysis, options dashboard]
+  Option chain filters and saved modes:
+    keyword_banks: [options_core, option_chain_analytics]
+    detail: >
+      Filter layer for calls/puts and option-chain columns such as strike,
+      premium, OI, OI buildup, volume, volume spike, IV, IV change, delta,
+      gamma, theta, vega, bid-ask spread and OI concentration. Saved modes
+      should support repeat workflows for option buyer, seller and OI trader.
+    extra_keywords: [save option chain filters, calls filter, puts filter, percentile filter, option chain preset]
+  Option buyer mode:
+    keyword_banks: [options_core, option_chain_analytics, risk_controls]
+    detail: >
+      Persona mode for users buying options. The mode should make premium risk,
+      expiry, direction, Greeks, IV, bid-ask spread, liquidity, payoff and
+      risk-reward visible quickly so users can avoid blind strike selection.
+    extra_keywords: [premium risk, option buying risk, directional options, option buyer workflow]
+  Option seller mode:
+    keyword_banks: [options_core, strategy_trading, risk_controls]
+    detail: >
+      Persona mode for premium sellers. It should emphasize margin, payoff,
+      max loss, strategy grouping, adjustments, hedging, P&L based SL/TP,
+      strategy-level SL/TP, risk-reward and portfolio exposure.
+    extra_keywords: [premium selling, margin for option selling, option selling risk, hedged strategy, adjustment]
+  OI trader mode:
+    keyword_banks: [option_chain_analytics, options_core, alerts_scanners]
+    detail: >
+      Persona mode for traders using open interest and option-chain structure.
+      It should prioritize OI bars, total OI, OI buildup, OI concentration,
+      PCR, max pain, volume spike, IV change and strike-level activity.
+    extra_keywords: [open interest trader, OI based trading, OI analysis, OI percentile]
+  Scalper mode:
+    keyword_banks: [execution_orders, risk_controls]
+    detail: >
+      High-speed trading mode for active intraday users. It should optimize
+      quick order placement, one-click trading, bid-ask visibility, order
+      presets, best fill awareness, fast modification and risk controls that do
+      not slow down execution unnecessarily.
+    extra_keywords: [scalping app, intraday scalper, quick trade, fast execution, order speed]
+  Customized broker persona experience:
+    keyword_banks: [retail_trading, options_core]
+    detail: >
+      Personalization layer where the product changes based on trader persona:
+      investor, option buyer, option seller, OI trader and scalper. This should
+      influence default screens, filters, visible metrics, education and risk
+      prompts.
+    extra_keywords: [persona based trading, investor mode, trader mode, personalized broker]
+  Call view and put view:
+    keyword_banks: [option_chain_analytics, options_core]
+    detail: >
+      Dedicated call-side and put-side analysis views reduce option-chain noise
+      and help users focus on directional or hedging decisions. Useful for
+      comparing call/put premiums, OI, IV, volume and bid-ask spread.
+    extra_keywords: [calls view, puts view, call side, put side, call option analysis, put option analysis]
+  Payoff and analysis on the face:
+    keyword_banks: [strategy_trading, risk_controls]
+    detail: >
+      Payoff, breakeven, max profit, max loss, risk-reward and scenario
+      analysis should be visible directly in the trade/strategy flow, not
+      hidden behind multiple screens. This addresses the common user need to
+      understand risk before execution.
+    extra_keywords: [payoff on trade screen, breakeven analysis, max profit max loss, scenario analysis]
+  Bid-ask on option chain:
+    keyword_banks: [option_chain_analytics, execution_orders]
+    detail: >
+      Bid/ask visibility helps traders understand spread, liquidity, slippage
+      and realistic execution before selecting a strike. Especially important
+      for option buyers, scalpers and users trading less liquid strikes.
+    extra_keywords: [options bid ask, liquidity score, spread awareness, slippage risk]
+  Bid-ask on chart:
+    keyword_banks: [execution_orders]
+    detail: >
+      Showing bid and ask on chart connects visual analysis with execution
+      reality. This helps scalpers and intraday users understand whether the
+      chart price is tradable and how much spread/slippage exists.
+    extra_keywords: [bid ask overlay, chart execution, spread on chart, tradable price]
+  Chart analyser:
+    keyword_banks: [retail_trading, alerts_scanners]
+    detail: >
+      Analysis assistant for chart patterns, trend, support/resistance,
+      indicators, volume behaviour and context. Should be framed as analysis
+      support, not trading advice or guaranteed prediction.
+    extra_keywords: [AI chart analysis, support resistance, trendline, candlestick pattern, chart insights]
+  Advanced charts:
+    keyword_banks: [retail_trading, alerts_scanners]
+    detail: >
+      Core charting surface with indicators, drawing tools, layouts,
+      multi-timeframe analysis and saved preferences. Important for retail
+      traders comparing broker chart quality with TradingView-style workflows.
+    extra_keywords: [multi timeframe chart, drawing tools, saved chart layout, indicators]
+  Technical alerts:
+    keyword_banks: [alerts_scanners]
+    detail: >
+      Alerts based on price, indicators, chart levels and technical conditions.
+      Useful for reducing manual monitoring and turning analysis into timely
+      notifications.
+    extra_keywords: [indicator based alert, moving average alert, breakout alert, support resistance alert]
+  Option chain based alerts:
+    keyword_banks: [option_chain_analytics, alerts_scanners]
+    detail: >
+      Alerts based on OI, total OI, volume spike, IV, IV change, PCR, max pain,
+      strike movement, bid-ask spread or option-chain filters. These are highly
+      relevant for OI traders and active option users.
+    extra_keywords: [OI change alert, IV change alert, PCR alert, max pain alert, strike alert]
+  Query-based AI generated scans:
+    keyword_banks: [alerts_scanners, market_context]
+    detail: >
+      Natural-language scanner where users describe what they want to find,
+      such as high OI buildup, volume spike, breakout stocks, bullish
+      option-chain setup or stocks near VWAP. Should support retail discovery
+      without forcing users to build complex scanner syntax.
+    extra_keywords: [AI screener, natural language screener, scan by prompt, query scanner]
+  Basket orders:
+    keyword_banks: [execution_orders, strategy_trading]
+    detail: >
+      Multi-leg order workflow for spreads, straddles, strangles and hedged
+      positions. Users expect less leg-risk, clear margin, execution status and
+      easy modification/cancellation.
+    extra_keywords: [multi leg execution, leg risk, basket margin, option basket]
+  Apply presets on OMS:
+    keyword_banks: [execution_orders]
+    detail: >
+      Order presets reduce repeated setup for frequent traders. Presets can
+      include order type, product type, quantity logic, SL/TP defaults, time in
+      force and preferred execution settings.
+    extra_keywords: [order template, default order settings, quick order preset, saved order settings]
+  Best fill price in NSE:
+    keyword_banks: [execution_orders]
+    detail: >
+      Execution-quality feature tied to fill price, slippage and liquidity.
+      Should be described carefully as improving fill awareness/experience,
+      not guaranteeing best execution unless approved.
+    extra_keywords: [execution quality, better fill, slippage calculator, liquidity finder]
+  One-click mode:
+    keyword_banks: [execution_orders, risk_controls]
+    detail: >
+      One-click trading for speed-sensitive users, with clear safeguards,
+      presets, confirmations where necessary and easy exit/modify flows.
+    extra_keywords: [single click order, instant order, fast buy sell, quick execution mode]
+  Flexible order modification:
+    keyword_banks: [execution_orders]
+    detail: >
+      Ability to modify live orders flexibly, including quantity, price, SL/TP
+      and supported order-type changes such as iceberg to other order types
+      where exchange/product rules allow.
+    extra_keywords: [modify live order, order type conversion, edit order, change order]
+  GTT and AMO:
+    keyword_banks: [execution_orders]
+    detail: >
+      Good Till Triggered and After Market Orders support delayed and planned
+      execution workflows. Useful for investors and traders who cannot monitor
+      markets continuously.
+    extra_keywords: [after market orders, good till trigger, trigger order, planned order]
+  Iceberg order two modes:
+    keyword_banks: [execution_orders]
+    detail: >
+      Iceberg execution helps users handle larger orders by splitting visible
+      quantities. Two modes should be explained clearly so users understand
+      execution behaviour, disclosure and modification limits.
+    extra_keywords: [iceberg mode, disclosed quantity, large quantity order, split order]
+  No price restriction:
+    keyword_banks: [execution_orders]
+    detail: >
+      Reduced price-entry friction where product and exchange rules permit.
+      Needs careful UX copy so users understand allowed ranges, rejections and
+      risk when entering aggressive prices.
+    extra_keywords: [price band, price validation, limit order range, order rejection]
+  Strategy builder:
+    keyword_banks: [strategy_trading, risk_controls]
+    detail: >
+      Strategy creation environment for selecting legs, viewing payoff,
+      breakeven, Greeks, margin, max profit/loss and scenario outcomes before
+      execution. Should connect to backtesting, UAT and OMS execution over time.
+    extra_keywords: [strategy creation, options strategy analysis, multi leg builder, Greeks strategy]
+  40+ pre-built strategies:
+    keyword_banks: [strategy_trading]
+    detail: >
+      Strategy appstore/library with ready-to-use strategies for different
+      market views, volatility conditions and risk profiles. Should support
+      education, filters and clear explanation of when a strategy is suitable.
+    extra_keywords: [strategy library, strategy templates, ready made option strategy, appstore strategies]
+  Strategy-level portfolios:
+    keyword_banks: [strategy_trading, risk_controls]
+    detail: >
+      Portfolio grouping by strategy rather than only individual instruments.
+      Helps option sellers and strategy traders track strategy P&L, legs,
+      adjustments, margin and risk at the correct level.
+    extra_keywords: [group positions by strategy, strategy book, strategy grouping, portfolio by strategy]
+  Strategy-level SL/TP:
+    keyword_banks: [strategy_trading, risk_controls]
+    detail: >
+      Stop loss and target at strategy level so multi-leg positions can be
+      controlled as one logical trade. Important for straddles, strangles,
+      spreads and hedged positions.
+    extra_keywords: [overall strategy stop loss, combined SL TP, multi leg stop loss]
+  P&L based SL/TP:
+    keyword_banks: [risk_controls, strategy_trading]
+    detail: >
+      Controls exits based on rupee or percentage P&L rather than only
+      individual instrument price. Useful for strategy-level risk management
+      and discretionary traders.
+    extra_keywords: [profit based target, loss based stop, rupee stop loss, percentage stop loss]
+  Risk-reward SL/TP:
+    keyword_banks: [risk_controls]
+    detail: >
+      Lets users define target and stop loss through risk-reward ratios. Useful
+      for disciplined trading, position sizing and pre-trade risk clarity.
+    extra_keywords: [RR ratio, reward risk, risk reward calculator, stop target calculator]
+  Quantity by amount or margin:
+    keyword_banks: [risk_controls]
+    detail: >
+      Quantity calculator that derives order quantity from desired amount,
+      margin, exposure or risk. Helps users avoid manual mistakes and aligns
+      trade size with capital.
+    extra_keywords: [amount based quantity, margin based quantity, trade sizing, capital based quantity]
+  Portfolio risk analyzer:
+    keyword_banks: [risk_controls, market_context]
+    detail: >
+      View exposure, concentration, scenario risk, Greeks, sector/underlying
+      concentration and hedge quality. Relevant for both investors and F&O
+      users with multiple positions.
+    extra_keywords: [portfolio exposure, risk dashboard, scenario analysis, concentration risk]
+  Time-series strategy plot:
+    keyword_banks: [strategy_trading, risk_controls]
+    detail: >
+      Time-series visualization of strategy-level movement, combining stock and
+      options legs where applicable. Helps users understand how strategy P&L,
+      Greeks or underlying movement evolved over time.
+    extra_keywords: [strategy P&L chart, options time series, strategy movement chart, leg level chart]
+  Instant withdrawal:
+    keyword_banks: [funds_pricing]
+    detail: >
+      Faster payout experience for eligible withdrawable balance. Important for
+      trust, liquidity and app-store complaints where users care about fund
+      access.
+    extra_keywords: [fast payout, withdraw money, same day withdrawal, payout speed]
+  Instant fund addition up to 5 lakhs:
+    keyword_banks: [funds_pricing]
+    detail: >
+      Faster funding flow up to the specified amount where payment rails allow.
+      Relevant for users who want to act quickly during market opportunities.
+    extra_keywords: [funds up to 5 lakhs, instant margin, add money trading account, UPI add funds]
+  FII and DII market context:
+    keyword_banks: [market_context]
+    detail: >
+      Institutional flow context for investors and traders. Helps explain
+      broader market direction, sentiment and participation without turning it
+      into buy/sell advice.
+    extra_keywords: [FII DII net buy sell, institutional activity, cash market flows, derivatives flows]
+  Reliable websocket:
+    keyword_banks: [api_algo]
+    detail: >
+      Core API expectation for live market data. Users care about uptime,
+      reconnection, latency, tick consistency, dropped packets, public status
+      dashboard and transparent incident communication.
+    extra_keywords: [websocket uptime, websocket latency, tick data, reconnect, status dashboard]
+  Static IP support:
+    keyword_banks: [api_algo]
+    detail: >
+      Security and access-control capability for API users. Can be surfaced
+      through static IP endpoints, whitelist management and developer docs.
+    extra_keywords: [static IP endpoint, IP whitelisting, secure API access, developer security]
+  TOTP support:
+    keyword_banks: [api_algo]
+    detail: >
+      Supports automated login flows where compliant. Important for API users
+      who ask for stable automation without fragile manual login steps.
+    extra_keywords: [TOTP automation, automated auth, login automation, API auth]
+  Primary and secondary IP support:
+    keyword_banks: [api_algo]
+    detail: >
+      Allows resilient access configuration through primary and backup IPs.
+      Useful for algo traders running systems across backup infrastructure.
+    extra_keywords: [backup IP, secondary IP whitelist, failover IP, API resilience]
+  Multi-session support:
+    keyword_banks: [api_algo]
+    detail: >
+      Supports workflows where users need multiple sessions across apps,
+      services, UAT/prod, or monitoring tools. Should be documented clearly to
+      avoid confusion about limits.
+    extra_keywords: [multiple API sessions, session management, concurrent sessions, session limits]
+  Nubra MCP and AI integration:
+    keyword_banks: [api_algo, alerts_scanners, market_context]
+    detail: >
+      AI/MCP layer for querying product, data, market context, feature docs and
+      workflow help. Can support education, support, API discovery, scanner
+      creation and insight generation, while remaining grounded in verified
+      Nubra context.
+    extra_keywords: [Nubra MCP, AI chatbot, trading assistant, product assistant, Claude MCP, AI integration]
+
 personas:
   - name: Investor
     description: Long-term user focused on portfolio, fundamentals, holdings and market context.

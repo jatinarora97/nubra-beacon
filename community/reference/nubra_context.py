@@ -39,6 +39,8 @@ def feature_rows(path: str | Path | None = None) -> tuple[str, list[tuple[str, s
     data = load_context(path)
     version = str(data.get("version") or "nubra-context-v1")
     features = data.get("features") or []
+    enrichment = data.get("feature_enrichment") or {}
+    keyword_banks = data.get("keyword_banks") or {}
     if not isinstance(features, list) or not features:
         raise ValueError("Nubra context must contain a non-empty `features` list")
 
@@ -48,10 +50,25 @@ def feature_rows(path: str | Path | None = None) -> tuple[str, list[tuple[str, s
         if not isinstance(item, dict):
             raise ValueError(f"Feature #{idx} must be an object")
         name = str(item.get("name") or "").strip()
-        description = str(item.get("description") or "").strip()
+        extra = enrichment.get(name) if isinstance(enrichment, dict) else {}
+        if extra is None:
+            extra = {}
+        if not isinstance(extra, dict):
+            raise ValueError(f"Feature enrichment for `{name}` must be an object")
+
+        base_description = str(item.get("description") or "").strip()
+        detail = str(extra.get("detail") or item.get("detail") or "").strip()
+        description = " ".join(x for x in (base_description, detail) if x)
         status = str(item.get("status") or "").strip().lower()
         category = str(item.get("category") or "").strip()
-        keywords_raw = item.get("seo_keywords") or []
+        keywords_raw = list(item.get("seo_keywords") or [])
+        keywords_raw.extend(extra.get("extra_keywords") or [])
+        referenced_banks = list(item.get("keyword_banks") or []) + list(extra.get("keyword_banks") or [])
+        for bank_name in referenced_banks:
+            bank = keyword_banks.get(str(bank_name), []) if isinstance(keyword_banks, dict) else []
+            if not isinstance(bank, list):
+                raise ValueError(f"Keyword bank `{bank_name}` must be a list")
+            keywords_raw.extend(bank)
         if not name or not description:
             raise ValueError(f"Feature #{idx} needs name and description")
         if status not in {"live", "upcoming"}:
@@ -61,7 +78,17 @@ def feature_rows(path: str | Path | None = None) -> tuple[str, list[tuple[str, s
         seen.add(name.lower())
         if not isinstance(keywords_raw, list):
             raise ValueError(f"Feature `{name}` seo_keywords must be a list")
-        keywords = [str(k).strip() for k in keywords_raw if str(k).strip()]
+        keywords = []
+        seen_keywords: set[str] = set()
+        for k in keywords_raw:
+            kw = str(k).strip()
+            if not kw:
+                continue
+            key = kw.lower()
+            if key in seen_keywords:
+                continue
+            seen_keywords.add(key)
+            keywords.append(kw)
         rows.append((name, description, status, category, keywords))
     return version, rows
 
@@ -82,4 +109,3 @@ def summary(path: str | Path | None = None) -> dict[str, Any]:
         "personas": [p.get("name") for p in data.get("personas", []) if isinstance(p, dict)],
         "surfaces": data.get("brand", {}).get("product_surfaces", []),
     }
-
