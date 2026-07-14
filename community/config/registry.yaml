@@ -67,19 +67,34 @@ sources:
     max_queries_per_run: 20
     max_videos_per_query: 5
     max_comments_per_video: 20
+    comment_quality:
+      min_chars: 8
+      deny_terms: [telegram, whatsapp group, jackpot, sure shot, guaranteed profit]
     queries:
       retail:
         - Nubra trading app
+        - Nubra option chain
+        - Nubra trading review
         - option chain analysis India
         - Nifty option chain analysis
         - BankNifty option chain analysis
         - option chain OI PCR max pain
+        - OI buildup option chain India
+        - option chain filters India
+        - option chain bid ask spread
         - option buyer strategy India
         - option seller strategy India
         - options strategy builder India
         - payoff graph options India
+        - option strategy payoff graph India
+        - scalping trading app India
+        - one click trading app India
+        - trading app watchlist India
+        - stock SIP trading app India
         - best trading app for options India
       api_algo:
+        - Nubra API
+        - Nubra websocket
         - trading API India
         - broker API India
         - algo trading API India
@@ -87,17 +102,55 @@ sources:
         - order placement API trading
         - automated trading India
         - backtesting trading strategy India
+        - paper trading API India
+        - trading API historical data India
       competitors:
         - Zerodha Kite option chain
         - Dhan option chain
+        - Dhan options strategy builder
         - Upstox trading app review
         - Angel One SmartAPI
         - Sensibull option chain
         - Opstra strategy builder
+        - FYERS trading app review
   github:
     enabled: false
     max_queries_per_run: 20
     max_items_per_query: 20
+    relevance:
+      min_score: 2
+      allow_terms:
+        - trading api
+        - broker api
+        - market data
+        - websocket
+        - order placement
+        - historical data
+        - algo trading
+        - automated trading
+        - paper trading
+        - kite connect
+        - smartapi
+        - upstox api
+        - dhanhq
+        - fyers api
+        - nse
+        - bse
+        - zerodha
+        - dhan
+        - upstox
+        - angel one
+        - fyers
+        - nubra
+      deny_terms:
+        - casino
+        - betting
+        - porn
+        - sex
+        - crypto airdrop
+        - nft
+        - spam
+        - wealth builder empire
     queries:
       - '"trading API India"'
       - '"broker API India"'
@@ -105,6 +158,8 @@ sources:
       - '"market data websocket" trading'
       - '"order placement API" trading'
       - '"historical data API" trading'
+      - '"paper trading" "broker API"'
+      - '"backtesting" "broker API"'
       - '"Zerodha Kite Connect"'
       - '"DhanHQ API"'
       - '"Upstox API"'

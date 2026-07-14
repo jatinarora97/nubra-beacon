@@ -1,7 +1,14 @@
-"""GitHub public search collector for API/algo/developer signals."""
+"""GitHub public search collector for API/algo/developer signals.
+
+GitHub search can return noisy matches when a broad phrase appears in generated
+issue text. This collector therefore applies a lightweight relevance gate before
+emitting items. The gate is intentionally transparent and configurable from
+registry.yaml.
+"""
 from __future__ import annotations
 
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Iterator
@@ -11,6 +18,41 @@ import httpx
 from community.scrape.base import AuthorMeta, Engagement, SocialItem, unified_score
 
 SEARCH_URL = "https://api.github.com/search/issues"
+
+DEFAULT_ALLOW_TERMS = [
+    "trading api",
+    "broker api",
+    "market data",
+    "websocket",
+    "order placement",
+    "historical data",
+    "algo trading",
+    "automated trading",
+    "kite connect",
+    "smartapi",
+    "upstox api",
+    "dhanhq",
+    "fyers api",
+    "nse",
+    "bse",
+    "zerodha",
+    "dhan",
+    "upstox",
+    "angel one",
+    "fyers",
+    "nubra",
+]
+
+DEFAULT_DENY_TERMS = [
+    "casino",
+    "betting",
+    "porn",
+    "sex",
+    "crypto airdrop",
+    "nft",
+    "spam",
+    "wealth builder empire",
+]
 
 
 def _dt(value: str | None) -> datetime:
@@ -30,10 +72,45 @@ def _headers() -> dict[str, str]:
     return h
 
 
-def _item(row: dict, query: str) -> SocialItem | None:
+def _norm_terms(values: list[str] | None, defaults: list[str]) -> list[str]:
+    terms = [str(v).strip().lower() for v in (values or []) if str(v).strip()]
+    return terms or defaults
+
+
+def _term_hit(term: str, haystack: str) -> bool:
+    # Multi-word phrases use substring match; single words use word boundaries.
+    if " " in term:
+        return term in haystack
+    return bool(re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", haystack))
+
+
+def _relevance(row: dict, query: str, reg: dict) -> tuple[int, list[str], list[str]]:
+    title = (row.get("title") or "").lower()
+    body = (row.get("body") or "").lower()
+    repo_url = (row.get("repository_url") or "").lower()
+    labels = " ".join(
+        str(l.get("name") or "").lower() for l in row.get("labels") or [] if isinstance(l, dict)
+    )
+    haystack = " ".join([query.lower(), title, body[:4000], repo_url, labels])
+    allow_terms = _norm_terms((reg.get("relevance") or {}).get("allow_terms"), DEFAULT_ALLOW_TERMS)
+    deny_terms = _norm_terms((reg.get("relevance") or {}).get("deny_terms"), DEFAULT_DENY_TERMS)
+    allow_hits = [t for t in allow_terms if _term_hit(t, haystack)]
+    deny_hits = [t for t in deny_terms if _term_hit(t, haystack)]
+    score = len(allow_hits) * 2 - len(deny_hits) * 4
+    # Explicit known broker/API repo names are strong signals.
+    if any(x in repo_url for x in ("zerodha", "kiteconnect", "dhanhq", "upstox", "smartapi", "fyers")):
+        score += 3
+    return score, allow_hits, deny_hits
+
+
+def _item(row: dict, query: str, reg: dict) -> SocialItem | None:
     title = (row.get("title") or "").strip()
     body = (row.get("body") or "").strip()
     if not title and not body:
+        return None
+    relevance_score, allow_hits, deny_hits = _relevance(row, query, reg)
+    min_score = int((reg.get("relevance") or {}).get("min_score", 2))
+    if relevance_score < min_score:
         return None
     user = row.get("user") or {}
     repo_url = row.get("repository_url") or ""
@@ -64,6 +141,9 @@ def _item(row: dict, query: str) -> SocialItem | None:
             "repo": repo_name,
             "state": row.get("state"),
             "labels": [l.get("name") for l in row.get("labels") or [] if isinstance(l, dict)],
+            "relevance_score": relevance_score,
+            "allow_hits": allow_hits,
+            "deny_hits": deny_hits,
             "source_method": "github_search_issues",
         },
     )
@@ -87,7 +167,7 @@ def fetch(reg: dict) -> Iterator[SocialItem]:
                 break
             r.raise_for_status()
             for row in (r.json().get("items") or [])[:max_items]:
-                item = _item(row, query)
+                item = _item(row, query, reg)
                 if item:
                     yield item
             time.sleep(1.0)

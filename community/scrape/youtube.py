@@ -29,6 +29,12 @@ def _int(value) -> int:
         return 0
 
 
+def _engagement_rate(likes: int, comments: int, views: int) -> float:
+    if views <= 0:
+        return 0.0
+    return round((likes + comments) / views, 6)
+
+
 def _search(client: httpx.Client, key: str, query: str, max_results: int) -> list[str]:
     r = client.get(
         f"{API}/search",
@@ -113,17 +119,27 @@ def _video_item(row: dict, query: str, partition: str) -> SocialItem | None:
             "query": query,
             "partition": partition,
             "channel_id": sn.get("channelId"),
+            "published_at": sn.get("publishedAt"),
+            "engagement_rate": _engagement_rate(likes, comments, views),
             "source_method": "youtube_data_api",
         },
     )
 
 
-def _comment_item(row: dict, video_id: str, query: str, partition: str) -> SocialItem | None:
+def _comment_item(row: dict, video_id: str, query: str, partition: str, reg: dict) -> SocialItem | None:
     top = ((row.get("snippet") or {}).get("topLevelComment") or {})
     sn = top.get("snippet") or {}
     cid = top.get("id") or row.get("id")
     text = (sn.get("textDisplay") or sn.get("textOriginal") or "").strip()
     if not cid or not text:
+        return None
+    quality = reg.get("comment_quality") or {}
+    min_chars = int(quality.get("min_chars", 8))
+    deny_terms = [str(x).lower() for x in quality.get("deny_terms", [])]
+    low = text.lower()
+    if len(text) < min_chars:
+        return None
+    if any(term and term in low for term in deny_terms):
         return None
     likes = _int(sn.get("likeCount"))
     return SocialItem(
@@ -139,7 +155,12 @@ def _comment_item(row: dict, video_id: str, query: str, partition: str) -> Socia
         url=f"https://www.youtube.com/watch?v={video_id}&lc={cid}",
         created_at=_dt(sn.get("publishedAt")),
         engagement=Engagement(score=unified_score(likes, 0, 0), native={"likes": likes}),
-        raw={"query": query, "partition": partition, "source_method": "youtube_comment_threads"},
+        raw={
+            "query": query,
+            "partition": partition,
+            "video_id": video_id,
+            "source_method": "youtube_comment_threads",
+        },
     )
 
 
@@ -171,7 +192,7 @@ def fetch(reg: dict) -> Iterator[SocialItem]:
                     yield item
                 if vid:
                     for comment in _comments(client, key, vid, max_comments):
-                        citem = _comment_item(comment, vid, query, partition)
+                        citem = _comment_item(comment, vid, query, partition, reg)
                         if citem:
                             yield citem
                 time.sleep(0.2)

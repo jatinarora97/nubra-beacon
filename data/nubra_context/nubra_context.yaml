@@ -42,6 +42,34 @@ claim_guardrails:
     - Claims that Nubra is the only broker with a feature unless legally/market verified.
     - Investment advice, stock tips or trading recommendations.
 
+feature_metadata_defaults:
+  source_of_truth: product_context_file
+  status_confidence: medium
+  public_visibility: internal_review_required
+  launch_stage: not_specified
+  priority: medium
+  direct_claim_rule: >
+    Live features can be used for direct product claims only if the description
+    is product-approved. Upcoming features should be framed as planned,
+    upcoming or under review unless a public launch has happened.
+
+feature_metadata_fields:
+  priority:
+    allowed_values: [high, medium, low]
+    purpose: Helps social recommendations and roadmap analysis rank feature importance.
+  public_visibility:
+    allowed_values: [public_claim_allowed, internal_review_required, internal_only]
+    purpose: Controls whether AI can use the feature in public-facing content.
+  launch_stage:
+    allowed_values: [live, beta, upcoming, design, discovery, not_specified]
+    purpose: Separates launched capability, beta, planned feature and early idea.
+  status_confidence:
+    allowed_values: [high, medium, low]
+    purpose: Indicates how confident Beacon should be when grounding claims.
+  source_of_truth:
+    allowed_values: [product_context_file, product_team, marketing_team, design_file, api_docs, internal_note]
+    purpose: Captures where the feature information came from.
+
 personas:
   - name: Investor
     description: Long-term user focused on portfolio, fundamentals, holdings and market context.
@@ -531,4 +559,3 @@ social_content_categories:
   - Webinar topic
   - Lead magnet
   - Support/help-center content
-
