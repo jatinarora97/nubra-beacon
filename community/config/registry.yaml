@@ -63,7 +63,7 @@ sources:
     budget:
       max_items_per_run: 2000
   youtube:
-    enabled: false
+    enabled: true
     max_queries_per_run: 20
     max_videos_per_query: 5
     max_comments_per_video: 20
@@ -114,7 +114,7 @@ sources:
         - Opstra strategy builder
         - FYERS trading app review
   github:
-    enabled: false
+    enabled: true
     max_queries_per_run: 20
     max_items_per_query: 20
     relevance:
@@ -168,7 +168,7 @@ sources:
       - '"Nubra API"'
       - '"Nubra websocket"'
   broker_communities:
-    enabled: false
+    enabled: true
     max_topics_per_source: 20
     max_replies_per_topic: 10
     sources:
@@ -193,7 +193,7 @@ sources:
         platform: sitemap_html
         sitemap_url: https://madefortrade.in/sitemap.xml
   app_reviews:
-    enabled: false
+    enabled: true
     max_reviews_per_app: 100
     country: in
     apps:
