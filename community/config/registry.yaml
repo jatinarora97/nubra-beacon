@@ -62,6 +62,116 @@ sources:
     sort_types_daily_extra: [top]           # 1×/day — old.reddit /top = past 24h (verified 2026-07-05)
     budget:
       max_items_per_run: 2000
+  youtube:
+    enabled: false
+    max_queries_per_run: 20
+    max_videos_per_query: 5
+    max_comments_per_video: 20
+    queries:
+      retail:
+        - Nubra trading app
+        - option chain analysis India
+        - Nifty option chain analysis
+        - BankNifty option chain analysis
+        - option chain OI PCR max pain
+        - option buyer strategy India
+        - option seller strategy India
+        - options strategy builder India
+        - payoff graph options India
+        - best trading app for options India
+      api_algo:
+        - trading API India
+        - broker API India
+        - algo trading API India
+        - market data websocket India
+        - order placement API trading
+        - automated trading India
+        - backtesting trading strategy India
+      competitors:
+        - Zerodha Kite option chain
+        - Dhan option chain
+        - Upstox trading app review
+        - Angel One SmartAPI
+        - Sensibull option chain
+        - Opstra strategy builder
+  github:
+    enabled: false
+    max_queries_per_run: 20
+    max_items_per_query: 20
+    queries:
+      - '"trading API India"'
+      - '"broker API India"'
+      - '"algo trading" "NSE"'
+      - '"market data websocket" trading'
+      - '"order placement API" trading'
+      - '"historical data API" trading'
+      - '"Zerodha Kite Connect"'
+      - '"DhanHQ API"'
+      - '"Upstox API"'
+      - '"Angel One SmartAPI"'
+      - '"FYERS API"'
+      - '"Nubra API"'
+      - '"Nubra websocket"'
+  broker_communities:
+    enabled: false
+    max_topics_per_source: 20
+    max_replies_per_topic: 10
+    sources:
+      - name: Zerodha TradingQnA
+        broker: zerodha
+        platform: discourse
+        base_url: https://tradingqna.com
+      - name: Upstox Community
+        broker: upstox
+        platform: discourse
+        base_url: https://community.upstox.com
+      - name: Angel One SmartAPI Forum
+        broker: angel_one
+        platform: nodebb
+        base_url: https://smartapi.angelone.in/smartapi/forum
+      - name: FYERS Community
+        broker: fyers
+        platform: sitemap_html
+        sitemap_url: https://community.fyers.in/sitemap.xml
+      - name: Dhan Community
+        broker: dhan
+        platform: sitemap_html
+        sitemap_url: https://madefortrade.in/sitemap.xml
+  app_reviews:
+    enabled: false
+    max_reviews_per_app: 100
+    country: in
+    apps:
+      # Fill app identifiers when available. Apple uses numeric app_id; Google
+      # Play uses package name. Missing identifiers are skipped safely.
+      - name: Nubra
+        broker: nubra
+        apple_id:
+        google_package:
+      - name: Zerodha Kite
+        broker: zerodha
+        apple_id:
+        google_package: com.zerodha.kite3
+      - name: Dhan
+        broker: dhan
+        apple_id:
+        google_package: com.dhan.live
+      - name: Groww
+        broker: groww
+        apple_id:
+        google_package: com.nextbillion.groww
+      - name: Upstox
+        broker: upstox
+        apple_id:
+        google_package: in.upstox.app
+      - name: Angel One
+        broker: angel_one
+        apple_id:
+        google_package: com.msf.angelmobile
+      - name: FYERS
+        broker: fyers
+        apple_id:
+        google_package:
 
 recommend:
   thresholds: {headsup: 60, secondary: 40}   # calibrated on real data 2026-07-04; re-tune in shadow run

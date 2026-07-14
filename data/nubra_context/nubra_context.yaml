@@ -1,0 +1,534 @@
+version: nubra-context-v1
+updated_at: "2026-07-14"
+owner_note: >
+  This is the editable Nubra product context used by Beacon for grounding,
+  feature matching, social recommendations and future design review workflows.
+  Update this file when Nubra adds, removes or changes live/upcoming features.
+
+brand:
+  name: Nubra
+  category: Indian stock broker and trading platform
+  positioning: >
+    Nubra is a trading platform focused on retail traders, F&O traders,
+    strategy users, active market participants and API/algo users.
+  product_surfaces:
+    - Mobile app
+    - Web trading platform
+    - API
+    - SDK
+    - MCP
+    - UAT / paper-trading environment
+  audience_segments:
+    - Retail investor
+    - Active equity trader
+    - Option buyer
+    - Option seller
+    - OI trader
+    - Scalper
+    - Strategy trader
+    - API / algo trader
+    - Developer building trading tools
+
+claim_guardrails:
+  allowed:
+    - Use only active context features for direct Nubra product claims.
+    - Phrase upcoming features as upcoming, planned or in-progress unless officially launched.
+    - Use community data to recommend opportunities, but do not claim Nubra has a capability unless it appears in this context.
+    - Keep competitor comparisons factual and avoid unsupported superiority claims.
+  avoid:
+    - Guaranteed profit claims.
+    - Assured returns or loss recovery language.
+    - Dated launch promises unless a date is officially approved.
+    - Claims that Nubra is the only broker with a feature unless legally/market verified.
+    - Investment advice, stock tips or trading recommendations.
+
+personas:
+  - name: Investor
+    description: Long-term user focused on portfolio, fundamentals, holdings and market context.
+    useful_features:
+      - Watchlist 250 instruments
+      - FII/DII and institutional flow context
+      - Fundamentals and market news
+      - Portfolio analytics
+  - name: Option Buyer
+    description: Directional derivatives user who needs quick strike selection, premium risk and payoff clarity.
+    useful_features:
+      - Option buyer mode
+      - Call view and put view
+      - Payoff and analysis on the face
+      - Risk-reward SL/TP
+      - Technical alerts
+      - Option chain filters
+  - name: Option Seller
+    description: Derivatives user focused on premium selling, margin, payoff, risk and strategy monitoring.
+    useful_features:
+      - Option seller mode
+      - Strategy-level portfolios
+      - Strategy-level SL/TP
+      - P&L based SL/TP
+      - Margin/amount based quantity selection
+      - 40+ pre-built strategies
+  - name: OI Trader
+    description: User who trades using open interest, volume, IV, PCR, max pain and option-chain structure.
+    useful_features:
+      - OI trader mode
+      - OI bars
+      - PCR
+      - Total OI
+      - Max pain
+      - OI buildup
+      - OI concentration
+      - Option chain based alerts
+  - name: Scalper
+    description: Very active intraday user who needs fast order placement, quick modification and execution clarity.
+    useful_features:
+      - Scalper mode
+      - One-click mode
+      - Best fill price in NSE
+      - Bid-ask on option chain
+      - Bid-ask on chart
+      - Flexible order modification
+  - name: API / Algo User
+    description: Developer or trader using APIs, SDK, websocket data, automated execution and testing environments.
+    useful_features:
+      - API and algo trading access
+      - Reliable websocket
+      - Static IP support
+      - TOTP support
+      - Primary and secondary IP support
+      - Multi-session support
+      - Nubra UAT
+      - OMS V3
+
+features:
+  - name: F&O trading on NSE and BSE
+    status: live
+    category: trading
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, OI Trader, Scalper]
+    description: Trade futures and options on NSE and BSE through Nubra trading flows.
+    seo_keywords: [fno, f&o, futures, options, banknifty, nifty options, expiry, expiry day trading]
+
+  - name: API and algo trading access
+    status: live
+    category: api
+    surfaces: [API, SDK]
+    personas: [API / Algo User]
+    description: REST/websocket APIs for market data, order placement and automated trading workflows.
+    seo_keywords: [algo trading, trading api, api trading, websocket market data, automated trading, order placement api]
+
+  - name: Nubra UAT
+    status: live
+    category: testing
+    surfaces: [API, Web trading platform]
+    personas: [API / Algo User, Strategy Trader]
+    description: UAT/paper-trading style environment for testing flows before production usage.
+    seo_keywords: [paper trading, uat trading, test trading api, sandbox trading, forward testing]
+
+  - name: OMS V3
+    status: live
+    category: execution
+    surfaces: [API, Web trading platform, Mobile app]
+    personas: [API / Algo User, Scalper, Strategy Trader]
+    description: Order-management layer intended to support reliable order placement, modification and execution workflows.
+    seo_keywords: [oms, order management system, order execution, order modification, trading execution]
+
+  - name: Flat low brokerage
+    status: live
+    category: pricing
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Retail investor, Option Buyer, Option Seller, Scalper]
+    description: Flat and transparent brokerage positioning for trading users.
+    seo_keywords: [brokerage, brokerage charges, flat brokerage, lowest brokerage, charges, hidden charges]
+
+  - name: Flexible brokerage
+    status: upcoming
+    category: pricing
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Retail investor, Option Buyer, Option Seller, Scalper]
+    description: More flexible brokerage configuration or pricing plans for different user needs.
+    seo_keywords: [flexible brokerage, brokerage plan, trading charges, low brokerage]
+
+  - name: Watchlist 250 instruments
+    status: upcoming
+    category: watchlist
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader, Option Buyer, Option Seller]
+    description: Expanded watchlist capacity supporting up to 250 stocks or instruments.
+    seo_keywords: [watchlist, stock watchlist, trading watchlist, multi stock watchlist]
+
+  - name: Auto-refresh watchlist
+    status: upcoming
+    category: watchlist
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader, Scalper]
+    description: Watchlist automatically refreshes market data so users do not need to manually reload.
+    seo_keywords: [auto refresh watchlist, live watchlist, real time watchlist]
+
+  - name: Option-chain analytics
+    status: live
+    category: analytics
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, OI Trader]
+    description: Option chain with useful derivatives analytics such as OI, IV, Greeks, PCR and max pain.
+    seo_keywords: [option chain, open interest, oi data, implied volatility, greeks, option selling, pcr, max pain]
+
+  - name: Option chain filters and saved modes
+    status: upcoming
+    category: analytics
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, OI Trader, Scalper]
+    description: Filters for option chain fields and the ability to save preferred option-chain modes.
+    seo_keywords: [option chain filters, oi filter, volume filter, iv filter, option chain customization]
+
+  - name: Option buyer mode
+    status: upcoming
+    category: personalization
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer]
+    description: Persona-based mode optimized for option buyers with relevant analytics, filters and risk information.
+    seo_keywords: [option buyer mode, option buying, option buyer app]
+
+  - name: Option seller mode
+    status: upcoming
+    category: personalization
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Seller]
+    description: Persona-based mode optimized for option sellers with margin, payoff, risk and strategy context.
+    seo_keywords: [option seller mode, option selling, option selling app]
+
+  - name: OI trader mode
+    status: upcoming
+    category: personalization
+    surfaces: [Mobile app, Web trading platform]
+    personas: [OI Trader]
+    description: Mode focused on OI, volume, OI buildup, IV, PCR, max pain and concentration signals.
+    seo_keywords: [oi trader, open interest trading, oi buildup, oi concentration]
+
+  - name: Scalper mode
+    status: upcoming
+    category: personalization
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Scalper]
+    description: Fast trading mode for active intraday users needing speed, bid-ask clarity and quick execution.
+    seo_keywords: [scalper mode, scalping trading app, fast trading, one click trading]
+
+  - name: Customized broker persona experience
+    status: upcoming
+    category: personalization
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Option Buyer, Option Seller, OI Trader, Scalper]
+    description: Trading experience adapts based on selected user persona and preferred trading workflow.
+    seo_keywords: [customized broker, personalized trading app, trader persona, trading mode]
+
+  - name: Call view and put view
+    status: upcoming
+    category: options
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, OI Trader]
+    description: Dedicated call-side and put-side option-chain views for cleaner analysis.
+    seo_keywords: [call view, put view, option chain calls puts, call put analysis]
+
+  - name: Payoff and analysis on the face
+    status: upcoming
+    category: options
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Key payoff and strategy analysis visible directly in the trading flow without deep navigation.
+    seo_keywords: [payoff graph, options payoff, strategy analysis, breakeven calculator]
+
+  - name: Bid-ask on option chain
+    status: upcoming
+    category: options
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, OI Trader, Scalper]
+    description: Bid and ask values visible in the option chain to improve liquidity and spread awareness.
+    seo_keywords: [bid ask option chain, bid ask spread, options liquidity, option spread]
+
+  - name: Bid-ask on chart
+    status: upcoming
+    category: charts
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Scalper, Active equity trader, Option Buyer]
+    description: Bid and ask visibility directly on chart for faster execution context.
+    seo_keywords: [bid ask chart, trading chart bid ask, chart liquidity]
+
+  - name: Chart analyser
+    status: upcoming
+    category: charts
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Active equity trader, Scalper, Option Buyer, Investor]
+    description: Chart analysis assistance for reading patterns, levels, indicators and market context.
+    seo_keywords: [chart analyser, chart analysis, technical analysis, trading chart]
+
+  - name: Advanced charts
+    status: live
+    category: charts
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader, Scalper, Option Buyer]
+    description: Charting with indicators, layouts and drawing tools for trading analysis.
+    seo_keywords: [charts, charting, technical analysis, indicators, tradingview style charts]
+
+  - name: Technical alerts
+    status: upcoming
+    category: alerts
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader, Scalper, Option Buyer]
+    description: Alerts based on technical levels, indicators or chart conditions.
+    seo_keywords: [technical alerts, stock alerts, indicator alerts, trading alerts]
+
+  - name: Option chain based alerts
+    status: upcoming
+    category: alerts
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, OI Trader]
+    description: Alerts based on option-chain fields such as OI, volume, IV, PCR or strike-level movement.
+    seo_keywords: [option chain alerts, oi alerts, options alerts, iv alerts]
+
+  - name: Query-based AI generated scans
+    status: upcoming
+    category: scanners
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader, OI Trader, Scalper]
+    description: User can describe a market scan in natural language and get AI-generated scan results.
+    seo_keywords: [ai stock scanner, query based scans, stock screener, ai trading scanner]
+
+  - name: Basket orders
+    status: live
+    category: execution
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Seller, Strategy Trader]
+    description: Build and place multi-leg option baskets such as spreads, straddles and strangles.
+    seo_keywords: [basket order, multi leg order, straddle, strangle, iron condor, spread order]
+
+  - name: Apply presets on OMS
+    status: upcoming
+    category: execution
+    surfaces: [Mobile app, Web trading platform, API]
+    personas: [Scalper, Option Buyer, Option Seller, API / Algo User]
+    description: Apply predefined order presets in OMS to reduce repeated manual setup.
+    seo_keywords: [order presets, oms presets, trading presets, order template]
+
+  - name: Best fill price in NSE
+    status: upcoming
+    category: execution
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Scalper, Option Buyer, Option Seller]
+    description: Execution improvement focused on better fill-price experience for NSE orders.
+    seo_keywords: [best fill price, order execution, nse order execution, trade execution]
+
+  - name: One-click mode
+    status: upcoming
+    category: execution
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Scalper]
+    description: One-click trading mode for fast order placement with suitable safety controls.
+    seo_keywords: [one click trading, fast order placement, scalping order]
+
+  - name: Flexible order modification
+    status: upcoming
+    category: execution
+    surfaces: [Mobile app, Web trading platform, API]
+    personas: [Scalper, Option Buyer, Option Seller, API / Algo User]
+    description: Modify orders flexibly, including changing supported order types such as iceberg to other order types where allowed.
+    seo_keywords: [order modification, modify order, iceberg order modification, trading order types]
+
+  - name: GTT and AMO
+    status: upcoming
+    category: execution
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader, Option Buyer, Option Seller]
+    description: Support for Good Till Triggered and After Market Orders.
+    seo_keywords: [gtt order, amo order, after market order, good till triggered]
+
+  - name: Iceberg order two modes
+    status: upcoming
+    category: execution
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Seller, Scalper, Active equity trader]
+    description: Iceberg order capability with two modes for large order execution workflows.
+    seo_keywords: [iceberg order, large order execution, hidden quantity order]
+
+  - name: No price restriction
+    status: upcoming
+    category: execution
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Scalper, Active equity trader, Option Buyer]
+    description: Reduced price-restriction friction where product and exchange rules allow.
+    seo_keywords: [price restriction, order price restriction, limit price]
+
+  - name: Strategy builder
+    status: upcoming
+    category: strategy
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Build and evaluate multi-leg option strategies with payoff and risk visibility before execution.
+    seo_keywords: [strategy builder, payoff graph, options strategy, max pain, options strategy builder]
+
+  - name: 40+ pre-built strategies
+    status: upcoming
+    category: strategy
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Library of more than 40 pre-built option strategies for faster strategy discovery and execution.
+    seo_keywords: [pre built strategies, options strategy appstore, strategy appstore, option strategy templates]
+
+  - name: Strategy-level portfolios
+    status: upcoming
+    category: strategy
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Seller, Strategy Trader]
+    description: Portfolio view that groups positions and P&L at strategy level instead of only instrument level.
+    seo_keywords: [strategy portfolio, options portfolio, strategy level pnl, position grouping]
+
+  - name: Strategy-level SL/TP
+    status: upcoming
+    category: strategy
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Seller, Strategy Trader]
+    description: Stop loss and take profit controls applied at the overall strategy level.
+    seo_keywords: [strategy stop loss, strategy take profit, strategy sl tp, options risk management]
+
+  - name: P&L based SL/TP
+    status: upcoming
+    category: risk
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Stop loss and take profit based on P&L values rather than only price levels.
+    seo_keywords: [pnl based stop loss, pnl target, profit loss stop loss, risk management]
+
+  - name: Risk-reward SL/TP
+    status: upcoming
+    category: risk
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, Scalper]
+    description: Configure stop loss and target using risk-reward logic.
+    seo_keywords: [risk reward, risk reward stop loss, rr trading, stop loss target]
+
+  - name: Quantity by amount or margin
+    status: upcoming
+    category: risk
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Buyer, Option Seller, Investor]
+    description: Choose order quantity based on amount, available margin or desired exposure.
+    seo_keywords: [quantity by amount, quantity by margin, position sizing, order quantity]
+
+  - name: Portfolio risk analyzer
+    status: upcoming
+    category: risk
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Option Seller, Strategy Trader]
+    description: Analyze exposure, concentration and risk scenarios across portfolio or F&O positions.
+    seo_keywords: [portfolio risk, risk analysis, exposure, hedging]
+
+  - name: Time-series strategy plot
+    status: upcoming
+    category: analytics
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Option Seller, Strategy Trader, Investor]
+    description: Time-series visualization at strategy level combining stock and options position behavior.
+    seo_keywords: [strategy time series, options analytics, strategy analytics, pnl chart]
+
+  - name: Instant withdrawal
+    status: upcoming
+    category: funds
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader, Option Buyer, Option Seller]
+    description: Faster withdrawal experience for eligible balances and conditions.
+    seo_keywords: [instant withdrawal, withdraw funds, trading account withdrawal]
+
+  - name: Instant fund addition up to 5 lakhs
+    status: upcoming
+    category: funds
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader, Option Buyer, Option Seller]
+    description: Instant fund addition support up to 5 lakhs where payment flow and limits allow.
+    seo_keywords: [instant fund addition, add funds, trading funds, upi trading funds]
+
+  - name: FII and DII market context
+    status: upcoming
+    category: market_context
+    surfaces: [Mobile app, Web trading platform]
+    personas: [Investor, Active equity trader]
+    description: FII/DII participation and institutional-flow context for market understanding.
+    seo_keywords: [fii dii data, institutional flows, fii dii activity, market context]
+
+  - name: Reliable websocket
+    status: live
+    category: api
+    surfaces: [API, SDK]
+    personas: [API / Algo User]
+    description: Websocket market-data reliability is a core expectation for API and algo users.
+    seo_keywords: [websocket, market data websocket, reliable websocket, live market data api]
+
+  - name: Static IP support
+    status: live
+    category: api
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: Static IP support is available for API security and access-control workflows.
+    seo_keywords: [static ip api, api security, trading api authentication]
+
+  - name: TOTP support
+    status: live
+    category: api
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: TOTP support helps automated login flows for API users.
+    seo_keywords: [totp api, automated login, trading api login]
+
+  - name: Primary and secondary IP support
+    status: live
+    category: api
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: Primary and secondary IP support improves resilience for API access.
+    seo_keywords: [primary secondary ip, api ip whitelist, trading api ip]
+
+  - name: Multi-session support
+    status: live
+    category: api
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: Multi-session support for API and platform workflows where supported.
+    seo_keywords: [multi session, api sessions, trading api session]
+
+  - name: Nubra MCP and AI integration
+    status: upcoming
+    category: ai
+    surfaces: [MCP, API, SDK]
+    personas: [API / Algo User, Investor, Option Buyer, Option Seller]
+    description: MCP and AI integration can help users query product, market and trading workflow context.
+    seo_keywords: [mcp trading, trading ai, ai broker, ai trading assistant]
+
+design_review_rules:
+  trading_risk:
+    - Show risk before order placement.
+    - Make margin, charges, payoff, SL/TP and P&L implication visible where relevant.
+    - Separate analysis-only views from executable trading actions.
+    - Confirm destructive or irreversible actions.
+    - Explain disabled states and unavailable actions.
+  persona_consistency:
+    - Investor mode should not overload users with advanced derivatives controls by default.
+    - Option buyer mode should surface premium risk, payoff, expiry and directional clarity.
+    - Option seller mode should surface margin, payoff, strategy risk and adjustment controls.
+    - OI trader mode should surface OI, volume, IV, PCR, max pain and concentration clearly.
+    - Scalper mode should prioritize speed but preserve safety and confirmation where needed.
+  ui_consistency:
+    - Keep CTA hierarchy consistent across consecutive screens.
+    - Keep terminology consistent with this context file.
+    - Show empty, loading, error, success and confirmation states for important flows.
+    - Keep order modification flows clear when changing order type or quantity.
+
+social_content_categories:
+  - Feature education
+  - Trading workflow education
+  - Option-chain learning
+  - Risk-management education
+  - API/algo developer education
+  - Competitor gap positioning
+  - Product launch teaser
+  - Webinar topic
+  - Lead magnet
+  - Support/help-center content
+
