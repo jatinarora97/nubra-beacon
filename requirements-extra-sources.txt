@@ -1,0 +1,4 @@
+# Lightweight dependency used only by the Google Play review collector.
+# Kept separate so adding optional sources does not invalidate Beacon's large
+# cached ML/browser dependency layer during deployment builds.
+google-play-scraper==1.2.7

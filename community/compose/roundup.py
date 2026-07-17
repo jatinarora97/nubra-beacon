@@ -62,8 +62,12 @@ def _daily_payload(today: date) -> dict:
         "FROM author_stats s JOIN authors a ON a.author_id = s.author_id "
         "ORDER BY s.voice_score DESC LIMIT 5")
     for v in rising_voices:  # profile links, not bare names
-        v["profile_url"] = (f"https://x.com/{v['handle']}" if v["source"] == "twitter"
-                            else f"https://www.reddit.com/user/{v['handle']}")
+        profile_urls = {
+            "twitter": f"https://x.com/{v['handle']}",
+            "reddit": f"https://www.reddit.com/user/{v['handle']}",
+            "github": f"https://github.com/{v['handle']}",
+        }
+        v["profile_url"] = profile_urls.get(v["source"]) or v.get("profile_url")
     stats_row = {
         "items_today": (db.one(
             "SELECT count(*) AS n FROM social_items WHERE ingested_at::date = %s", (today,)) or {}).get("n", 0),

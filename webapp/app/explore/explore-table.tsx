@@ -12,6 +12,15 @@ const PAGE = 50;
 const INTENTS = ["", "complaint", "feature_request", "question", "praise",
   "comparison", "how_to", "news_opinion", "spam"];
 
+const SOURCE_LABELS: Record<string, string> = {
+  twitter: "X / Twitter",
+  reddit: "Reddit",
+  youtube: "YouTube",
+  github: "GitHub",
+  community_forum: "Broker community",
+  app_review: "App review",
+};
+
 function interactions(it: Item): number {
   const n = it.engagement?.native ?? {};
   return (n.likes ?? 0) + (n.upvotes ?? 0) + (n.replies ?? 0) +
@@ -114,6 +123,10 @@ export function ExploreTable() {
           <option value="">all sources</option>
           <option value="twitter">twitter / X</option>
           <option value="reddit">reddit</option>
+          <option value="youtube">youtube</option>
+          <option value="github">github</option>
+          <option value="community_forum">broker communities</option>
+          <option value="app_review">app reviews</option>
         </select>
         <select
           value={intent}
@@ -180,7 +193,7 @@ export function ExploreTable() {
                     {it.text}
                   </td>
                   <td className="px-3 py-2.5">
-                    <Badge>{it.source}</Badge>
+                    <Badge>{SOURCE_LABELS[it.source] ?? it.source}</Badge>
                   </td>
                   <td className="px-3 py-2.5 text-[12px] text-muted">
                     {it.intent?.replace(/_/g, " ") ?? "–"}

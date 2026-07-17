@@ -728,14 +728,20 @@ def voices(limit: int = 20, min_score: float = 0):
                    left(text, 120) AS title, url
             FROM social_items
             WHERE author_id = ANY(%s) AND duplicate_of IS NULL
-              AND source_type IN ('post', 'tweet')
+              AND source_type IN ('post', 'tweet', 'issue', 'review')
             ORDER BY author_id, created_at DESC
             """, (ids,)):
             threads[t["author_id"]] = {"title": (t["title"] or "").replace("\n", " "),
                                        "url": t["url"]}
     for v in rows:
-        v["profile_url"] = (f"https://x.com/{v['handle']}" if v["source"] == "twitter"
-                            else f"https://www.reddit.com/user/{v['handle']}")
+        profile_urls = {
+            "twitter": f"https://x.com/{v['handle']}",
+            "reddit": f"https://www.reddit.com/user/{v['handle']}",
+            "github": f"https://github.com/{v['handle']}",
+        }
+        v["profile_url"] = profile_urls.get(v["source"]) or (
+            threads.get(v["author_id"]) or {}
+        ).get("url")
         v["niche_topics"] = niches.get(v["author_id"], [])[:3]
         v["recent_thread"] = threads.get(v["author_id"])
         niche = v["niche_topics"][0] if v["niche_topics"] else None
@@ -1217,6 +1223,99 @@ def publish_features_catalog(body: dict = Body(...),
                       "WHERE is_current").fetchone()["n"]
     return {"version": new_version, "features_current": n,
             "published_by": _who(x_auth_request_email)}
+
+
+# ── collector health (read-only operational visibility) ──────────────────
+
+@app.get(API + "/source-health")
+def source_health():
+    """Configured and runtime state for every collector.
+
+    This endpoint is read-only and deliberately soft: missing optional
+    credentials are reported as readiness states, not API failures.
+    """
+    import os
+
+    from community.config.settings import settings as runtime_settings
+
+    configured = runtime_settings.registry.get("sources", {})
+    specs = (
+        ("twitter", "twitter", "TWITTERAPI_IO_KEY", True),
+        ("reddit", "reddit", None, False),
+        ("youtube", "youtube", "YOUTUBE_API_KEY", True),
+        ("github", "github", "GITHUB_TOKEN", False),
+        ("broker_communities", "community_forum", None, False),
+        ("app_reviews", "app_review", None, False),
+    )
+    states = {
+        row["source"]: row
+        for row in db.query(
+            """
+            SELECT DISTINCT ON (source)
+                   source, watermark, last_success_at, last_error,
+                   last_error_at, items_last_run
+            FROM pipeline_state
+            WHERE stage='ingest'
+            ORDER BY source, COALESCE(last_success_at, last_error_at) DESC NULLS LAST
+            """
+        )
+    }
+    totals = {
+        row["source"]: row["count"]
+        for row in db.query(
+            "SELECT source, count(*)::int AS count FROM social_items GROUP BY source"
+        )
+    }
+
+    result = []
+    for config_name, stored_source, credential, credential_required in specs:
+        cfg = configured.get(config_name, {}) or {}
+        enabled = bool(cfg.get("enabled", True if config_name in ("twitter", "reddit") else False))
+        state = states.get(stored_source, {})
+        credential_present = bool(credential and os.getenv(credential))
+        if credential is None:
+            credential_status = "not_required"
+        elif credential_present:
+            credential_status = "configured"
+        elif credential_required:
+            credential_status = "missing"
+        else:
+            credential_status = "optional_missing"
+
+        if not enabled:
+            health = "disabled"
+        elif credential_required and not credential_present:
+            health = "needs_key"
+        elif state.get("last_error") and not state.get("last_success_at"):
+            health = "error"
+        elif state.get("last_error_at") and (
+            not state.get("last_success_at")
+            or state["last_error_at"] > state["last_success_at"]
+        ):
+            health = "error"
+        elif state.get("last_success_at"):
+            health = "working"
+        else:
+            health = "enabled_not_run"
+
+        result.append(
+            {
+                "name": config_name,
+                "stored_source": stored_source,
+                "enabled": enabled,
+                "health": health,
+                "credential": credential_status,
+                "required_key": credential if credential_required else None,
+                "optional_key": credential if credential and not credential_required else None,
+                "last_success_at": state.get("last_success_at"),
+                "last_error": state.get("last_error"),
+                "last_error_at": state.get("last_error_at"),
+                "watermark": state.get("watermark"),
+                "items_last_run": state.get("items_last_run"),
+                "stored_items": totals.get(stored_source, 0),
+            }
+        )
+    return {"sources": result}
 
 
 # ── watch sources (UI-managed collection config) ──────────────────────────

@@ -262,6 +262,22 @@ export type Item = {
   intent?: string;
 };
 
+export type SourceHealth = {
+  name: string;
+  stored_source: string;
+  enabled: boolean;
+  health: "working" | "enabled_not_run" | "needs_key" | "error" | "disabled" | string;
+  credential: "configured" | "missing" | "optional_missing" | "not_required" | string;
+  required_key?: string | null;
+  optional_key?: string | null;
+  last_success_at?: string | null;
+  last_error?: string | null;
+  last_error_at?: string | null;
+  watermark?: string | null;
+  items_last_run?: number | null;
+  stored_items: number;
+};
+
 export const DISMISS_REASONS = [
   "not_relevant",
   "already_handled",
