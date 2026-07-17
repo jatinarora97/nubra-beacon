@@ -160,6 +160,40 @@ def _draft_one(opp: dict, catalog: list[dict]) -> tuple[dict | None, dict]:
     return None, gate
 
 
+def _repeat_flags(cands: list[dict], recent: list[dict]) -> list[bool]:
+    """LLM repeat-judge (one cheap Haiku call for all candidates). Embeddings
+    were tried first and CANNOT separate repeats here — real July 13/14/15
+    briefs all sit ~0.87 cosine whether same-idea or different-topic (long
+    F&O brief texts cluster in a narrow cone). Rules encoded: a topic already
+    covered twice in the window is exhausted; covered once = allowed only
+    with a different format_family AND a materially different idea. Errors
+    fail open (a judge hiccup must not block the day's briefs)."""
+    try:
+        recent_s = [{"day": str(r["day"]), "treatment": r["treatment"],
+                     "format_family": r["format_family"]} for r in recent]
+        cand_s = [{"i": i, "treatment": c.get("treatment", ""),
+                   "format_family": c.get("format_family", ""),
+                   "hook": c.get("hook", "")} for i, c in enumerate(cands)]
+        raw, _u = complete(
+            settings.enrich_model,
+            "You judge content-brief repetition for a brand's content calendar. "
+            "RECENT lists briefs already published. For each CANDIDATE decide "
+            "repeat=true when ANY holds: (a) its core topic already appears "
+            "twice or more in RECENT; (b) its core topic appears once in RECENT "
+            "and the candidate has the same format_family; (c) it is essentially "
+            "the same content idea as any RECENT brief even if reworded or "
+            "reformatted. A genuinely different angle on a once-covered topic "
+            "in a different format is NOT a repeat. Return ONLY JSON: "
+            '{"repeats": [{"i": 0, "repeat": true, "why": "..."}]} covering every candidate.',
+            f"RECENT: {json.dumps(recent_s)}\n\nCANDIDATES: {json.dumps(cand_s)}",
+            max_tokens=800)
+        verdicts = {v["i"]: bool(v.get("repeat")) for v in _parse_json(raw)["repeats"]}
+        return [verdicts.get(i, False) for i in range(len(cands))]
+    except Exception:  # noqa: BLE001
+        log.warning("repeat-judge failed — allowing all candidates", exc_info=True)
+        return [False] * len(cands)
+
+
 def _content_proposals(catalog: list[dict]) -> int:
     today = datetime.now(timezone.utc).date()
     # Once per day: briefs regenerate with the morning build only. The hourly
@@ -187,6 +221,15 @@ def _content_proposals(catalog: list[dict]) -> int:
         "ORDER BY count DESC LIMIT 5", (today,))
     if not topics and not issues and not feats:
         return 0
+    # Repetition guard (user feedback 2026-07-17: 13th+14th July both produced
+    # tax-myth carousels off the same trending topic). Recent briefs are shown
+    # to the model with explicit anti-repeat rules, and candidates too similar
+    # to any recent brief are dropped deterministically below (embeddings).
+    rep_days = int(settings.registry["content"].get("repetition_lookback_days", 7))
+    recent = db.query(
+        "SELECT day, format AS treatment, hook, format_family FROM content_proposals "
+        "WHERE day > %s::date - %s AND day < %s ORDER BY day DESC",
+        (today, rep_days, today))
     fams = settings.registry["content"]["format_families"]
     plats = settings.registry["content"]["platforms"]
     system = (
@@ -200,6 +243,11 @@ def _content_proposals(catalog: list[dict]) -> int:
         "examples; no urgency/FOMO/social-proof pressure. NO EMOJIS anywhere. "
         "Safe angles: educational explainers, process/tooling walkthroughs, myth-busting "
         "with public facts, feature demos, community questions. "
+        "ANTI-REPETITION: RECENT_BRIEFS lists what we already published. A topic "
+        "covered there may be revisited AT MOST once more within a week and ONLY "
+        "with a genuinely different angle AND a different format_family — never "
+        "another variation of the same idea. When today's top signal is already "
+        "well covered, prefer the next-best uncovered signal instead. "
         "Invent the creative TREATMENT freely — do not limit yourself to generic "
         "formats; propose the specific creative vehicle (e.g. 'split-screen myth-vs-"
         "reality reel with on-screen calculator', 'founder-voice teardown thread'). "
@@ -217,10 +265,14 @@ def _content_proposals(catalog: list[dict]) -> int:
         '"recommended_window": "HH:MM-HH:MM IST", "scores": {"impact":0.0,'
         '"reach_fit":0.0,"timeliness":0.0,"effort_inv":0.0,"on_brand":0.0}}]} '
         "(exactly 5 candidates)")
+    recent_summary = [{"day": str(r["day"]), "treatment": r["treatment"],
+                       "format_family": r["format_family"]} for r in recent]
     user = (f"NUBRA_FEATURES: {json.dumps(catalog)}\n\nTODAY'S SIGNAL:\n"
             f"rising topics: {json.dumps(topics, default=str)}\n"
             f"broker issues: {json.dumps(issues, default=str)}\n"
-            f"feature requests: {json.dumps(feats, default=str)}")
+            f"feature requests: {json.dumps(feats, default=str)}\n\n"
+            f"RECENT_BRIEFS (already published — do not repeat): "
+            f"{json.dumps(recent_summary)}")
     raw, _u = complete(settings.draft_model, system, user, max_tokens=8000)
     try:
         cands = _parse_json(raw)["candidates"]
@@ -235,12 +287,17 @@ def _content_proposals(catalog: list[dict]) -> int:
                 + 0.10 * s.get("on_brand", 0))
 
     cands.sort(key=score, reverse=True)
+    repeats = _repeat_flags(cands, recent) if recent else [False] * len(cands)
     chosen, per_family = [], {}
-    for c in cands:
+    for idx, c in enumerate(cands):
         fam, plat = c.get("format_family"), c.get("platform")
         if fam not in fams or plat not in plats:   # taxonomy = the control layer
             continue
         if per_family.get(fam, 0) >= 2:
+            continue
+        if repeats[idx]:
+            log.info("proposal dropped as repeat of a recent brief: %s",
+                     (c.get("treatment") or "")[:80])
             continue
         brief = c.get("brief") or {}
         text = " | ".join([c.get("hook", ""), " / ".join(brief.get("beats", [])),

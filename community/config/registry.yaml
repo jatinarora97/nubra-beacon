@@ -100,6 +100,7 @@ enrich:
   poll_seconds: 20
 
 content:
+  repetition_lookback_days: 7   # RECENT_BRIEFS window: prompt rules + Haiku repeat-judge (embeddings can't separate — see draft.py)
   # controlled taxonomy — the LLM picks family+platform from these, treatment is free
   format_families: [video_short, video_long, image_post, carousel, text_post, thread, poll]
   platforms: [instagram_reels, youtube_shorts, x_thread, x_post, linkedin_post, instagram_post]

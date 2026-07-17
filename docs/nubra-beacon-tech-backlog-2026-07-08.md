@@ -59,8 +59,9 @@ when it bites. Supersedes the backlog sections of the status doc and the
 11. **stage trace_log.** llm_usage persists; stage-level run traces are still
    stdout/cron.log only. Add a run-scoped trace_log table (mirror the
    personalization pattern) when debugging prod runs gets annoying.
-12. **`seed_features --from-xlsx` loader** — build when marketing's keyword
-    excel + vetted catalog arrive; publish as a new grounding version.
+12. ~~vetted catalog~~ DONE 2026-07-17: grounding swapped to context-v1 from
+    nubra_product_context.md (28 features, doc-status-mapped). The keyword
+    excel loader (`--from-xlsx`) remains open for when marketing's SEO sheet arrives.
 13. **Weekly roundup history navigation** — the page shows the latest week
     only; add a week picker once 3+ weeks exist.
 
