@@ -8,6 +8,7 @@ X-Auth-Request-Email; locally we fall back to "local-dev".
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
@@ -21,6 +22,14 @@ from community.store import db
 app = FastAPI(title="Nubra Community Manager — read-API", version="2.0")
 from community.api.discover_api import router as discover_router  # noqa: E402
 app.include_router(discover_router)
+try:
+    from community.api.social_recommend_api import router as social_recommend_router  # noqa: E402
+
+    app.include_router(social_recommend_router)
+except Exception:  # optional module must never prevent the main API from starting
+    logging.getLogger("beacon.api").exception(
+        "social recommendation routes disabled; the core API will continue"
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],

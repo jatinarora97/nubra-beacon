@@ -11,6 +11,7 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/features", label: "Feature requests", dot: "bg-warn" },
   { href: "/nubra", label: "Nubra mentions", dot: "bg-opps" },
   { href: "/opportunities", label: "Opportunities", dot: "bg-opps", group: "What to do" },
+  { href: "/social-recommendations", label: "Social recommendations", dot: "bg-content", group: "What to make" },
   { href: "/content", label: "Content briefs", dot: "bg-content", group: "What to make" },
   { href: "/voices", label: "Voices", dot: "bg-voices", group: "Who matters" },
   { href: "/explore", label: "Explore data", dot: "bg-muted", group: "Verify" },

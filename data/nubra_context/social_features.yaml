@@ -1,0 +1,651 @@
+version: nubra-social-context-v1
+updated_at: "2026-07-17"
+
+brand:
+  name: Nubra
+  category: Indian stock broker and trading platform
+  positioning: >
+    Nubra serves retail investors, active equity and derivatives traders,
+    options personas, strategy traders, scalpers, and API/algo developers.
+
+claim_guardrails:
+  - Claim a feature as available only when its status is live.
+  - Describe upcoming features as upcoming, planned, or being developed.
+  - Never invent launch dates, performance claims, or market-leading claims.
+  - Do not give investment advice, trade calls, targets, or guaranteed outcomes.
+  - Keep competitor comparisons factual, fair, and grounded in collected evidence.
+
+personas:
+  - id: investor
+    name: Investor
+    segment: retail
+    needs: [portfolio clarity, fundamentals, market context, watchlists, alerts]
+  - id: option_buyer
+    name: Option Buyer
+    segment: retail
+    needs: [premium risk, payoff visibility, IV, Greeks, fast execution]
+  - id: option_seller
+    name: Option Seller
+    segment: retail
+    needs: [margin clarity, payoff, strategy risk, SL/TP, position management]
+  - id: oi_trader
+    name: OI Trader
+    segment: retail
+    needs: [open interest, PCR, max pain, volume, IV, concentration]
+  - id: scalper
+    name: Scalper
+    segment: retail
+    needs: [speed, bid-ask visibility, fill quality, one-click execution, risk controls]
+  - id: strategy_trader
+    name: Strategy Trader
+    segment: retail
+    needs: [multi-leg construction, payoff, portfolio grouping, strategy-level risk]
+  - id: api_algo_user
+    name: API / Algo User
+    segment: api
+    needs: [stable data, order APIs, UAT, SDKs, observability, automation]
+
+features:
+  - id: fno_trading
+    name: F&O trading on NSE and BSE
+    status: live
+    segment: retail
+    category: trading
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, OI Trader, Scalper, Strategy Trader]
+    description: Trade futures and options on NSE and BSE through Nubra's retail trading surfaces.
+    keywords: [F&O, futures, options, NSE F&O, BSE F&O, Nifty options, BankNifty options]
+
+  - id: flexible_brokerage
+    name: Flexible brokerage
+    status: live
+    segment: retail
+    category: pricing
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, Scalper, Strategy Trader]
+    description: >
+      Users can choose between Per Lot and Per Order plans. Under Per Lot,
+      options brokerage is ₹2 per ₹1,000 premium capped at ₹5 per lot, futures
+      are ₹10 per lot, commodity options are ₹2 per ₹1,000 premium capped at
+      ₹5 per lot, and commodity futures are ₹10 per lot. Under Per Order,
+      options and futures are ₹20 per order while commodity options are ₹5 per
+      order and commodity futures are ₹20 per order. Equity delivery is ₹0 on
+      both plans; equity intraday is 0.03% of turnover on Per Lot and ₹20 on
+      Per Order. The choice is especially relevant to F&O traders whose costs
+      vary with order size, number of lots, and trading frequency.
+    keywords: [flexible brokerage, per lot brokerage, per order brokerage, options brokerage, F&O charges]
+
+  - id: brokerage_account_charges
+    name: Transparent account and transaction charges
+    status: live
+    segment: retail
+    category: pricing
+    surfaces: [web]
+    personas: [Investor, Option Buyer, Option Seller, Scalper, Strategy Trader]
+    description: >
+      The brokerage screen presents statutory and regulatory charges alongside
+      plan pricing. Individual account opening is ₹0 and non-individual account
+      opening is ₹500 plus 18% GST. Individual AMC is ₹300 plus 18% GST and
+      non-individual AMC is ₹1,000 plus 18% GST, with AMC not applicable for
+      the first year. DP charges are ₹12.50 plus GST, pledge/unpledge is ₹15
+      plus GST per transaction per scrip/ISIN, Call & Trade is ₹20 plus GST per
+      executed order, and auto square-off is ₹20 plus GST per executed order.
+      Statutory, exchange, tax, interest, and penalty charges should always be
+      shown as subject to the current published schedule.
+    keywords: [brokerage charges, AMC charges, DP charges, pledge charges, call and trade, auto square off]
+
+  - id: digital_kyc
+    name: Digital account opening and KYC
+    status: live
+    segment: retail
+    category: onboarding
+    surfaces: [mobile, web]
+    personas: [Investor, Option Buyer, Option Seller]
+    description: Digital account-opening and KYC workflow for eligible retail customers.
+    keywords: [digital KYC, open demat account, account opening, online KYC]
+
+  - id: margin_facility
+    name: Margin and collateral workflows
+    status: live
+    segment: retail
+    category: funds
+    surfaces: [mobile, web]
+    personas: [Option Seller, Strategy Trader, Active equity trader]
+    description: Margin visibility and supported collateral or pledge workflows for eligible trading activity.
+    keywords: [margin, collateral, pledge, margin requirement, available margin]
+
+  - id: advanced_charts
+    name: Advanced charts
+    status: live
+    segment: retail
+    category: analytics
+    surfaces: [mobile, web]
+    personas: [Investor, Scalper, Option Buyer, Option Seller]
+    description: Charting with technical indicators, drawing tools, and multiple analysis timeframes.
+    keywords: [advanced charts, technical indicators, drawing tools, multi timeframe chart]
+
+  - id: basket_orders
+    name: Basket orders
+    status: live
+    segment: retail
+    category: execution
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Prepare and place supported multi-leg orders together to reduce manual leg-by-leg setup.
+    keywords: [basket order, multi leg order, straddle, strangle, spread order]
+
+  - id: watchlist_250
+    name: Watchlist with 250 instruments
+    status: upcoming
+    segment: retail
+    category: watchlist
+    surfaces: [mobile, web]
+    personas: [Investor, Option Buyer, Option Seller, OI Trader, Scalper]
+    description: Support up to 250 instruments in a watchlist for broader market tracking.
+    keywords: [watchlist 250, stock watchlist, instrument watchlist]
+
+  - id: auto_refresh_watchlist
+    name: Auto-refresh watchlist
+    status: upcoming
+    segment: retail
+    category: watchlist
+    surfaces: [mobile, web]
+    personas: [Investor, Scalper, OI Trader]
+    description: Automatically refresh market values in watchlists without manual reloads.
+    keywords: [auto refresh watchlist, live watchlist, real-time watchlist]
+
+  - id: option_chain_analytics
+    name: Option-chain analytics
+    status: upcoming
+    segment: retail
+    category: options
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, OI Trader]
+    description: >
+      Customizable option-chain analytics including OI bars, PCR, total OI,
+      max pain, ITM highlighting, today's high and low, VWAP, volume, IV,
+      Greeks, bid-ask spread, and other decision-support columns.
+    keywords: [option chain, OI bars, PCR, total OI, max pain, IV, Greeks, VWAP]
+
+  - id: option_chain_filters
+    name: Option-chain filters and saved modes
+    status: upcoming
+    segment: retail
+    category: options
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, OI Trader]
+    description: >
+      Filter calls and puts using strike premium, OI percentile, OI buildup,
+      volume, volume spike, IV, IV change, Delta, Gamma, Theta, Vega, bid-ask
+      spread, and OI concentration, then save the preferred setup.
+    keywords: [option chain filters, OI filter, IV filter, Greeks filter, save option chain mode]
+
+  - id: option_buyer_mode
+    name: Option Buyer mode
+    status: upcoming
+    segment: retail
+    category: personalization
+    surfaces: [mobile, web]
+    personas: [Option Buyer]
+    description: Persona-led option-chain and execution experience focused on premium risk, payoff, expiry, and directional clarity.
+    keywords: [option buyer mode, option buying app, premium risk]
+
+  - id: option_seller_mode
+    name: Option Seller mode
+    status: upcoming
+    segment: retail
+    category: personalization
+    surfaces: [mobile, web]
+    personas: [Option Seller]
+    description: Persona-led experience that prioritizes margin, payoff, strategy risk, adjustment, and position controls.
+    keywords: [option seller mode, option selling app, margin for option selling]
+
+  - id: oi_trader_mode
+    name: OI Trader mode
+    status: upcoming
+    segment: retail
+    category: personalization
+    surfaces: [mobile, web]
+    personas: [OI Trader]
+    description: Persona-led experience that surfaces OI, volume, IV, PCR, max pain, buildup, and concentration.
+    keywords: [OI trader mode, open interest trading, OI analysis]
+
+  - id: scalper_mode
+    name: Scalper mode
+    status: upcoming
+    segment: retail
+    category: personalization
+    surfaces: [mobile, web]
+    personas: [Scalper]
+    description: Speed-focused trading layout with fast order actions while preserving essential risk and confirmation controls.
+    keywords: [scalper mode, scalping terminal, fast trading]
+
+  - id: investor_mode
+    name: Investor mode
+    status: upcoming
+    segment: retail
+    category: personalization
+    surfaces: [mobile, web]
+    personas: [Investor]
+    description: Simplified investor-oriented experience emphasizing holdings, fundamentals, watchlists, and market context.
+    keywords: [investor mode, long term investing app, portfolio mode]
+
+  - id: call_put_view
+    name: Call view and Put view
+    status: upcoming
+    segment: retail
+    category: options
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, OI Trader]
+    description: Dedicated call-side and put-side option-chain views to reduce visual overload and support focused analysis.
+    keywords: [call view, put view, calls option chain, puts option chain]
+
+  - id: payoff_on_face
+    name: Payoff and analysis on the face
+    status: upcoming
+    segment: retail
+    category: strategy
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Keep payoff and key risk analysis visible directly in the strategy workflow instead of hiding it behind extra navigation.
+    keywords: [payoff graph, payoff analysis, max profit, max loss, breakeven]
+
+  - id: bid_ask_option_chain
+    name: Bid-ask on option chain
+    status: upcoming
+    segment: retail
+    category: liquidity
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, OI Trader, Scalper]
+    description: Show bid, ask, and spread information in the option chain to make liquidity and execution conditions visible.
+    keywords: [bid ask option chain, option spread, option liquidity]
+
+  - id: bid_ask_chart
+    name: Bid-ask on chart
+    status: upcoming
+    segment: retail
+    category: liquidity
+    surfaces: [mobile, web]
+    personas: [Scalper, Option Buyer, Option Seller]
+    description: Bring bid-ask context into chart workflows for faster liquidity assessment near execution.
+    keywords: [bid ask chart, spread on chart, chart liquidity]
+
+  - id: chart_analyser
+    name: Chart analyser
+    status: upcoming
+    segment: retail
+    category: analytics
+    surfaces: [mobile, web]
+    personas: [Investor, Scalper, Option Buyer, Option Seller]
+    description: Analyze chart context and help users understand relevant technical observations without presenting trade advice.
+    keywords: [chart analyser, technical analysis, AI chart analysis]
+
+  - id: technical_alerts
+    name: Technical alerts
+    status: upcoming
+    segment: retail
+    category: alerts
+    surfaces: [mobile, web]
+    personas: [Investor, Scalper, Option Buyer, Option Seller]
+    description: Create alerts from technical conditions and indicators for monitored instruments.
+    keywords: [technical alerts, indicator alerts, chart alerts]
+
+  - id: option_chain_alerts
+    name: Option-chain based alerts
+    status: upcoming
+    segment: retail
+    category: alerts
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, OI Trader]
+    description: Configure alerts using option-chain signals such as OI, IV, volume, Greeks, and spread conditions.
+    keywords: [option chain alerts, OI alerts, IV alerts, volume alerts]
+
+  - id: ai_scans
+    name: Query-based AI generated scans
+    status: upcoming
+    segment: retail
+    category: scanners
+    surfaces: [mobile, web]
+    personas: [Investor, Scalper, Option Buyer, Option Seller]
+    description: Generate market scans from natural-language queries and convert user intent into structured screening conditions.
+    keywords: [AI scanner, query based scan, natural language screener, stock scanner]
+
+  - id: oms_presets
+    name: Apply presets on OMS
+    status: upcoming
+    segment: retail
+    category: execution
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, Scalper]
+    description: Save and apply preferred order settings in the order-management workflow.
+    keywords: [OMS presets, order presets, saved order settings]
+
+  - id: best_fill
+    name: Best fill price in NSE
+    status: upcoming
+    segment: retail
+    category: execution
+    surfaces: [mobile, web]
+    personas: [Scalper, Option Buyer, Option Seller]
+    description: Improve the NSE fill-price experience while remaining subject to exchange liquidity and order conditions.
+    keywords: [best fill price, NSE order execution, fill quality, slippage]
+
+  - id: one_click
+    name: One-click mode
+    status: upcoming
+    segment: retail
+    category: execution
+    surfaces: [mobile, web]
+    personas: [Scalper]
+    description: Fast one-click order placement with configurable safeguards appropriate for active trading.
+    keywords: [one click trading, quick order, fast execution]
+
+  - id: order_modification
+    name: Flexible order modification
+    status: upcoming
+    segment: shared
+    category: execution
+    surfaces: [mobile, web, API]
+    personas: [Scalper, Option Buyer, Option Seller, API / Algo User]
+    description: Modify supported order parameters and move between supported order types, including iceberg workflows, where allowed.
+    keywords: [modify order, order modification, change order type, iceberg modification]
+
+  - id: gtt_amo
+    name: GTT and AMO
+    status: upcoming
+    segment: retail
+    category: execution
+    surfaces: [mobile, web]
+    personas: [Investor, Option Buyer, Option Seller]
+    description: Support Good Till Triggered and After Market Order workflows.
+    keywords: [GTT, AMO, Good Till Triggered, After Market Order]
+
+  - id: iceberg_modes
+    name: Iceberg order with two modes
+    status: upcoming
+    segment: retail
+    category: execution
+    surfaces: [mobile, web]
+    personas: [Option Seller, Scalper]
+    description: Two iceberg execution modes for breaking larger orders into smaller disclosed quantities.
+    keywords: [iceberg order, large order execution, disclosed quantity]
+
+  - id: no_price_restriction
+    name: Reduced price-restriction friction
+    status: upcoming
+    segment: retail
+    category: execution
+    surfaces: [mobile, web]
+    personas: [Scalper, Option Buyer]
+    description: Reduce product-side price-entry friction where exchange rules, risk rules, and product policy allow.
+    keywords: [price restriction, order price range, limit price]
+
+  - id: strategy_builder
+    name: Strategy builder
+    status: upcoming
+    segment: retail
+    category: strategy
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Build, analyze, and prepare multi-leg option strategies with payoff and risk visibility before execution.
+    keywords: [strategy builder, options strategy builder, multi leg options, payoff graph]
+
+  - id: prebuilt_strategies
+    name: 40+ pre-built strategies
+    status: upcoming
+    segment: retail
+    category: strategy
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Library of more than 40 pre-built option strategies for faster discovery and setup.
+    keywords: [prebuilt strategies, strategy appstore, option strategy templates]
+
+  - id: strategy_portfolios
+    name: Strategy-level portfolios
+    status: upcoming
+    segment: retail
+    category: strategy
+    surfaces: [mobile, web]
+    personas: [Option Seller, Strategy Trader]
+    description: Group positions, risk, and P&L by strategy rather than only by individual instrument.
+    keywords: [strategy portfolio, strategy level P&L, position grouping]
+
+  - id: strategy_sl_tp
+    name: Strategy-level SL/TP
+    status: upcoming
+    segment: retail
+    category: risk
+    surfaces: [mobile, web]
+    personas: [Option Seller, Strategy Trader]
+    description: Apply stop-loss and take-profit controls to the combined strategy.
+    keywords: [strategy stop loss, strategy take profit, strategy SL TP]
+
+  - id: pnl_sl_tp
+    name: P&L based SL/TP
+    status: upcoming
+    segment: retail
+    category: risk
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, Strategy Trader]
+    description: Configure exit controls using overall profit-and-loss values rather than only instrument prices.
+    keywords: [P&L stop loss, P&L target, profit loss exit]
+
+  - id: risk_reward_sl_tp
+    name: Risk-reward SL/TP
+    status: upcoming
+    segment: retail
+    category: risk
+    surfaces: [mobile, web]
+    personas: [Option Buyer, Option Seller, Scalper]
+    description: Configure stop-loss and target relationships using a risk-reward framework.
+    keywords: [risk reward, risk reward stop loss, SL target]
+
+  - id: quantity_sizing
+    name: Quantity by amount or margin
+    status: upcoming
+    segment: retail
+    category: risk
+    surfaces: [mobile, web]
+    personas: [Investor, Option Buyer, Option Seller]
+    description: Calculate order quantity from a chosen investment amount, available margin, or desired exposure.
+    keywords: [quantity by amount, quantity by margin, position sizing]
+
+  - id: portfolio_risk
+    name: Portfolio risk analyzer
+    status: upcoming
+    segment: retail
+    category: risk
+    surfaces: [mobile, web]
+    personas: [Investor, Option Seller, Strategy Trader]
+    description: Analyze portfolio exposure, concentration, and scenario risk across eligible holdings and F&O positions.
+    keywords: [portfolio risk, concentration risk, exposure analysis, portfolio hedging]
+
+  - id: strategy_time_series
+    name: Time-series strategy plot
+    status: upcoming
+    segment: retail
+    category: analytics
+    surfaces: [mobile, web]
+    personas: [Option Seller, Strategy Trader]
+    description: Plot the time-series behaviour of strategy-level combinations containing stocks, futures, and options.
+    keywords: [strategy time series, strategy analytics, P&L chart]
+
+  - id: instant_withdrawal
+    name: Instant withdrawal
+    status: upcoming
+    segment: retail
+    category: funds
+    surfaces: [mobile, web]
+    personas: [Investor, Option Buyer, Option Seller]
+    description: Faster withdrawal for eligible balances, subject to applicable limits and settlement conditions.
+    keywords: [instant withdrawal, withdraw trading funds, payout]
+
+  - id: instant_funds
+    name: Instant fund addition up to ₹5 lakh
+    status: upcoming
+    segment: retail
+    category: funds
+    surfaces: [mobile, web]
+    personas: [Investor, Option Buyer, Option Seller]
+    description: Instant addition of funds up to ₹5 lakh where the payment method and applicable limits permit.
+    keywords: [instant fund addition, add funds, UPI trading funds]
+
+  - id: fii_dii
+    name: FII and DII market context
+    status: upcoming
+    segment: retail
+    category: market_context
+    surfaces: [mobile, web]
+    personas: [Investor]
+    description: Present FII/DII participation and institutional-flow context to support market understanding.
+    keywords: [FII data, DII data, institutional flows, FII DII activity]
+
+  - id: api_access
+    name: API and algo trading access
+    status: live
+    segment: api
+    category: api
+    surfaces: [API, SDK]
+    personas: [API / Algo User]
+    description: Developer access for market data, order placement, portfolio workflows, and trading automation.
+    keywords: [trading API, broker API, order API, market data API, algo trading, SDK]
+
+  - id: nubra_uat
+    name: Nubra UAT
+    status: live
+    segment: api
+    category: testing
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: User-acceptance environment for testing integrations and order workflows before production use; it should be positioned and marketed more clearly.
+    keywords: [UAT, sandbox, paper trading, API testing, test environment]
+
+  - id: oms_v3
+    name: OMS V3
+    status: live
+    segment: api
+    category: execution
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: Current order-management capability intended to cover advanced API order workflow requirements.
+    keywords: [OMS V3, order management API, advanced orders]
+
+  - id: reliable_websocket
+    name: Reliable websocket
+    status: live
+    segment: api
+    category: data
+    surfaces: [API, SDK]
+    personas: [API / Algo User]
+    description: Streaming market-data websocket capability for API and algo workflows.
+    keywords: [websocket, live market data, streaming API, websocket reliability]
+
+  - id: historical_data
+    name: Historical market data APIs
+    status: live
+    segment: api
+    category: data
+    surfaces: [API, SDK]
+    personas: [API / Algo User]
+    description: Historical market-data access; the available instruments, intervals, and date ranges should be communicated clearly.
+    keywords: [historical data API, candle data, OHLC API, backtest data]
+
+  - id: fundamental_sdk
+    name: Fundamental data in SDK
+    status: live
+    segment: api
+    category: data
+    surfaces: [SDK]
+    personas: [API / Algo User, Investor]
+    description: Fundamental data exposed through the Nubra SDK for research and persona-aware analytical workflows.
+    keywords: [fundamental data API, fundamentals SDK, company fundamentals]
+
+  - id: static_ip
+    name: Static IP support
+    status: live
+    segment: api
+    category: security
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: Static-IP access control for API security workflows, including an endpoint that can be exposed for updating configured IPs.
+    keywords: [static IP API, IP whitelist, API security]
+
+  - id: totp
+    name: TOTP support
+    status: live
+    segment: api
+    category: security
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: TOTP support for automated login flows where permitted.
+    keywords: [TOTP API, automated login, API authentication]
+
+  - id: primary_secondary_ip
+    name: Primary and secondary IP support
+    status: live
+    segment: api
+    category: security
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: Primary and secondary IP configuration to improve access resilience.
+    keywords: [primary IP, secondary IP, IP whitelist]
+
+  - id: multi_session
+    name: Multi-session support
+    status: live
+    segment: api
+    category: platform
+    surfaces: [API]
+    personas: [API / Algo User]
+    description: Multiple concurrent platform or API sessions where supported.
+    keywords: [multi session, API session, concurrent sessions]
+
+  - id: backtesting
+    name: Backtesting through Nubra OSS and MCP
+    status: live
+    segment: api
+    category: testing
+    surfaces: [MCP, SDK]
+    personas: [API / Algo User]
+    description: Backtesting capability available through Nubra OSS and the Nubra MCP ecosystem.
+    keywords: [backtesting, strategy backtest, Nubra OSS, MCP backtest]
+
+  - id: news_api
+    name: News API
+    status: live
+    segment: api
+    category: data
+    surfaces: [API, MCP]
+    personas: [API / Algo User, Investor]
+    description: News data can be exposed directly through API workflows and used by MCP for contextual insights.
+    keywords: [news API, market news API, financial news data]
+
+  - id: analytics_api
+    name: Advanced analytics through SDK
+    status: upcoming
+    segment: api
+    category: analytics
+    surfaces: [SDK, API]
+    personas: [API / Algo User]
+    description: Higher-level analytics can complement the existing basic data APIs through Nubra SDK and API surfaces.
+    keywords: [analytics API, trading analytics SDK, P&L analytics]
+
+  - id: scanner_indicator_api
+    name: Scanner and indicator APIs
+    status: upcoming
+    segment: api
+    category: scanners
+    surfaces: [SDK, MCP, API]
+    personas: [API / Algo User]
+    description: Scanner and indicator capabilities intended for both SDK and MCP-driven workflows.
+    keywords: [scanner API, indicator API, screener API, technical indicators API]
+
+  - id: mcp_ai
+    name: Nubra MCP and AI integration
+    status: upcoming
+    segment: shared
+    category: ai
+    surfaces: [MCP, API, SDK]
+    personas: [API / Algo User, Investor, Option Buyer, Option Seller]
+    description: AI-assisted access to Nubra product, market, education, and workflow context through MCP integrations.
+    keywords: [Nubra MCP, trading AI, AI broker assistant, MCP trading]

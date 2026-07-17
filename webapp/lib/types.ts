@@ -278,6 +278,86 @@ export type SourceHealth = {
   stored_items: number;
 };
 
+export type SocialRecommendation = {
+  id: number;
+  run_id: number;
+  day: string;
+  recommendation_key: string;
+  segment: "retail" | "api";
+  platform: "linkedin" | "x" | "instagram" | "youtube";
+  post_format: "text_post" | "thread" | "carousel" | "short_video" | "product_demo";
+  title: string;
+  hook: string;
+  body: string;
+  cta: string;
+  exact_copy: string;
+  hashtags: string[];
+  mapped_features: {
+    id: string;
+    name: string;
+    status: "live" | "upcoming";
+    segment: "retail" | "api" | "shared";
+    description?: string;
+  }[];
+  source_evidence: {
+    item_id: number;
+    source: string;
+    source_type?: string;
+    text: string;
+    url?: string;
+    created_at?: string;
+  }[];
+  rationale: string;
+  visual_brief: string;
+  recommended_timing?: string;
+  priority_score: number | string;
+  status: "draft" | "approved" | "rejected" | "published";
+  compliance_status: "passed" | "failed";
+  model: string;
+  prompt_version: string;
+  context_version: string;
+  edited_by?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SocialRecommendationStatus = {
+  module: string;
+  ready: boolean;
+  context?: {
+    version: string;
+    updated_at: string;
+    feature_count: number;
+    live_features: number;
+    upcoming_features: number;
+    retail_features: number;
+    api_features: number;
+  };
+  latest_run?: {
+    id: number;
+    status: "running" | "succeeded" | "failed" | "skipped";
+    model: string;
+    prompt_version: string;
+    context_version: string;
+    window_days: number;
+    stats?: Record<string, unknown>;
+    error?: string | null;
+    created_at: string;
+    completed_at?: string | null;
+  } | null;
+};
+
+export type SocialRecommendationPreview = {
+  items?: number;
+  sources?: string[];
+  retail_items?: number;
+  api_items?: number;
+  context_version?: string;
+  context_features?: number;
+  candidate_features?: { retail?: number; api?: number };
+  claude_configured?: boolean;
+};
+
 export const DISMISS_REASONS = [
   "not_relevant",
   "already_handled",
