@@ -1236,9 +1236,61 @@ def publish_features_catalog(body: dict = Body(...),
 
 # ── collector health (read-only operational visibility) ──────────────────
 
+def _live_probe(name: str) -> dict:
+    """One cheap live reachability/auth check per source family (user decision
+    2026-07-18: the health page must test the actual APIs, not just stored
+    state). Small timeouts; failures return a reason, never raise."""
+    import os
+
+    import httpx
+    try:
+        if name == "twitter":
+            key = os.getenv("TWITTERAPI_IO_KEY")
+            if not key:
+                return {"live": "no_key"}
+            r = httpx.get("https://api.twitterapi.io/twitter/tweet/advanced_search",
+                          params={"query": "nubra", "queryType": "Latest"},
+                          headers={"X-API-Key": key}, timeout=12)
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        if name == "reddit":
+            from community.scrape.reddit import _preflight
+            return {"live": "ok" if _preflight() else "blocked_or_down"}
+        if name == "youtube":
+            key = os.getenv("YOUTUBE_API_KEY")
+            if not key:
+                return {"live": "no_key"}
+            r = httpx.get("https://www.googleapis.com/youtube/v3/search",
+                          params={"part": "id", "q": "nubra", "maxResults": 1, "key": key},
+                          timeout=12)
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        if name == "github":
+            headers = {"Accept": "application/vnd.github+json"}
+            tok = os.getenv("GITHUB_TOKEN")
+            if tok:
+                headers["Authorization"] = f"Bearer {tok}"
+            r = httpx.get("https://api.github.com/rate_limit", headers=headers, timeout=12)
+            if r.status_code != 200:
+                return {"live": f"http_{r.status_code}"}
+            core = r.json().get("resources", {}).get("core", {})
+            return {"live": "ok", "detail": f"{core.get('remaining')}/{core.get('limit')} calls left"}
+        if name == "broker_communities":
+            r = httpx.get("https://tradingqna.com/latest.json", timeout=12,
+                          headers={"User-Agent": "Mozilla/5.0"})
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        if name == "app_reviews":
+            r = httpx.get("https://itunes.apple.com/in/rss/customerreviews/id=6746636699/json",
+                          timeout=12, follow_redirects=True)
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        return {"live": "no_probe"}
+    except Exception as e:  # noqa: BLE001 — a probe failure is a result, not an error
+        return {"live": "unreachable", "detail": f"{type(e).__name__}: {str(e)[:80]}"}
+
+
 @app.get(API + "/source-health")
-def source_health():
-    """Configured and runtime state for every collector.
+def source_health(live: bool = False):
+    """Configured and runtime state for every collector; live=true adds a
+    real reachability/auth probe per source (~12s worst case, parallel-free
+    by design — this is an ops page, not a hot path).
 
     This endpoint is read-only and deliberately soft: missing optional
     credentials are reported as readiness states, not API failures.
@@ -1322,9 +1374,10 @@ def source_health():
                 "watermark": state.get("watermark"),
                 "items_last_run": state.get("items_last_run"),
                 "stored_items": totals.get(stored_source, 0),
+                **(_live_probe(config_name) if live and enabled else {}),
             }
         )
-    return {"sources": result}
+    return {"sources": result, "live_checked": live}
 
 
 # ── watch sources (UI-managed collection config) ──────────────────────────

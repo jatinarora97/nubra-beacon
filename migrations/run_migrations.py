@@ -33,6 +33,19 @@ def main(dry_run: bool = False) -> None:
     with psycopg.connect(settings.db_url, autocommit=True) as conn:
         conn.execute("SELECT pg_advisory_lock(hashtext('nubra_community:migrate'))")
         conn.execute(TRACKING)
+        # DBs created before the version+dirty scheme (2026-07-09) lack the
+        # column — CREATE IF NOT EXISTS above doesn't retrofit existing tables
+        conn.execute("ALTER TABLE schema_migrations "
+                     "ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT false")
+        # legacy sha256 drift column (pre-2026-07-09 scheme) is not written by
+        # this runner — relax NOT NULL where it exists so inserts succeed
+        conn.execute("""
+            DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_name='schema_migrations' AND column_name='sha256') THEN
+                    ALTER TABLE schema_migrations ALTER COLUMN sha256 DROP NOT NULL;
+                END IF;
+            END $$""")
         applied = {
             r[0]: r[1]
             for r in conn.execute("SELECT version, dirty FROM schema_migrations").fetchall()

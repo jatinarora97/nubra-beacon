@@ -263,6 +263,8 @@ export type Item = {
 };
 
 export type SourceHealth = {
+  live?: string;
+  detail?: string;
   name: string;
   stored_source: string;
   enabled: boolean;

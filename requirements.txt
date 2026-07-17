@@ -14,3 +14,4 @@ fastapi>=0.111
 uvicorn>=0.30
 openpyxl>=3.1
 langfuse>=2.0.0
+pytest>=8.0            # dev/test only — tests/ suite (first added 2026-07-18)

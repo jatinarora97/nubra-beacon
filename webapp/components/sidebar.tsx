@@ -11,17 +11,17 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/features", label: "Feature requests", dot: "bg-warn" },
   { href: "/nubra", label: "Nubra mentions", dot: "bg-opps" },
   { href: "/opportunities", label: "Opportunities", dot: "bg-opps", group: "What to do" },
-  { href: "/social-recommendations", label: "Social recommendations", dot: "bg-content", group: "What to make" },
   { href: "/content", label: "Content briefs", dot: "bg-content", group: "What to make" },
+  { href: "/social-recommendations", label: "Social recommendations", dot: "bg-content" },
   { href: "/voices", label: "Voices", dot: "bg-voices", group: "Who matters" },
   { href: "/explore", label: "Explore data", dot: "bg-muted", group: "Verify" },
   { href: "/sources", label: "Sources", dot: "bg-muted", group: "Configure" },
-  { href: "/source-health", label: "Source health", dot: "bg-muted" },
   { href: "/grounding", label: "Grounding (USPs)", dot: "bg-warn" },
   { href: "/weekly", label: "Weekly roundup", dot: "bg-trends", group: "Roundups" },
   { href: "/requests", label: "Beacon requests", dot: "bg-content", group: "Improve" },
   { href: "/llm", label: "AI usage", dot: "bg-voices", group: "System" },
   { href: "/how-it-works", label: "How Beacon works", dot: "bg-trends", group: "Learn" },
+  { href: "/source-health", label: "Source health", dot: "bg-opps", group: "Health" },
 ];
 
 export function Sidebar() {

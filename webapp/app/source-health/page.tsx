@@ -29,17 +29,39 @@ function timestamp(value?: string | null): string {
   });
 }
 
-export default async function SourceHealthPage() {
-  const payload = await get<{ sources: SourceHealth[] }>("/source-health", { sources: [] });
+export default async function SourceHealthPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const live = sp.live === "1";
+  const payload = await get<{ sources: SourceHealth[] }>(
+    `/source-health${live ? "?live=true" : ""}`,
+    { sources: [] },
+  );
   const sources = payload.sources;
 
   return (
     <div>
       <PageHeader
         title="Source health"
-        blurb="Collection readiness and last-run status for every Beacon source. A failed optional source is isolated and does not stop the remaining pipeline."
-        accent="bg-muted"
+        blurb="Collection readiness and last-run status for every Beacon source, with on-demand live probes that hit each API right now. A failed optional source is isolated and does not stop the remaining pipeline."
+        accent="bg-opps"
       />
+
+      <div className="mb-5">
+        <a
+          href={live ? "/source-health" : "/source-health?live=1"}
+          className={`rounded-md border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+            live
+              ? "border-opps/50 bg-opps/10 text-opps"
+              : "border-line text-muted hover:border-opps hover:text-ink"
+          }`}
+        >
+          {live ? "Live check complete — refresh to re-run" : "Run live checks (hits every API now)"}
+        </a>
+      </div>
 
       {sources.length === 0 ? (
         <EmptyState
@@ -59,9 +81,16 @@ export default async function SourceHealthPage() {
                     Stored as <span className="font-mono">{source.stored_source}</span>
                   </p>
                 </div>
-                <Badge tone={statusTone(source.health)}>
-                  {source.health.replace(/_/g, " ")}
-                </Badge>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <Badge tone={statusTone(source.health)}>
+                    {source.health.replace(/_/g, " ")}
+                  </Badge>
+                  {source.live && (
+                    <Badge tone={source.live === "ok" ? "opps" : "danger"}>
+                      live: {source.live}{source.detail ? ` · ${source.detail}` : ""}
+                    </Badge>
+                  )}
+                </span>
               </div>
 
               <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 text-[12.5px]">
