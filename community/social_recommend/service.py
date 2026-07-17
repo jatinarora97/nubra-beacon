@@ -26,6 +26,16 @@ real user pain, questions, content demand, or product confusion. Map each idea
 to only the supplied Nubra features.
 
 Hard rules:
+- The public-facing `hook`, `body`, `cta`, and `hashtags` must be the finished
+  marketing post in Nubra's voice. They must be directly copy-pastable without
+  rewriting, interpretation, or instructions from a marketing person.
+- Never write a brief or meta-instruction inside public copy. Do not say
+  "create a post", "the marketing team should", "highlight this feature",
+  "content angle", "visual direction", "CTA should", or similar language.
+- Do not label public copy with "Hook:", "Body:", "Caption:", or "CTA:".
+- Make the post audience-native, specific, benefit-led and confident without
+  hype. Explain the product value in language a trader or developer would
+  understand immediately. Avoid generic filler.
 - Start from the user problem, not a product feature list.
 - Never invent a Nubra capability, status, date, price, metric, or comparison.
 - A live feature may be described as available. An upcoming feature must be
@@ -35,6 +45,8 @@ Hard rules:
 - Retail and API/developer content must remain separate.
 - Write clear product-focused English. No corporate filler and no emojis.
 - `body` must be complete, useful copy, not instructions to a writer.
+- `rationale` and `visual_brief` are the only fields allowed to contain
+  internal reasoning or production instructions.
 - Cite only evidence_item_ids and feature_ids present in the input.
 
 Return ONLY one JSON object:
@@ -60,6 +72,26 @@ Create at most six recommendations. Prefer three retail and three API when both
 segments have enough evidence. Every recommendation must stand alone and be
 immediately copyable."""
 
+_INTERNAL_COPY_PATTERNS = [
+    re.compile(pattern, re.I)
+    for pattern in (
+        r"\bmarketing team\b",
+        r"\bsocial media team\b",
+        r"\bcontent team\b",
+        r"\bdesign team\b",
+        r"\bcreate (?:a|an|the) (?:post|carousel|thread|video|reel)\b",
+        r"\bthis post should\b",
+        r"\bcontent angle\b",
+        r"\bvisual direction\b",
+        r"\bfeature to highlight\b",
+        r"\bhighlight this feature\b",
+        r"\bcta should\b",
+        r"\bcampaign should\b",
+        r"\bpost idea\b",
+        r"(?m)^\s*(?:hook|body|caption|cta)\s*:",
+    )
+]
+
 
 def _json_object(raw: str) -> dict[str, Any]:
     start, end = raw.find("{"), raw.rfind("}")
@@ -74,6 +106,15 @@ def _stable_key(rec: GeneratedRecommendation) -> str:
         f"{rec.segment}|{rec.platform}|{rec.title}|{'|'.join(rec.feature_ids)}".encode()
     ).hexdigest()[:10]
     return f"{slug or 'recommendation'}-{digest}"
+
+
+def _public_copy_issue(text: str) -> str | None:
+    """Return the internal/meta phrase that makes copy unsuitable to publish."""
+    for pattern in _INTERNAL_COPY_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return match.group(0)
+    return None
 
 
 def _prompt_payload(days: int) -> tuple[dict[str, Any], dict]:
@@ -116,6 +157,13 @@ def _validate_grounding(
             continue
         if any(evidence[item_id]["segment"] != rec.segment for item_id in rec.evidence_item_ids):
             log.warning("dropping recommendation with cross-segment evidence: %s", rec.title)
+            continue
+        internal_phrase = _public_copy_issue(rec.exact_copy)
+        if internal_phrase:
+            log.warning(
+                "dropping recommendation containing internal marketing instructions: %s — %r",
+                rec.title, internal_phrase,
+            )
             continue
         rec.recommendation_key = _stable_key(rec)
         valid.append(rec)

@@ -10,6 +10,11 @@ Content briefs feature:
 - **Social recommendations** put exact copy first and keep the evidence,
   feature mapping, timing and visual direction behind expandable details.
 
+The public copy is always the finished marketing message. Internal instructions
+such as "create a post", "marketing team should", "content angle", or labelled
+Hook/Body/CTA templates are rejected before storage. Internal rationale and
+production direction live only in the collapsed supporting details.
+
 Nothing is published automatically. A user must review and approve the copy.
 
 ## Isolation contract
