@@ -120,10 +120,23 @@ def run(daily: bool = False, **_) -> dict:
         log.exception("keyword search failed — scrape stage continues")
         keyword_stats = {"error": "see traceback in log"}
 
+    # Optional add-on sources (YouTube, GitHub, broker communities, app reviews).
+    # Config-gated and failure-isolated: existing Reddit/X collection must keep
+    # working even if one of these new sources lacks credentials or breaks.
+    try:
+        from community.scrape import extra_sources
+        log.info("extra sources: starting")
+        extra_source_stats = extra_sources.run()
+        log.info("extra sources: %s", extra_source_stats)
+    except Exception:  # noqa: BLE001
+        log.exception("extra sources failed - scrape stage continues")
+        extra_source_stats = {"error": "see traceback in log"}
+
     if csv_note:
         fetched["twitter_csv_note"] = csv_note
     return {"fetched": fetched, "reddit_by_category": reddit_by_category,
             "reddit_sorts": sorts, **counters,
             "x_live_note": x_live_note, "reddit_health": reddit_health,
             "engagement_refresh": refresh_stats,
-            "keyword_search": keyword_stats}
+            "keyword_search": keyword_stats,
+            "extra_sources": extra_source_stats}

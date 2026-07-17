@@ -21,8 +21,15 @@ class AuthorMeta(BaseModel):
 
 
 class SocialItem(BaseModel):
-    source: Literal["twitter", "reddit"]
-    source_type: Literal["post", "comment", "tweet", "reply", "message"]
+    source: Literal[
+        "twitter",
+        "reddit",
+        "youtube",
+        "github",
+        "community_forum",
+        "app_review",
+    ]
+    source_type: Literal["post", "comment", "tweet", "reply", "message", "review", "issue"]
     external_id: str
     parent_id: str | None = None
     thread_id: str

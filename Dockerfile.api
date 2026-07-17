@@ -1,22 +1,30 @@
-# Nubra Beacon — backend image: read-API (uvicorn) + the pipeline (`./cm ...`
-# via `docker compose exec`). Playwright Chromium is installed at the pip
-# version so the Reddit transport (old.reddit) works headless in-container.
+# syntax=docker/dockerfile:1
+# Nubra Beacon backend image: read API plus the scheduled pipeline.
+# Playwright Chromium supports the existing old.reddit collector.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     HF_HOME=/hf-cache
 
 WORKDIR /app
 
-# CPU-only torch first (sentence-transformers dependency) — avoids the
-# multi-GB CUDA wheels the default index would pull.
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+# CPU-only torch avoids the multi-GB CUDA wheels from the default index.
+# BuildKit cache mounts are external to the image and let interrupted builds
+# reuse already downloaded wheels.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt \
  && playwright install --with-deps chromium
+
+# Optional-source dependencies stay in a small separate layer so changes do
+# not invalidate Beacon's large main dependency layer.
+COPY requirements-extra-sources.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements-extra-sources.txt
 
 COPY cm runner.py ./
 COPY community ./community
