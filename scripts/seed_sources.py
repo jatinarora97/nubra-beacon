@@ -41,6 +41,38 @@ def main() -> None:
              db.jsonb({"x": bool(kw.get("x", True)), "reddit": bool(kw.get("reddit", True))})),
         )
         rows.append(("keyword", kw["value"], "brand"))
+    # add-on collector targets (2026-07-18): youtube/github queries, forums, apps
+    for partition, qs in (reg.get("youtube", {}).get("queries") or {}).items():
+        for q in qs or []:
+            n += db.execute(
+                "INSERT INTO watch_sources (kind, value, category, added_by) "
+                "VALUES ('youtube_query', %s, %s, 'seed') ON CONFLICT (kind, value) DO NOTHING",
+                (q, partition))
+            rows.append(("youtube_query", q, partition))
+    for q in reg.get("github", {}).get("queries") or []:
+        n += db.execute(
+            "INSERT INTO watch_sources (kind, value, category, added_by) "
+            "VALUES ('github_query', %s, 'api', 'seed') ON CONFLICT (kind, value) DO NOTHING",
+            (q,))
+        rows.append(("github_query", q, "api"))
+    for f in reg.get("broker_communities", {}).get("sources") or []:
+        url = f.get("base_url") or f.get("sitemap_url")
+        if not url:
+            continue
+        n += db.execute(
+            "INSERT INTO watch_sources (kind, value, category, added_by, note, config) "
+            "VALUES ('forum', %s, %s, 'seed', %s, %s) ON CONFLICT (kind, value) DO NOTHING",
+            (url, f.get("broker"), f.get("name"), db.jsonb(f)))
+        rows.append(("forum", url, f.get("broker")))
+    for a in reg.get("app_reviews", {}).get("apps") or []:
+        if not (a.get("apple_id") or a.get("google_package")):
+            continue
+        n += db.execute(
+            "INSERT INTO watch_sources (kind, value, category, added_by, config) "
+            "VALUES ('app', %s, %s, 'seed', %s) ON CONFLICT (kind, value) DO NOTHING",
+            (a["name"], a.get("broker"), db.jsonb({k: v for k, v in a.items()
+                                                   if k != "name" and v})))
+        rows.append(("app", a["name"], a.get("broker")))
     print(f"seeded {n} new watch_sources ({len(rows)} candidates)")
 
 

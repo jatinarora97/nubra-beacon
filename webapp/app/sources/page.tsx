@@ -8,7 +8,7 @@ export default function SourcesPage() {
     <div>
       <PageHeader
         title="Collection sources"
-        blurb="What Beacon listens to. Changes apply automatically on the next hourly scrape run — no code, no deploy. Subreddits are fetched across the new / hot / rising feeds (top once daily); X hashtags, handles, queries and keywords feed the X search collector (budget-capped). Keywords with the Reddit lens act as a filter over what the subreddits already bring in — no extra fetches."
+        blurb="What Beacon listens to. Changes apply automatically on the next hourly scrape run — no code, no deploy. Subreddits are fetched across the new / hot / rising feeds (top once daily); X hashtags, handles, queries and keywords feed the X search collector (budget-capped). Keywords with the Reddit lens act as a filter over what the subreddits already bring in — no extra fetches. The newer families are managed here too: YouTube and GitHub search queries, community forums (base URL + platform config), and app-store apps (store identifiers in config)."
         accent="bg-muted"
       />
       <SourcesManager />

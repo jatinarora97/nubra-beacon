@@ -205,10 +205,40 @@ def _sitemap_html(client: httpx.Client, source_cfg: dict, topic_cap: int, _: int
         time.sleep(0.2)
 
 
+def _watch_forums(reg: dict) -> list[dict]:
+    """Source of truth = watch_sources (kind='forum': value = base/sitemap URL,
+    config = {platform, broker, name, base_url?, sitemap_url?}); registry is
+    the seed/fallback. Rows without a usable platform are skipped loudly."""
+    try:
+        from community.store import db
+        rows = db.query("SELECT value, config FROM watch_sources "
+                        "WHERE kind='forum' AND active ORDER BY value")
+    except Exception:  # noqa: BLE001
+        rows = []
+    if rows:
+        from community.config.log import get_logger
+        log = get_logger("scrape.forums")
+        out = []
+        for r in rows:
+            cfg = dict(r.get("config") or {})
+            if not cfg.get("platform"):
+                log.warning("forum source %r has no platform in config — skipped", r["value"])
+                continue
+            cfg.setdefault("name", r["value"])
+            # value is the URL: base_url for API-driven platforms, sitemap for the rest
+            if cfg["platform"] == "sitemap_html":
+                cfg.setdefault("sitemap_url", r["value"])
+            else:
+                cfg.setdefault("base_url", r["value"])
+            out.append(cfg)
+        return out
+    return list(reg.get("sources") or [])
+
+
 def fetch(reg: dict) -> Iterator[SocialItem]:
     topic_cap = int(reg.get("max_topics_per_source", 20))
     reply_cap = int(reg.get("max_replies_per_topic", 10))
-    sources = list(reg.get("sources") or [])
+    sources = _watch_forums(reg)
     handlers = {"discourse": _discourse, "nodebb": _nodebb, "sitemap_html": _sitemap_html}
     with httpx.Client(
         timeout=25.0,

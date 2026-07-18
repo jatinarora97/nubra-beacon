@@ -149,8 +149,22 @@ def _item(row: dict, query: str, reg: dict) -> SocialItem | None:
     )
 
 
+def _watch_queries(reg: dict) -> list[str]:
+    """Source of truth = watch_sources (kind='github_query', UI-managed);
+    registry is the seed/fallback."""
+    try:
+        from community.store import db
+        rows = db.query("SELECT value FROM watch_sources "
+                        "WHERE kind='github_query' AND active ORDER BY value")
+        if rows:
+            return [r["value"] for r in rows]
+    except Exception:  # noqa: BLE001
+        pass
+    return list(reg.get("queries") or [])
+
+
 def fetch(reg: dict) -> Iterator[SocialItem]:
-    queries = list(reg.get("queries") or [])
+    queries = _watch_queries(reg)
     max_queries = int(reg.get("max_queries_per_run", 20))
     max_items = int(reg.get("max_items_per_query", 20))
     if not queries:

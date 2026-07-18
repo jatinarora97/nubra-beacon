@@ -1382,7 +1382,8 @@ def source_health(live: bool = False):
 
 # ── watch sources (UI-managed collection config) ──────────────────────────
 
-_KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query", "keyword")
+_KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query", "keyword",
+          "youtube_query", "github_query", "forum", "app")
 
 
 @app.get(API + "/sources")
@@ -1404,9 +1405,15 @@ def add_source(payload: dict = Body(...),
                 "https://x.com/", "https://twitter.com/"):
         if value.lower().startswith(pre):
             value = value[len(pre):]
-    value = value.strip("/ ")
-    # keywords and full queries may contain spaces; handles/hashtags/subs may not
-    if not value or (kind not in ("x_query", "keyword") and (" " in value or len(value) > 60)):
+    value = value.strip("/ ") if kind != "forum" else value.strip()
+    if not value:
+        raise HTTPException(400, "value is required")
+    if kind == "forum":
+        if not value.lower().startswith("http"):
+            raise HTTPException(400, "forum value must be the base/sitemap URL (https://...)")
+    # queries/keywords/app names may contain spaces; handles/hashtags/subs may not
+    elif (kind not in ("x_query", "keyword", "youtube_query", "github_query", "app")
+          and (" " in value or len(value) > 60)):
         raise HTTPException(400, "value looks invalid for this kind")
     config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
     if kind == "keyword" and not config:

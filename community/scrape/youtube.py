@@ -165,6 +165,23 @@ def _comment_item(row: dict, video_id: str, query: str, partition: str, reg: dic
 
 
 def _queries(reg: dict) -> list[tuple[str, str]]:
+    """(partition, query) pairs. Source of truth = watch_sources
+    (kind='youtube_query', UI-managed; category 'api_algo' maps to the api
+    partition, anything else to retail). Registry is the seed/fallback."""
+    try:
+        from community.store import db
+        rows = db.query("SELECT value, category FROM watch_sources "
+                        "WHERE kind='youtube_query' AND active "
+                        # daily-rotating deterministic order: with more queries
+                        # than max_queries_per_run, every query gets coverage
+                        # across days instead of the same alphabetical head
+                        "ORDER BY md5(value || current_date::text)")
+        if rows:
+            out = [("api_algo" if (r["category"] or "") == "api_algo" else "retail",
+                    r["value"]) for r in rows]
+            return out[: int(reg.get("max_queries_per_run", 20))]
+    except Exception:  # noqa: BLE001 — DB hiccup: fall through to registry
+        pass
     raw = reg.get("queries") or {}
     out: list[tuple[str, str]] = []
     if isinstance(raw, dict):
@@ -182,18 +199,39 @@ def fetch(reg: dict) -> Iterator[SocialItem]:
         return
     max_videos = int(reg.get("max_videos_per_query", 5))
     max_comments = int(reg.get("max_comments_per_video", 20))
+    from community.config.log import get_logger
+    log = get_logger("scrape.youtube")
+    errors = 0
     with httpx.Client(timeout=25.0) as client:
         for partition, query in _queries(reg):
-            ids = _search(client, key, query, max_videos)
-            for video in _video_rows(client, key, ids):
+            # Per-query isolation (2026-07-18 live incident: one connection
+            # reset aborted the remaining queries) — mirror twitter.py.
+            try:
+                ids = _search(client, key, query, max_videos)
+                rows = _video_rows(client, key, ids)
+            except Exception as e:  # noqa: BLE001
+                errors += 1
+                log.warning("query %r failed (%s: %s) — continuing with next query",
+                            query, type(e).__name__, str(e)[:120])
+                continue
+            for video in rows:
                 vid = video.get("id")
                 item = _video_item(video, query, partition)
                 if item:
                     yield item
                 if vid:
-                    for comment in _comments(client, key, vid, max_comments):
+                    try:
+                        comment_rows = _comments(client, key, vid, max_comments)
+                    except Exception as e:  # noqa: BLE001
+                        errors += 1
+                        log.warning("comments for video %s failed (%s) — skipping",
+                                    vid, type(e).__name__)
+                        comment_rows = []
+                    for comment in comment_rows:
                         citem = _comment_item(comment, vid, query, partition, reg)
                         if citem:
                             yield citem
                 time.sleep(0.2)
             time.sleep(0.8)
+    if errors:
+        log.warning("youtube run finished with %d isolated fetch errors", errors)

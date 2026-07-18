@@ -127,8 +127,33 @@ def _google_reviews(app: dict, country: str, limit: int) -> Iterator[SocialItem]
         )
 
 
+def _watch_apps(reg: dict) -> list[dict]:
+    """Source of truth = watch_sources (kind='app': value = display name,
+    config = {broker, apple_id?, google_package?}); registry is the seed/
+    fallback. Rows with neither store identifier are skipped loudly."""
+    try:
+        from community.store import db
+        rows = db.query("SELECT value, config FROM watch_sources "
+                        "WHERE kind='app' AND active ORDER BY value")
+    except Exception:  # noqa: BLE001
+        rows = []
+    if rows:
+        from community.config.log import get_logger
+        log = get_logger("scrape.app_reviews")
+        out = []
+        for r in rows:
+            cfg = dict(r.get("config") or {})
+            if not (cfg.get("apple_id") or cfg.get("google_package")):
+                log.warning("app source %r has no apple_id/google_package — skipped", r["value"])
+                continue
+            cfg.setdefault("name", r["value"])
+            out.append(cfg)
+        return out
+    return list(reg.get("apps") or [])
+
+
 def fetch(reg: dict) -> Iterator[SocialItem]:
-    apps = list(reg.get("apps") or [])
+    apps = _watch_apps(reg)
     country = str(reg.get("country") or "in").lower()
     limit = int(reg.get("max_reviews_per_app", 100))
     if not apps:
