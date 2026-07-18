@@ -20,12 +20,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt \
  && playwright install --with-deps chromium
 
-# Optional-source dependencies stay in a small separate layer so changes do
-# not invalidate Beacon's large main dependency layer.
-COPY requirements-extra-sources.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements-extra-sources.txt
-
 COPY cm runner.py ./
 COPY community ./community
 COPY migrations ./migrations

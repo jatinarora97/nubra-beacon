@@ -154,9 +154,107 @@ def _sources():
     return ", ".join(f"{r['n']} {r['kind']}" for r in rows)
 
 
+
+def _live_probe(name: str) -> dict:
+    """One cheap live reachability/auth check per source family (user decision
+    2026-07-18: the health page must test the actual APIs, not just stored
+    state). Small timeouts; failures return a reason, never raise."""
+    import os
+
+    import httpx
+    try:
+        if name == "twitter":
+            key = os.getenv("TWITTERAPI_IO_KEY")
+            if not key:
+                return {"live": "no_key"}
+            r = httpx.get("https://api.twitterapi.io/twitter/tweet/advanced_search",
+                          params={"query": "nubra", "queryType": "Latest"},
+                          headers={"X-API-Key": key}, timeout=12)
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        if name == "reddit":
+            from community.scrape.reddit import _preflight
+            return {"live": "ok" if _preflight() else "blocked_or_down"}
+        if name == "youtube":
+            key = os.getenv("YOUTUBE_API_KEY")
+            if not key:
+                return {"live": "no_key"}
+            r = httpx.get("https://www.googleapis.com/youtube/v3/search",
+                          params={"part": "id", "q": "nubra", "maxResults": 1, "key": key},
+                          timeout=12)
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        if name == "github":
+            headers = {"Accept": "application/vnd.github+json"}
+            tok = os.getenv("GITHUB_TOKEN")
+            if tok:
+                headers["Authorization"] = f"Bearer {tok}"
+            r = httpx.get("https://api.github.com/rate_limit", headers=headers, timeout=12)
+            if r.status_code != 200:
+                return {"live": f"http_{r.status_code}"}
+            core = r.json().get("resources", {}).get("core", {})
+            return {"live": "ok", "detail": f"{core.get('remaining')}/{core.get('limit')} calls left"}
+        if name == "broker_communities":
+            r = httpx.get("https://tradingqna.com/latest.json", timeout=12,
+                          headers={"User-Agent": "Mozilla/5.0"})
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        if name == "app_reviews":
+            r = httpx.get("https://itunes.apple.com/in/rss/customerreviews/id=6746636699/json",
+                          timeout=12, follow_redirects=True)
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        return {"live": "no_probe"}
+    except Exception as e:  # noqa: BLE001 — a probe failure is a result, not an error
+        return {"live": "unreachable", "detail": f"{type(e).__name__}: {str(e)[:80]}"}
+
+
+def _collector_check(source: str):
+    """PASS/SKIP/FAIL from the same live probe the Source-health page uses."""
+    r = _live_probe(source)
+    live = r.get("live")
+    detail = r.get("detail", "")
+    if live == "ok":
+        return ("PASS", f"{live}{' — ' + detail if detail else ''}")
+    if live in ("no_key",):
+        return ("SKIP", "key not set — source off")
+    return ("FAIL", f"{live}{' — ' + detail if detail else ''}")
+
+
+@_check("youtube (live API probe)")
+def _youtube():
+    status, msg = _collector_check("youtube")
+    if status == "SKIP":
+        raise _Skip(msg)
+    if status == "FAIL":
+        raise RuntimeError(msg)
+    return msg
+
+
+@_check("github (live API probe)")
+def _github():
+    status, msg = _collector_check("github")
+    if status == "FAIL":
+        raise RuntimeError(msg)
+    return msg
+
+
+@_check("broker forums (reachability)")
+def _forums():
+    status, msg = _collector_check("broker_communities")
+    if status == "FAIL":
+        raise RuntimeError(msg)
+    return msg
+
+
+@_check("app stores (reachability)")
+def _appstores():
+    status, msg = _collector_check("app_reviews")
+    if status == "FAIL":
+        raise RuntimeError(msg)
+    return msg
+
+
 def run_doctor() -> int:
     checks = [_db, _migrations, _grounding, _sources, _reddit, _chromium,
-              _anthropic, _x, _langfuse, _slack, _email]
+              _anthropic, _x, _youtube, _github, _forums, _appstores,
+              _langfuse, _slack, _email]
     for c in checks:
         c()
     width = max(len(n) for _, n, _ in _RESULTS) if _RESULTS else 0

@@ -25,7 +25,7 @@ Do not commit `.env`.
 From the repository root:
 
 ```bash
-pip install -r requirements-extra-sources.txt
+pip install -r requirements.txt   # collector deps merged into the main file (2026-07-18)
 python scripts/test_collectors_fetch_only.py --source github
 python scripts/test_collectors_fetch_only.py --source broker_communities
 python scripts/test_collectors_fetch_only.py --source app_reviews
@@ -64,11 +64,10 @@ Open:
 The existing scheduler invokes the normal scrape stage. No second cron or
 worker is required.
 
-The API Dockerfile installs `requirements-extra-sources.txt` in a separate,
-small layer. This preserves the existing cached Beacon dependency layer and
-keeps the source addition from forcing a full ML/browser dependency download.
-BuildKit cache mounts retain downloaded Python wheels outside the image, so an
-interrupted build can resume without downloading the entire main stack again.
+Collector dependencies live in the main `requirements.txt` (merged
+2026-07-18). BuildKit cache mounts retain downloaded Python wheels outside the
+image, so dependency changes and interrupted builds do not re-download the
+entire ML/browser stack.
 
 ## Failure Behaviour
 

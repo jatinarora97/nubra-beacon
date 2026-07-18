@@ -28,20 +28,32 @@ conflicts) with the agreed adjustments. Verified on local; NOT merged to main.
 
 ## Issues to address after first-build review (ordered)
 
-1. **Dual grounding — CONFIRMED drifting already.** The social engine reads
-   its own `data/nubra_context/social_features.yaml`: 58 features, **19 marked
-   live vs 15 live in context-v1** (the product-doc-derived catalog the
-   Grounding page owns). Four capabilities are being called live in social
-   copy that the product doc does not map as live. Decision made 2026-07-18:
-   run as-is for the first build; rewire to `nubra_features` (or generate the
-   YAML from it) before this branch reaches prod.
-2. **Repetition guard does not cover social recs.** Briefs and social recs
-   consume the same signals and overlapping formats; the repeat-judge only
-   sees briefs. Deferred by user decision (may instead retire briefs).
-3. **Social recs bypass the Grounding-page approval flow** — copy claims are
-   validated against the YAML, not the human-editable catalog (same root as 1).
-4. GitHub/YouTube keys were pasted in chat for testing — rotate before prod.
-5. `requirements-extra-sources.txt` is a second dependency file — fold into
-   the main requirements + Dockerfile layer story when this stabilizes.
-6. Their `source_health_check.py` / smoke scripts overlap `./cm doctor` —
-   converge later (doctor could absorb the per-collector probes).
+**Resolved 2026-07-18 (second pass):**
+- Dual grounding RESOLVED: the social engine now reads the versioned
+  `nubra_features` catalog (context-v2) — same source as drafts/briefs and the
+  Grounding page; the private YAML is deleted. Reconciliation outcome: 3
+  genuinely-live features added to the catalog (digital account opening/KYC,
+  transparent charges, advanced charts — the last backed by our own collected
+  app-store review); NOT added because the product doc forbids the claims:
+  OMS V3 + News API (internal/unverified), flexible brokerage as live (doc:
+  upcoming), retail basket orders (doc lists it as a competitor strength).
+  Verified with a forced real run: context_version=context-v2, 31 features,
+  stored recommendations' mapped features resolve to live catalog rows.
+- Sources page manages all four new families (youtube_query / github_query /
+  forum / app; migration 0012), collectors read DB-first, 66 targets seeded.
+- YouTube per-query/per-video error isolation + daily query rotation.
+- Dependency files merged into requirements.txt; Dockerfile layer folded.
+- Teammate's standalone health script absorbed into ./cm doctor (four live
+  collector probes added; Source-health page shares the same probe code).
+  scripts/test_collectors_fetch_only.py kept (pre-deploy fetch smoke).
+
+## Remaining issues — exactly two (+ one reminder)
+
+1. **Briefs vs Social recommendations** (product decision): same signals,
+   overlapping formats, two pages. Options: extend the repeat-judge across
+   both, or retire Content briefs for direct ready-to-ship copy.
+2. **Repetition guard is blind to social recs** — fix together with #1 (user
+   decision 2026-07-18: these two are one workstream).
+
+Reminder: rotate the YouTube API key + GitHub token before prod (pasted in
+chat during testing).

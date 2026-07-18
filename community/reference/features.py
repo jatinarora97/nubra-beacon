@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from community.store import db
 
-CONTEXT_VERSION = "context-v1"
+CONTEXT_VERSION = "context-v2"
 
 # (feature, description, status, category, seo_keywords)
 CONTEXT_V1: list[tuple[str, str, str, str, list[str]]] = [
@@ -115,6 +115,25 @@ CONTEXT_V1: list[tuple[str, str, str, str, list[str]]] = [
      "live", "api",
      ["totp", "static ip", "uat", "backtesting", "nubraoss", "sdk",
       "api login", "paper trading"]),
+    # v2 additions (2026-07-18, user-authorized from the teammate's social
+    # context after reconciliation): genuinely-live capabilities absent from
+    # the product doc. Excluded from the same source and NOT added: OMS V3 +
+    # News API (doc: internal/unverified), flexible brokerage as live (doc:
+    # upcoming), retail basket orders (doc lists it as a competitor strength).
+    ("Digital account opening and KYC",
+     "Fully digital account opening and KYC.",
+     "live", "platform",
+     ["account opening", "kyc", "demat account", "open account"]),
+    ("Transparent account and transaction charges",
+     "Clear, published account and transaction charges.",
+     "live", "pricing",
+     ["charges", "transaction charges", "account charges", "hidden charges"]),
+    ("Advanced charts",
+     "Advanced charting available free — called out by users in app-store "
+     "reviews ('the advanced charts are free here').",
+     "live", "analytics",
+     ["advanced charts", "charting", "free charts", "tradingview style"]),
+
     # ── upcoming: planned/documented, never to be described as live ──────
     ("Option-chain custom layouts and side views",
      "Customizable option-chain layouts with reorderable, saveable variables "
