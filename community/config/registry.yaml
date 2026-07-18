@@ -64,6 +64,7 @@ sources:
       max_items_per_run: 2000
   youtube:
     enabled: true
+    cadence: daily              # daily = morning build only; hourly = every run
     max_queries_per_run: 20
     max_videos_per_query: 5
     max_comments_per_video: 20
@@ -115,6 +116,7 @@ sources:
         - FYERS trading app review
   github:
     enabled: true
+    cadence: daily              # daily = morning build only; hourly = every run
     max_queries_per_run: 20
     max_items_per_query: 20
     relevance:
@@ -169,6 +171,7 @@ sources:
       - '"Nubra websocket"'
   broker_communities:
     enabled: true
+    cadence: daily              # daily = morning build only; hourly = every run
     max_topics_per_source: 20
     max_replies_per_topic: 10
     sources:
@@ -194,6 +197,7 @@ sources:
         sitemap_url: https://madefortrade.in/sitemap.xml
   app_reviews:
     enabled: true
+    cadence: daily              # daily = morning build only; hourly = every run
     max_reviews_per_app: 100
     country: in
     apps:

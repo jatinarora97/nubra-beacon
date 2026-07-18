@@ -64,16 +64,29 @@ def _run_source(name: str, fetcher, reg: dict) -> dict:
     return counters
 
 
-def run(**_) -> dict:
+def run(daily: bool = False, **_) -> dict:
+    """Per-source cadence (2026-07-18): add-on sources default to DAILY —
+    they run only in the morning build. Rationale: YouTube search costs 100
+    quota units per query (20 queries x 18 hourly runs = 36k units/day vs the
+    10k/day free quota — hourly would exhaust it mid-day), and reviews/forums/
+    issues don't move hour to hour. Override per source in the registry with
+    cadence: hourly.
+    """
     sources = settings.registry.get("sources", {})
     out: dict[str, dict] = {}
 
     from community.scrape import app_reviews, broker_communities, github_public, youtube
 
-    out["youtube"] = _run_source("youtube", youtube.fetch, sources.get("youtube", {}))
-    out["github"] = _run_source("github", github_public.fetch, sources.get("github", {}))
-    out["broker_communities"] = _run_source(
-        "community_forum", broker_communities.fetch, sources.get("broker_communities", {})
-    )
-    out["app_reviews"] = _run_source("app_review", app_reviews.fetch, sources.get("app_reviews", {}))
+    for out_key, cfg_key, fetcher in (
+        ("youtube", "youtube", youtube.fetch),
+        ("github", "github", github_public.fetch),
+        ("community_forum", "broker_communities", broker_communities.fetch),
+        ("app_review", "app_reviews", app_reviews.fetch),
+    ):
+        cfg = sources.get(cfg_key, {}) or {}
+        cadence = str(cfg.get("cadence", "daily")).lower()
+        if cadence != "hourly" and not daily:
+            out[out_key] = {"skipped": f"cadence={cadence} — runs in the morning build"}
+            continue
+        out[out_key] = _run_source(out_key, fetcher, cfg)
     return out

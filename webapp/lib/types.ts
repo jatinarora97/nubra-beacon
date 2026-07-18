@@ -23,6 +23,7 @@ export type TopAction = {
 
 export type Freshness = {
   sources?: Record<string, string>;
+  source_schedule?: Record<string, { cadence: string; last?: string | null; next?: string }>;
   enriched_up_to?: string | null;
   schedule_installed?: boolean;
   next_hourly_run?: string;

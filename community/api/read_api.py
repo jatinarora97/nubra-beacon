@@ -209,6 +209,11 @@ def health():
         return {"ok": True, "db": False}
 
 
+def settings_registry_sources() -> dict:
+    from community.config.settings import settings as _s
+    return _s.registry.get("sources", {})
+
+
 def _freshness() -> dict:
     """Last-updated per source + pipeline watermarks + the next scheduled runs
     (from the cron plan; flags when the schedule isn't actually installed)."""
@@ -235,8 +240,27 @@ def _freshness() -> dict:
     morning = (now.replace(hour=6, minute=0, second=0, microsecond=0)
                + timedelta(days=1 if now.hour >= 6 else 0))
     wm = watermarks.get("enrich") or watermarks.get("aggregate")
+    # per-source cadence: reddit/X are hourly; add-on sources follow their
+    # registry cadence (default daily = morning build)
+    reg_sources = settings_registry_sources()
+    cadence_by_cfg = {k: str((reg_sources.get(k) or {}).get("cadence", "daily")).lower()
+                      for k in ("youtube", "github", "broker_communities", "app_reviews")}
+    stored_to_cfg = {"youtube": "youtube", "github": "github",
+                     "community_forum": "broker_communities", "app_review": "app_reviews"}
+    schedule = {}
+    for src in set(per_source) | set(stored_to_cfg):
+        if src in ("twitter", "reddit"):
+            cad = "hourly"
+        else:
+            cad = cadence_by_cfg.get(stored_to_cfg.get(src, ""), "daily")
+        schedule[src] = {
+            "cadence": cad,
+            "last": per_source.get(src).isoformat() if per_source.get(src) else None,
+            "next": (nxt if cad == "hourly" else morning).isoformat(),
+        }
     return {
         "sources": {k: v.isoformat() for k, v in per_source.items() if v},
+        "source_schedule": schedule,
         "enriched_up_to": wm.isoformat() if wm else None,
         "schedule_installed": installed,
         "next_hourly_run": nxt.isoformat(),

@@ -11,10 +11,10 @@ function EntryList({ entries, tone }: { entries: WeeklyEntry[]; tone: "trends" |
       {entries.map((e) => (
         <div key={`${e.kind}-${e.key}`} className="grid grid-cols-12 items-center gap-3">
           <div className="col-span-4 flex items-center gap-2 truncate">
-            <span className="truncate text-[13px]" title={e.label}>
-              {e.label.replace(/_/g, " ")}
+            <span className="truncate text-[13px]" title={e.label ?? e.key}>
+              {(e.label ?? e.key ?? "unknown").replace(/_/g, " ")}
             </span>
-            <Badge tone={tone}>{e.kind.replace(/_/g, " ")}</Badge>
+            <Badge tone={tone}>{(e.kind ?? "item").replace(/_/g, " ")}</Badge>
           </div>
           <div className="col-span-6">
             <div className="h-4 w-full rounded bg-surface2">

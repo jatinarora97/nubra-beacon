@@ -126,7 +126,7 @@ def run(daily: bool = False, **_) -> dict:
     try:
         from community.scrape import extra_sources
         log.info("extra sources: starting")
-        extra_source_stats = extra_sources.run()
+        extra_source_stats = extra_sources.run(daily=daily)
         log.info("extra sources: %s", extra_source_stats)
     except Exception:  # noqa: BLE001
         log.exception("extra sources failed - scrape stage continues")
