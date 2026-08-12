@@ -231,6 +231,34 @@ sources:
         broker: fyers
         apple_id:
         google_package: com.fyers.trader
+  instagram:
+    enabled: true
+    cadence: daily              # LOCKED 2026-08-12: pinned posts bypass onlyPostsNewerThan
+                                # and re-bill every poll — hourly measured ~$55/mo vs $29 pool
+    accounts:                   # seed; watch_sources (kind=instagram_account) is source of truth
+      - market.moves.matt
+      - eliteoptionstrader2
+      - deepthinksfinance
+      - stockswithmanveer
+      - orderflowschool
+      - stockburner_official
+      - trademovesofficial
+      - sjosephburns
+      - spudnick_trading
+      - tastyliveshow
+      - spidersoftware
+    results_limit_backfill: 20  # first fetch per account (user decision)
+    results_limit_daily: 10
+    tier_multiplier: 1.5        # gate: likes >= account trailing median x this
+    tier_min_likes: 25          # floor so quiet accounts don't gate-pass everything
+    whisper_model: large-v3     # POC-locked (translate task, no VAD); drop to
+                                # large-v3-turbo if prod CPU proves too slow
+    video_duration_cap_s: 360   # cap at ~6 min (user 2026-08-12); longer = truncated
+    max_slides: 10              # vision reads ALL slides (user decision, IG max)
+    comments_top_n: 10          # top-liked kept as child items (user decision)
+    comments_fetch_limit: 50
+    max_tier_items_per_run: 12  # bounds daily whisper CPU + actor spend
+    caption_deny_terms: [giveaway, discount code, use my code, promo code, link in bio to join]
 
 recommend:
   thresholds: {headsup: 60, secondary: 40}   # calibrated on real data 2026-07-04; re-tune in shadow run

@@ -20,6 +20,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt \
  && playwright install --with-deps chromium
 
+# Whisper large-v3 int8 (Instagram tier-1, POC-locked 2026-08-12) baked into
+# its OWN layer BEFORE any code COPY: code-only releases must never rebuild,
+# re-push, or re-pull this ~1.5GB layer. It re-downloads only if the model
+# name, requirements.txt, or torch layer above it change.
+RUN python -c "from faster_whisper import WhisperModel; \
+WhisperModel('large-v3', device='cpu', compute_type='int8')"
+
 COPY cm runner.py ./
 COPY community ./community
 COPY migrations ./migrations

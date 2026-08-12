@@ -75,13 +75,14 @@ def run(daily: bool = False, **_) -> dict:
     sources = settings.registry.get("sources", {})
     out: dict[str, dict] = {}
 
-    from community.scrape import app_reviews, broker_communities, github_public, youtube
+    from community.scrape import app_reviews, broker_communities, github_public, instagram, youtube
 
     for out_key, cfg_key, fetcher in (
         ("youtube", "youtube", youtube.fetch),
         ("github", "github", github_public.fetch),
         ("community_forum", "broker_communities", broker_communities.fetch),
         ("app_review", "app_reviews", app_reviews.fetch),
+        ("instagram", "instagram", instagram.fetch),
     ):
         cfg = sources.get(cfg_key, {}) or {}
         cadence = str(cfg.get("cadence", "daily")).lower()
@@ -89,4 +90,13 @@ def run(daily: bool = False, **_) -> dict:
             out[out_key] = {"skipped": f"cadence={cadence} — runs in the morning build"}
             continue
         out[out_key] = _run_source(out_key, fetcher, cfg)
+        if out_key == "instagram" and out[out_key].get("enabled") \
+                and "error" not in out[out_key]:
+            # AV tiers run after storage so gates see the just-inserted items;
+            # sequential whisper/vision, bounded per run — isolated like a source
+            try:
+                out[out_key]["tiers"] = instagram.process_tiers(cfg)
+            except Exception as exc:  # noqa: BLE001 - source isolation by design
+                log.exception("instagram tier pass failed; continuing")
+                out[out_key]["tiers"] = {"error": f"{type(exc).__name__}: {str(exc)[:180]}"}
     return out

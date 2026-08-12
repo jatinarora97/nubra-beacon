@@ -9,6 +9,7 @@ const LABELS: Record<string, string> = {
   reddit: "Reddit",
   youtube: "YouTube",
   github: "GitHub",
+  instagram: "Instagram",
   broker_communities: "Broker communities",
   app_reviews: "App reviews",
 };

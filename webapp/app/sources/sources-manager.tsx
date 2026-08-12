@@ -13,6 +13,7 @@ type Source = {
     | "x_query"
     | "keyword"
     | "youtube_query"
+    | "instagram_account"
     | "github_query"
     | "forum"
     | "app";
@@ -31,6 +32,7 @@ const KIND_META: Record<Source["kind"], { label: string; prefix: string; hint: s
   x_query: { label: "X search queries", prefix: "", hint: "full advanced-search query" },
   keyword: { label: "Keywords", prefix: "", hint: "topic to watch, e.g. basket orders" },
   youtube_query: { label: "YouTube search queries", prefix: "", hint: "e.g. Nubra option chain review" },
+  instagram_account: { label: "Instagram accounts", prefix: "", hint: "creator handle without @, e.g. stockswithmanveer" },
   github_query: { label: "GitHub search queries", prefix: "", hint: 'e.g. "broker API India"' },
   forum: { label: "Community forums", prefix: "", hint: "base URL, e.g. https://tradingqna.com" },
   app: { label: "App-store apps", prefix: "", hint: "app name, e.g. Zerodha Kite" },

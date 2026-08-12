@@ -28,8 +28,10 @@ class SocialItem(BaseModel):
         "github",
         "community_forum",
         "app_review",
+        "instagram",
     ]
-    source_type: Literal["post", "comment", "tweet", "reply", "message", "review", "issue"]
+    source_type: Literal["post", "comment", "tweet", "reply", "message", "review", "issue",
+                         "reel", "sidecar"]
     external_id: str
     parent_id: str | None = None
     thread_id: str

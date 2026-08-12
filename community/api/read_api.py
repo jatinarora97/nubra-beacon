@@ -244,9 +244,11 @@ def _freshness() -> dict:
     # registry cadence (default daily = morning build)
     reg_sources = settings_registry_sources()
     cadence_by_cfg = {k: str((reg_sources.get(k) or {}).get("cadence", "daily")).lower()
-                      for k in ("youtube", "github", "broker_communities", "app_reviews")}
+                      for k in ("youtube", "github", "broker_communities", "app_reviews",
+                                "instagram")}
     stored_to_cfg = {"youtube": "youtube", "github": "github",
-                     "community_forum": "broker_communities", "app_review": "app_reviews"}
+                     "community_forum": "broker_communities", "app_review": "app_reviews",
+                     "instagram": "instagram"}
     schedule = {}
     for src in set(per_source) | set(stored_to_cfg):
         if src in ("twitter", "reddit"):
@@ -1283,6 +1285,7 @@ def source_health(live: bool = False):
         ("github", "github", "GITHUB_TOKEN", False),
         ("broker_communities", "community_forum", None, False),
         ("app_reviews", "app_review", None, False),
+        ("instagram", "instagram", "APIFY_TOKEN", True),
     )
     states = {
         row["source"]: row
@@ -1359,7 +1362,7 @@ def source_health(live: bool = False):
 # ── watch sources (UI-managed collection config) ──────────────────────────
 
 _KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query", "keyword",
-          "youtube_query", "github_query", "forum", "app")
+          "youtube_query", "github_query", "forum", "app", "instagram_account")
 
 
 @app.get(API + "/sources")

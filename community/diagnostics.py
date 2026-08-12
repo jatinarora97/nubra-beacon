@@ -200,6 +200,21 @@ def _live_probe(name: str) -> dict:
             r = httpx.get("https://itunes.apple.com/in/rss/customerreviews/id=6746636699/json",
                           timeout=12, follow_redirects=True)
             return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        if name == "instagram":
+            tok = os.getenv("APIFY_TOKEN")
+            if not tok:
+                return {"live": "no_key"}
+            r = httpx.get("https://api.apify.com/v2/users/me/limits",
+                          headers={"Authorization": f"Bearer {tok}"}, timeout=12)
+            if r.status_code != 200:
+                return {"live": f"http_{r.status_code}"}
+            d = r.json().get("data", {})
+            used = (d.get("current") or {}).get("monthlyUsageUsd")
+            cap = (d.get("limits") or {}).get("maxMonthlyUsageUsd")
+            if used is not None and cap:
+                return {"live": "ok",
+                        "detail": f"${used:.2f} of ${cap:.0f} Apify credits used this cycle"}
+            return {"live": "ok"}
         return {"live": "no_probe"}
     except Exception as e:  # noqa: BLE001 — a probe failure is a result, not an error
         return {"live": "unreachable", "detail": f"{type(e).__name__}: {str(e)[:80]}"}
@@ -251,10 +266,20 @@ def _appstores():
     return msg
 
 
+@_check("instagram (Apify token + credits)")
+def _instagram():
+    status, msg = _collector_check("instagram")
+    if status == "SKIP":
+        raise _Skip(msg)
+    if status == "FAIL":
+        raise RuntimeError(msg)
+    return msg
+
+
 def run_doctor() -> int:
     checks = [_db, _migrations, _grounding, _sources, _reddit, _chromium,
               _anthropic, _x, _youtube, _github, _forums, _appstores,
-              _langfuse, _slack, _email]
+              _instagram, _langfuse, _slack, _email]
     for c in checks:
         c()
     width = max(len(n) for _, n, _ in _RESULTS) if _RESULTS else 0

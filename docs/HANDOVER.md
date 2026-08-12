@@ -146,23 +146,43 @@ rendering (crisp text, brand control) + curated vector assets + selective
 image-gen; TTS = Kokoro-82M primary (Apache), MeloTTS fallback; XTTS/F5
 disqualified (non-commercial).
 
-**Instagram — APPROVED FOR BUILD, plan awaiting user polish** (2026-08-12):
-route = Apify `apify/instagram-scraper` profile-watching (LIVE-TESTED: 8/8
-accounts, real fixtures in `out/instagram-test/`; hashtag route proven DRY;
-Meta Graph API demoted to optional add-on — no app review needed). Full plan:
+**Instagram — POC DONE 2026-08-12, READY TO BUILD**: route = Apify
+`apify/instagram-scraper` profile-watching (LIVE-TESTED: 8/8 accounts,
+fixtures `out/instagram-test/`; hashtag route DRY; Meta Graph API demoted to
+optional add-on). Full plan (POC verdicts folded in, §11):
 `docs/instagram-collector-plan-2026-08-12.md`; route economics:
-`docs/instagram-apify-vs-meta-2026-08-11.md`. Key facts: 11 verified handles
-(tastyliveshow not tastylive; tycoontraders.in UNRESOLVED; spidersoftware vs
-spidersoftwareindia undecided); kind `instagram_account`, daily cadence,
-backfill 20/account (~$0.55); media downloaded AT FETCH (CDN URLs expire in
-hours) to S3 `nubra-beacon/instagram/<shortCode>/` (bucket TBD — reuse reports
-bucket?), 180d lifecycle; tier 1 = Apify transcript actor ~$0.01/reel with a
-MANDATORY Hinglish validation gate (fallback: local faster-whisper); tier 2 =
-Haiku vision on images; tier gates RELATIVE to each account's engagement
-baseline (27→181k likes spread); paidPartnership/isSponsored posts skipped;
-latestComments = latest-not-top (top-liked needs comment-scraper actor —
-deferred decision); source-health live probe = Apify credits endpoint.
-~$5-7/mo of the $29 credits. **ALL decisions locked 2026-08-12** (plan §10): 11 accounts final (tycoontraders dropped, spidersoftware+tastyliveshow in, sjosephburns kept); S3 = SAME reports bucket as nubra-ai-personalization, layout nubra_beacon/instagram/<creator>/{reels,images}/; top-10-LIKED comments IN v1 via apify~instagram-comment-scraper; cadence HOURLY with onlyPostsNewerThan new-post detection (POC must verify empty-run billing — fallback registry cadence knob); backfill 20/account via scripts/backfill_instagram.py that the user runs once on prod. NEXT STEP: POC the transcript + comment actors locally (free account) on real posts, then build on jatin/beacon-updates.
+`docs/instagram-apify-vs-meta-2026-08-11.md`; POC artifacts:
+`out/instagram-poc/`. **ALL decisions locked** (plan §10): 11 accounts final
+(tycoontraders dropped, spidersoftware+tastyliveshow in, sjosephburns kept);
+kind `instagram_account`; S3 = SAME reports bucket as
+nubra-ai-personalization, layout nubra_beacon/instagram/<creator>/{reels,images}/,
+180d lifecycle, media downloaded AT FETCH (CDN URLs expire in hours —
+POC-confirmed); backfill 20/account via scripts/backfill_instagram.py the
+user runs once on prod. **POC verdicts (supersede earlier assumptions)**:
+(1) tier-1 transcripts = LOCAL faster-whisper `large-v3-turbo` int8 (Apify
+transcript actor REJECTED — OOM/timeout/compute-billed ~$0.23 per failed
+attempt on an 80.5s reel, native-captions empty; `small` model also rejected —
+garbles Hindi; turbo = 54s, clean Hindi, $0); (2) cadence = DAILY not hourly
+(pinned posts bypass onlyPostsNewerThan and re-bill every poll → hourly
+≈$55/mo vs $29 pool; registry cadence knob, every-4-hours as upgrade);
+(3) top-10-liked comments actor WORKS (caveat: 15 returned despite
+resultsLimit 50 — probe pagination at build); (4) both reel-transcript and
+carousel-vision texts flow through the real `enrich_batch` unchanged with
+correct outputs (reel → trading_scams/-0.8; carousel → influencer/not-noise).
+~$5-7/mo of $29 credits. **BUILT + LOCAL-E2E-VERIFIED 2026-08-12** (plan §9
+has the full manifest): migration 0013, community/scrape/instagram.py +
+instagram_av.py, extra_sources wiring, registry sources.instagram, seeds,
+doctor/live-probe (shows Apify credits in-product), Sources UI kind,
+scripts/backfill_instagram.py, whisper model baked into Dockerfile.api as a
+pre-code layer (double-build verified: code-only change → model layer CACHED —
+user's hard requirement). E2E findings: jsonb concat needs ::jsonb cast;
+uses_original_audio is a SIGNAL not a gate (creators speak over licensed
+tracks). REMAINING FOR PROD: user sets APIFY_TOKEN (paid) + S3_BUCKET in prod
+.env (S3 candidates seen in personalization repo: S3_BUCKET=nubraai-profiles
+env default vs notifications.yaml reports bucket zanskar-dev-security-users-kyc
+— CONFIRM WITH USER at release, one line), push/pull release, run
+scripts/backfill_instagram.py once, one-reel prod timing check (registry
+whisper_model knob → large-v3-turbo if slow).
 
 ## Pending items (complete list — do not invent others, do not re-ask)
 
@@ -174,7 +194,8 @@ deferred decision); source-health live probe = Apify credits endpoint.
 4. Slack webhook + Gmail app password — user still owes; everything ready.
 5. Content generator round 2 review → then integration (`./cm stage render`,
    download buttons on content page, Kokoro+Inter into the api image).
-6. Instagram build (after user's Meta app registration).
+6. Instagram build — POC done 2026-08-12, all decisions locked, build next
+   (plan §9; NO Meta app needed — Apify route).
 7. Backlog P1s (docs/nubra-beacon-tech-backlog-2026-07-08.md): rolling
    partition job + 180d purge **before October** (hard deadline — partitions
    end 2026-10); auth (OIDC proxy; README mandates LAN-only meanwhile);

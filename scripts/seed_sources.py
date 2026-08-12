@@ -73,6 +73,13 @@ def main() -> None:
             (a["name"], a.get("broker"), db.jsonb({k: v for k, v in a.items()
                                                    if k != "name" and v})))
         rows.append(("app", a["name"], a.get("broker")))
+    for handle in reg.get("instagram", {}).get("accounts") or []:
+        n += db.execute(
+            "INSERT INTO watch_sources (kind, value, category, added_by) "
+            "VALUES ('instagram_account', %s, 'finfluencer', 'seed') "
+            "ON CONFLICT (kind, value) DO NOTHING",
+            (str(handle),))
+        rows.append(("instagram_account", str(handle), "finfluencer"))
     print(f"seeded {n} new watch_sources ({len(rows)} candidates)")
 
 
