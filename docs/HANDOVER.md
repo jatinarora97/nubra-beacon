@@ -66,6 +66,10 @@ Local `.env` (this Mac, gitignored) and prod `.env` (copied manually) carry:
   additionally hard-gated to MODE=prod (compose sets it) — a restored dump on
   a laptop can never message the team.
 - `RELEASE_TAG` — in prod .env, currently `2026-07-18-beacon-updates`.
+- `APIFY_TOKEN` — TWO accounts (both tokens in local `.env`, strategy comment
+  there): FREE account (fxFNqC51Fso21DqSF) = local build/testing; PAID Starter
+  $29/mo (euvGWlQ5a8MfB9zNe) = prod + local-after-free-exhausted. Both pasted
+  in chat → on the rotation list with YouTube/GitHub keys.
 
 ## Architecture facts a new session must not re-derive
 
@@ -142,13 +146,23 @@ rendering (crisp text, brand control) + curated vector assets + selective
 image-gen; TTS = Kokoro-82M primary (Apache), MeloTTS fallback; XTTS/F5
 disqualified (non-commercial).
 
-**Instagram ingestion — decided plan, not built**: official Graph API first
-(hashtag search ≤30/week + business discovery; needs the USER to register a
-Meta business app — long pole), Apify reels actor ($1/1k, medium risk,
-isolated) for media files, NEVER instagrapi. Tiered synthesis: tier 0 captions
-(all), tier 1 local faster-whisper `small` transcripts (engagement-gated,
-$0 API), tier 2 3-keyframe Haiku vision (top slice). <$10/mo at 50 reels/day.
-Kinds `instagram_hashtag/instagram_account`, daily cadence.
+**Instagram — APPROVED FOR BUILD, plan awaiting user polish** (2026-08-12):
+route = Apify `apify/instagram-scraper` profile-watching (LIVE-TESTED: 8/8
+accounts, real fixtures in `out/instagram-test/`; hashtag route proven DRY;
+Meta Graph API demoted to optional add-on — no app review needed). Full plan:
+`docs/instagram-collector-plan-2026-08-12.md`; route economics:
+`docs/instagram-apify-vs-meta-2026-08-11.md`. Key facts: 11 verified handles
+(tastyliveshow not tastylive; tycoontraders.in UNRESOLVED; spidersoftware vs
+spidersoftwareindia undecided); kind `instagram_account`, daily cadence,
+backfill 20/account (~$0.55); media downloaded AT FETCH (CDN URLs expire in
+hours) to S3 `nubra-beacon/instagram/<shortCode>/` (bucket TBD — reuse reports
+bucket?), 180d lifecycle; tier 1 = Apify transcript actor ~$0.01/reel with a
+MANDATORY Hinglish validation gate (fallback: local faster-whisper); tier 2 =
+Haiku vision on images; tier gates RELATIVE to each account's engagement
+baseline (27→181k likes spread); paidPartnership/isSponsored posts skipped;
+latestComments = latest-not-top (top-liked needs comment-scraper actor —
+deferred decision); source-health live probe = Apify credits endpoint.
+~$5-7/mo of the $29 credits. Open decision points in plan §10.
 
 ## Pending items (complete list — do not invent others, do not re-ask)
 
