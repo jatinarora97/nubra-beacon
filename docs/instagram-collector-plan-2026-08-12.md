@@ -1,8 +1,9 @@
-# Instagram collector — build plan (2026-08-12, pre-build, awaiting polish)
+# Instagram collector — build plan (2026-08-12, POLISHED — decisions locked, build next)
 
-_User-approved direction: Apify route, paid Starter plan active. Plan first →
-polish → build. Companion: `instagram-apify-vs-meta-2026-08-11.md` (route
-decision), `out/instagram-test/` (real extraction fixtures)._
+_All §10 decision points answered by user 2026-08-12 (inlined below). Next
+step: POC the two add-on actors locally, then build. Companion:
+`instagram-apify-vs-meta-2026-08-11.md` (route decision),
+`out/instagram-test/` (real extraction fixtures)._
 
 ## 0 · Accounts & environments
 
@@ -17,13 +18,12 @@ decision), `out/instagram-test/` (real extraction fixtures)._
 
 ## 1 · Watch targets (verified 2026-08-12, free-account probe)
 
-Confirmed live: market.moves.matt · eliteoptionstrader2 · deepthinksfinance ·
-stockswithmanveer · orderflowschool · stockburner_official · trademovesofficial ·
-sjosephburns · spudnick_trading · **tastyliveshow** (user wrote "Tastylive" —
-@tastylive is dead) · **spidersoftware** AND **spidersoftwareindia** both exist
-(tiny engagement, 7–15 likes) — **user to pick one or both**.
-**UNRESOLVED: `tycoontraders.in` — "Post does not exist"** (wrong handle,
-private, or zero posts) — user to supply the correct handle.
+FINAL LIST (11, user-confirmed): market.moves.matt · eliteoptionstrader2 ·
+deepthinksfinance · stockswithmanveer · orderflowschool · stockburner_official ·
+trademovesofficial · sjosephburns (kept despite weak sample — user call) ·
+spudnick_trading · **tastyliveshow** · **spidersoftware**.
+DROPPED: tycoontraders.in (unresolvable — user: let it be) ·
+spidersoftwareindia (spidersoftware chosen).
 
 - New `watch_sources` kind **`instagram_account`** (migration widens the CHECK,
   same as every other family); value = handle; Sources page add-form entry →
@@ -34,9 +34,15 @@ private, or zero posts) — user to supply the correct handle.
 ## 2 · Collection
 
 - New `community/scrape/instagram.py` in the extra-sources pattern: registry
-  `enabled` + `cadence: daily` (requirement 2 — runs in the 06:00 morning
-  build; hourly runs log the skip), exception-bounded, stats into scrape
-  summary + pipeline_state.
+  `enabled`, exception-bounded, stats into scrape summary + pipeline_state.
+- **Cadence: HOURLY (user decision, revised from daily)** with new-post
+  detection so quiet hours cost (almost) nothing. Methodology: every run
+  passes `onlyPostsNewerThan=<per-source watermark>` — accounts with nothing
+  new return zero rows, and pay-per-result bills nothing for zero rows.
+  **POC must verify empty-run billing** (our one empty hashtag run DID bill a
+  single $0.0027 no-items row — if empty profile checks bill per-URL rows,
+  hourly polling costs ~$20/mo for nothing and the registry `cadence` knob
+  drops to e.g. every-4-hours or daily; decide on POC data, not hope).
 - One actor run per cycle: all active handles as directUrls,
   `apify~instagram-scraper`, posts route (hashtags proven dry).
 - **Backfill (requirement 3)**: an account with zero stored items fetches
@@ -61,11 +67,12 @@ disk stays small, **pre-signed URLs** later power both the transcribe layer
 and possible dashboard playback.
 
 - Download at fetch time: video (reels) + displayUrl + carousel child images.
-- Layout: `s3://<BUCKET>/nubra-beacon/instagram/<shortCode>/{video.mp4,
-  display.jpg, slide-NN.jpg}`; S3 keys recorded in the item's `raw`.
-- **OPEN: bucket name** — reuse the reports bucket from
-  nubra-ai-personalization (same AWS account as ECR) with the
-  `nubra-beacon/` prefix, or a dedicated bucket? User to confirm.
+- Layout (user decision — creator-first, media-type folders):
+  `s3://<REPORTS_BUCKET>/nubra_beacon/instagram/<creator>/reels/<shortCode>.mp4`
+  and `.../<creator>/images/<shortCode>[-NN].jpg`; S3 keys in the item `raw`.
+- Bucket: **same reports bucket as nubra-ai-personalization** (user decision;
+  same AWS account as ECR — get exact bucket name from that repo's config
+  during build).
 - Lifecycle rule: expire objects at **180 days** (retention-decision parity).
 - Volume estimate: ~12 accts × ~3 posts/day × ~10MB ≈ 11GB/mo ≈ $0.25/mo.
 - boto3 added to requirements; prod AWS creds already on the box (ECR).
@@ -94,13 +101,12 @@ not OCR). ~$0.004/post.
 
 ## 6 · Comments depth (requirement 10 — answer)
 
-`latestComments` is a **latest** sample (~10), NOT top-liked — that's what
-comes free with each post result. Top-liked requires the separate
-`apify~instagram-comment-scraper` actor (fetch ~30–50 comments incl. their
-likesCount, sort ourselves, keep top 10; ~$2/1k comments). Plan: free latest
-sample for every post; **top-liked comment expansion only for posts that pass
-the tier gate or become opportunities** (same earn-the-expense principle).
-Decision point: include in v1 or defer.
+`latestComments` is a **latest** sample (~10), NOT top-liked. **User decision:
+IN v1** — the separate `apify~instagram-comment-scraper` actor fetches ~30-50
+comments incl. likesCount per gated post; we sort and keep the **top 10 liked**
+as child items (marked `raw.top_liked=true`; the free latest-sample still
+covers ungated posts). POC locally on a few posts before wiring (user
+requirement), same as the transcript actor.
 
 ## 7 · Health & observability (requirement 4)
 
@@ -124,21 +130,28 @@ Decision point: include in v1 or defer.
 | S3 storage (180d lifecycle) | — | ~$0.25 |
 | **Total** | **<$1** | **≈ $5–7 of the $29 credits** |
 
-## 9 · Build & test protocol
+## 9 · Build & test protocol (updated with user decisions)
 
+0. **POC FIRST (user requirement)**: locally, free account, a few real posts —
+   (a) transcript actor on 3 Hindi-heavy stockburner reels (Hinglish gate),
+   (b) comment-scraper actor on 2 high-comment posts (top-10-liked check),
+   (c) empty-run billing measurement for the hourly methodology (§2).
 1. Build collector + migration + seeds + UI on `jatin/beacon-updates`.
-2. Local testing on the FREE account (backfill a subset, ~$1 of its credits);
-   full E2E: backfill → enrich → verify instagram items in Trends / Issues /
-   Features / Voices / Explore (source filter + label) / heads-up.
-3. Hinglish transcript validation gate (§4) before wiring tier 1.
-4. Ship on the branch → prod release → prod `.env` gets paid APIFY_TOKEN →
-   prod backfill runs in the next morning build.
+2. Local E2E on the FREE account: backfill subset → enrich → verify instagram
+   items in Trends / Issues / Features / Voices / Explore / heads-up.
+3. Ship on the branch → prod release → prod `.env` gets the paid APIFY_TOKEN.
+4. **Prod backfill = explicit script (user requirement)**:
+   `scripts/backfill_instagram.py` — runs the collector in backfill mode
+   (20/account) + optional gated transcript/comment expansion; user runs
+   `docker compose exec api python scripts/backfill_instagram.py` once after
+   release; idempotent (insert-if-absent), safe to re-run.
 
-## 10 · Decision points for polish (user input wanted)
+## 10 · Decisions — ALL RESOLVED (user, 2026-08-12)
 
-1. `tycoontraders.in` correct handle? · spidersoftware vs spidersoftwareindia
-   (or both)?
-2. S3 bucket: reuse reports bucket + prefix, or dedicated?
-3. Top-liked comment expansion in v1 or defer?
-4. Backfill depth 20 ok? (15–20 asked; 20 ≈ $0.55 total)
-5. Keep sjosephburns despite weak sample (0 videos, hashtag-spam captions)?
+1. tycoontraders.in dropped; spidersoftware + tastyliveshow in. 2. Same
+reports bucket, creator-first layout with reels/ images/ folders. 3. Top-liked
+comments IN v1 via the comment-scraper actor (top 10 kept), POC first.
+4. Backfill 20 confirmed. 5. sjosephburns kept. 6. Cadence: hourly with
+new-post detection (POC verifies empty-run economics; registry knob as the
+fallback). 7. Both add-on actors (transcriber + comment fetcher) POC'd
+locally on real posts before wiring.

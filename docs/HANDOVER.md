@@ -162,7 +162,7 @@ Haiku vision on images; tier gates RELATIVE to each account's engagement
 baseline (27→181k likes spread); paidPartnership/isSponsored posts skipped;
 latestComments = latest-not-top (top-liked needs comment-scraper actor —
 deferred decision); source-health live probe = Apify credits endpoint.
-~$5-7/mo of the $29 credits. Open decision points in plan §10.
+~$5-7/mo of the $29 credits. **ALL decisions locked 2026-08-12** (plan §10): 11 accounts final (tycoontraders dropped, spidersoftware+tastyliveshow in, sjosephburns kept); S3 = SAME reports bucket as nubra-ai-personalization, layout nubra_beacon/instagram/<creator>/{reels,images}/; top-10-LIKED comments IN v1 via apify~instagram-comment-scraper; cadence HOURLY with onlyPostsNewerThan new-post detection (POC must verify empty-run billing — fallback registry cadence knob); backfill 20/account via scripts/backfill_instagram.py that the user runs once on prod. NEXT STEP: POC the transcript + comment actors locally (free account) on real posts, then build on jatin/beacon-updates.
 
 ## Pending items (complete list — do not invent others, do not re-ask)
 
