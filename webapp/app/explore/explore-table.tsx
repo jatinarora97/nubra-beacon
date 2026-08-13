@@ -19,6 +19,7 @@ const SOURCE_LABELS: Record<string, string> = {
   github: "GitHub",
   community_forum: "Broker community",
   app_review: "App review",
+  instagram: "Instagram",
 };
 
 function interactions(it: Item): number {
@@ -127,6 +128,7 @@ export function ExploreTable() {
           <option value="github">github</option>
           <option value="community_forum">broker communities</option>
           <option value="app_review">app reviews</option>
+          <option value="instagram">instagram</option>
         </select>
         <select
           value={intent}
