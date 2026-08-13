@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { get } from "@/lib/api";
-import type { Item } from "@/lib/types";
+import type { Item, ItemDetail } from "@/lib/types";
 import { Badge, EmptyState } from "@/components/ui";
 import { pickWindow, windowQuery } from "@/lib/window";
 
@@ -50,6 +50,19 @@ export function ExploreTable() {
   const [q, setQ] = useState(initialQ);
   const [qLive, setQLive] = useState(initialQ);
   const [detail, setDetail] = useState<Item | null>(null);
+  // the list endpoint truncates text at 300 chars — the drawer fetches the
+  // full row (untruncated text incl. TRANSCRIPT/ON-SCREEN blocks + raw flags)
+  const [fullDetail, setFullDetail] = useState<ItemDetail | null>(null);
+
+  useEffect(() => {
+    setFullDetail(null);
+    if (!detail?.external_id) return;
+    let live = true;
+    get<ItemDetail | null>(`/items/${detail.source}/${detail.external_id}`, null).then(
+      (d) => { if (live && d) setFullDetail(d); },
+    );
+    return () => { live = false; };
+  }, [detail]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(qLive), 350);
@@ -177,7 +190,7 @@ export function ExploreTable() {
           <table className="w-full">
             <thead className="bg-surface2/70">
               <tr className="text-left">
-                {["what was said", "source", "intent", "engagement", "fetched"].map((h) => (
+                {["what was said", "our read", "source", "intent", "engagement", "fetched"].map((h) => (
                   <th key={h} className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                     {h}
                   </th>
@@ -193,6 +206,12 @@ export function ExploreTable() {
                 >
                   <td className="max-w-md truncate px-3 py-2.5 text-[12.5px]">
                     {it.text}
+                  </td>
+                  <td
+                    className="max-w-xs truncate px-3 py-2.5 text-[12px] text-muted"
+                    title={it.entities?.summary ?? undefined}
+                  >
+                    {it.entities?.summary ?? "–"}
                   </td>
                   <td className="px-3 py-2.5">
                     <Badge>{SOURCE_LABELS[it.source] ?? it.source}</Badge>
@@ -260,8 +279,42 @@ export function ExploreTable() {
               )}
             </div>
             <p className="mt-4 whitespace-pre-wrap text-[13.5px] leading-relaxed">
-              {detail.text}
+              {fullDetail?.item?.text ?? detail.text}
+              {!fullDetail && detail.text.length >= 300 && (
+                <span className="text-muted"> … (loading full text)</span>
+              )}
             </p>
+            {(detail.entities?.summary || detail.sentiment != null || detail.audience) && (
+              <div className="mt-4 space-y-1.5 rounded-[10px] border border-line bg-surface2/40 px-3 py-2.5 text-[12.5px]">
+                <div className="micro">Beacon&apos;s read</div>
+                {detail.entities?.summary && <div>{detail.entities.summary}</div>}
+                <div className="text-muted">
+                  {[
+                    detail.audience && `audience: ${detail.audience.replace(/_/g, " ")}`,
+                    detail.sentiment != null && `sentiment: ${detail.sentiment > 0 ? "+" : ""}${detail.sentiment}`,
+                    detail.entities?.broker && `broker: ${detail.entities.broker}`,
+                    detail.entities?.issue_type && `issue: ${detail.entities.issue_type.replace(/_/g, " ")}`,
+                  ].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+            )}
+            {detail.source === "instagram" && fullDetail?.item?.raw != null && (
+              <div className="mt-3 text-[12px] text-muted">
+                {(() => {
+                  const raw = fullDetail.item.raw as Record<string, unknown>;
+                  const ts = raw.transcript_state as Record<string, unknown> | undefined;
+                  return [
+                    ts?.done ? `transcribed (detected ${raw.transcript_language ?? "?"})`
+                      : ts?.empty ? "no speech found (music-only reel)"
+                      : ts?.attempts ? `transcription pending (attempt ${ts.attempts} of 3)`
+                      : null,
+                    raw.vision_done ? `slides read (${raw.vision_slides ?? "?"} images)` : null,
+                    raw.is_pinned ? "pinned post" : null,
+                    raw.likes_hidden ? "creator hides like counts" : null,
+                  ].filter(Boolean).join(" · ") || "no AV processing (below engagement gate or plain post)";
+                })()}
+              </div>
+            )}
             <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-[12.5px] text-muted">
               {detail.author && <div>author: {detail.author}</div>}
               <div>engagement (at fetch): {interactions(detail)} interactions</div>

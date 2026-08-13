@@ -261,6 +261,21 @@ export type Item = {
   duplicate_count?: number;
   topic_key?: string;
   intent?: string;
+  audience?: string;
+  sentiment?: number;
+  entities?: {
+    summary?: string | null;
+    broker?: string | null;
+    issue_type?: string | null;
+    feature_phrase?: string | null;
+  } | null;
+};
+
+// GET /items/{source}/{external_id} — full row incl. untruncated text + raw
+export type ItemDetail = {
+  item: Item & { raw?: Record<string, unknown>; is_noise?: boolean; enrich_model?: string };
+  thread_siblings: { external_id: string; source_type?: string; text: string;
+    author?: string; created_at?: string }[];
 };
 
 export type SourceHealth = {
