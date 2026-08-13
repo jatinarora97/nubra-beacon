@@ -20,13 +20,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt \
  && playwright install --with-deps chromium
 
-# Whisper large-v3 int8 (Instagram tier-1, POC-locked 2026-08-12) baked into
-# its OWN layer BEFORE any code COPY: code-only releases must never rebuild,
-# re-push, or re-pull this ~1.5GB layer. It re-downloads only if the model
-# name, requirements.txt, or torch layer above it change.
-# download_model NOT WhisperModel: constructing the model would LOAD it into
-# RAM, which OOMs under the qemu amd64 emulation `make push-prod` builds with.
-RUN python -c "from faster_whisper import download_model; download_model('large-v3')"
+# Whisper model is NOT baked here: compose mounts the hf_cache named volume
+# at /hf-cache, which SHADOWS image content (live finding 2026-08-13). The
+# volume is the persistence layer — the model downloads exactly once per box
+# on first tier-1 use and survives restarts AND releases, which is the actual
+# no-redownload requirement. Baking it would add 2.9GB of dead weight to
+# every image in ECR.
 
 COPY cm runner.py ./
 COPY community ./community
