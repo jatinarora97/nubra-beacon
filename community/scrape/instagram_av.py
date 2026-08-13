@@ -80,16 +80,19 @@ def fetch_media(key: str) -> Path | None:
 # ── whisper (tier 1) ───────────────────────────────────────────────────────
 
 _model = None
-_model_name = None
+_model_key = None
 
 
-def _whisper(model_name: str):
-    """Lazy singleton — ~2-3GB RAM while loaded; tiers run SEQUENTIALLY."""
-    global _model, _model_name
-    if _model is None or _model_name != model_name:
+def _whisper(model_name: str, cpu_threads: int):
+    """Lazy singleton — ~2-3GB RAM while loaded; tiers run SEQUENTIALLY.
+    cpu_threads caps CTranslate2's intra-op pool so transcription cannot
+    starve the read API / other apps on the box (prod VM: 8 cores, cap 4)."""
+    global _model, _model_key
+    if _model is None or _model_key != (model_name, cpu_threads):
         from faster_whisper import WhisperModel
-        _model = WhisperModel(model_name, device="cpu", compute_type="int8")
-        _model_name = model_name
+        _model = WhisperModel(model_name, device="cpu", compute_type="int8",
+                              cpu_threads=cpu_threads)
+        _model_key = (model_name, cpu_threads)
     return _model
 
 
@@ -112,7 +115,7 @@ def _clip_from(path: Path, offset_s: float, cap_s: float | None) -> Path | None:
 
 
 def transcribe(path: Path, *, model_name: str = "large-v3", offset_s: float = 0.0,
-               cap_s: float | None = None) -> dict:
+               cap_s: float | None = None, cpu_threads: int = 4) -> dict:
     """POC-locked config: task=translate, language auto-detect, NO VAD.
     Returns {text, end_s, language, language_probability} — text is English
     regardless of spoken language; empty for music-only audio. Trailing
@@ -123,7 +126,7 @@ def transcribe(path: Path, *, model_name: str = "large-v3", offset_s: float = 0.
         clipped = _clip_from(path, offset_s, cap_s)
         src = clipped or path
     try:
-        segments, info = _whisper(model_name).transcribe(
+        segments, info = _whisper(model_name, cpu_threads).transcribe(
             str(src), task="translate", language=None,
             vad_filter=False, condition_on_previous_text=False,
         )

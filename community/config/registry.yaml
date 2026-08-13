@@ -253,6 +253,8 @@ sources:
     tier_min_likes: 25          # floor so quiet accounts don't gate-pass everything
     whisper_model: large-v3     # POC-locked (translate task, no VAD); drop to
                                 # large-v3-turbo if prod CPU proves too slow
+    whisper_cpu_threads: 4      # cap CTranslate2 pool — prod VM has 8 cores,
+                                # transcription must not starve api/webapp (user 2026-08-13)
     video_duration_cap_s: 360   # cap at ~6 min (user 2026-08-12); longer = truncated
     max_slides: 10              # vision reads ALL slides (user decision, IG max)
     comments_top_n: 10          # top-liked kept as child items (user decision)

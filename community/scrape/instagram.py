@@ -305,7 +305,8 @@ def _tier1_transcript(item: dict, reg: dict) -> str:
         return "media_fetch_failed"
     try:
         out = av.transcribe(path, model_name=str(reg.get("whisper_model", "large-v3")),
-                            offset_s=offset, cap_s=cap)
+                            offset_s=offset, cap_s=cap,
+                            cpu_threads=int(reg.get("whisper_cpu_threads", 4)))
         text = " ".join(x for x in (tr.get("partial"), out["text"]) if x).strip()
         if not text:
             # music-only / no speech: documented limitation — caption still flows
