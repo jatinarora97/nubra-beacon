@@ -186,8 +186,8 @@ export function ExploreTable() {
           body="Loosen the filters or widen the time window above — or Beacon genuinely hasn't seen matching items yet."
         />
       ) : (
-        <div className="overflow-hidden rounded-[10px] border border-line">
-          <table className="w-full">
+        <div className="overflow-x-auto rounded-[10px] border border-line">
+          <table className="w-full min-w-[880px]">
             <thead className="bg-surface2/70">
               <tr className="text-left">
                 {["what was said", "our read", "source", "intent", "engagement", "fetched"].map((h) => (
