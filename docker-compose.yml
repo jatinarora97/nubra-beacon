@@ -57,6 +57,13 @@ services:
       dockerfile: Dockerfile.api
     profiles: ["app"]
     env_file: .env
+    # explicit upstream resolvers: the prod box's DNS chain returns AAAA-only
+    # answers for Instagram CDN hosts (no A records → Errno 101/-9, live
+    # 2026-08-13) while the box has no IPv6 route. Docker's embedded DNS still
+    # resolves compose service names (postgres) before forwarding upstream.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       # inside the compose network the DB lives at the service name, not localhost
       DB_URL: postgresql://community:community@postgres:5432/nubra_community
