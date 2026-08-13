@@ -53,7 +53,11 @@ def store_media(url: str, key: str) -> str | None:
     if not s3_enabled() or not url:
         return None
     try:
-        with httpx.Client(timeout=90, follow_redirects=True, headers=_UA) as c:
+        # local_address forces IPv4: cdninstagram publishes AAAA records and
+        # the prod box has no IPv6 route (Errno 101, live 2026-08-13)
+        transport = httpx.HTTPTransport(local_address="0.0.0.0", retries=2)
+        with httpx.Client(timeout=90, follow_redirects=True, headers=_UA,
+                          transport=transport) as c:
             r = c.get(url)
             r.raise_for_status()
         _s3().put_object(Bucket=_bucket(), Key=key, Body=r.content)

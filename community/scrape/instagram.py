@@ -230,6 +230,16 @@ def fetch(reg: dict) -> Iterator[SocialItem]:
         media_keys = _store_post_media(row, creator, kind)
         post = _post_item(row, media_keys)
         yield post
+        if media_keys:
+            # retrofit: insert-if-absent skips existing rows, so a re-run after
+            # a media outage must still attach the fresh S3 keys and re-queue
+            # the tier pass (the consumer stored the item before we resume here)
+            db.execute(
+                "UPDATE social_items SET raw = (raw || %s::jsonb) - 'tiers_done' "
+                "WHERE source='instagram' AND external_id=%s "
+                "  AND (raw->>'s3_video' IS NULL AND raw->>'s3_display' IS NULL)",
+                (db.jsonb(media_keys), post.external_id),
+            )
         if not post.raw["is_pinned"]:
             max_ts = max(max_ts, post.created_at) if max_ts else post.created_at
         for c in row.get("latestComments") or []:
