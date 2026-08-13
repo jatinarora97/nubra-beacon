@@ -126,8 +126,9 @@ def _store_post_media(row: dict, creator: str, kind: str) -> dict:
 def _post_item(row: dict, media_keys: dict) -> SocialItem:
     creator = row.get("ownerUsername") or "[unknown]"
     sc = row.get("shortCode") or str(row.get("id"))
-    likes = int(row.get("likesCount") or 0)
-    comments = int(row.get("commentsCount") or 0)
+    likes_hidden = int(row.get("likesCount") or 0) < 0
+    likes = max(0, int(row.get("likesCount") or 0))
+    comments = max(0, int(row.get("commentsCount") or 0))
     caption = (row.get("caption") or "").strip()
     tags = " ".join(f"#{h}" for h in row.get("hashtags") or [])
     music = row.get("musicInfo") or {}
@@ -147,11 +148,12 @@ def _post_item(row: dict, media_keys: dict) -> SocialItem:
         engagement=Engagement(
             score=unified_score(likes, 0, comments),
             native={"likes": likes, "comments": comments,
-                    "plays": int(row.get("videoPlayCount") or 0),
-                    "views": int(row.get("videoViewCount") or 0)},
+                    "plays": max(0, int(row.get("videoPlayCount") or 0)),
+                    "views": max(0, int(row.get("videoViewCount") or 0))},
         ),
         raw={
             "short_code": sc,
+            "likes_hidden": likes_hidden,
             "is_pinned": bool(row.get("isPinned")),
             "video_duration_s": row.get("videoDuration"),
             "uses_original_audio": bool(music.get("uses_original_audio")),
@@ -168,7 +170,7 @@ def _comment_item(c: dict, post: SocialItem, *, top_liked: bool = False) -> Soci
     cid = c.get("id")
     if not cid or not text:
         return None
-    likes = int(c.get("likesCount") or 0)
+    likes = max(0, int(c.get("likesCount") or 0))
     return SocialItem(
         source="instagram",
         source_type="comment",
