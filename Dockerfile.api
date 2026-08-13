@@ -24,8 +24,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # its OWN layer BEFORE any code COPY: code-only releases must never rebuild,
 # re-push, or re-pull this ~1.5GB layer. It re-downloads only if the model
 # name, requirements.txt, or torch layer above it change.
-RUN python -c "from faster_whisper import WhisperModel; \
-WhisperModel('large-v3', device='cpu', compute_type='int8')"
+# download_model NOT WhisperModel: constructing the model would LOAD it into
+# RAM, which OOMs under the qemu amd64 emulation `make push-prod` builds with.
+RUN python -c "from faster_whisper import download_model; download_model('large-v3')"
 
 COPY cm runner.py ./
 COPY community ./community
