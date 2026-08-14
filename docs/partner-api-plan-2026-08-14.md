@@ -1,126 +1,85 @@
-# Partner read API + SSO — implementation plan (2026-08-14, plan only)
+# Partner read API + SSO — plan (2026-08-14)
 
-Team ask: 7 read-only JSON/REST endpoints (items, search, authors,
-broker-issues, feature-requests, trends, runs) + bearer/API-key auth,
-opaque cursors, ISO8601 UTC. Our stance (user decision): we expose what OUR
-system already computes and trusts — same tables the dashboard reads — and
-the consumer adapts. No parallel logic, no invented numbers, no impact on
-pipeline speed or dashboard accuracy.
+Decision: new router `/api/partner/v1/*` inside the existing read-api.
+Same container, same DB, same rollups the dashboard trusts. No new infra,
+no parallel logic. Where their contract asks for numbers we don't compute,
+we ship our real fields and they adapt (user decision).
 
-## 0 · Shape of the solution
+Build starts when the user says go. Phase 1 is ~1 day of work, Phase 2 ~half
+a day, SSO is its own run (~1 day incl. prod rollout).
 
-One new FastAPI router `community/api/partner_api.py` mounted into the
-EXISTING read-api process under `/api/partner/v1/*`. Same container, same
-DB, zero new infra. Isolation is logical, not physical:
+## Their 7 endpoints → our sources (all direct fits)
 
-- API-key auth middleware applies ONLY to this namespace (internal
-  dashboard routes untouched).
-- Every partner query runs with `SET LOCAL statement_timeout` (2s) and a
-  hard `limit` cap (200) — a slow or hostile query cancels itself before it
-  can contend with the pipeline.
-- In-app rate limit per key (60 req/min default, registry knob). They poll;
-  this is generous.
-- Read-only by construction (SELECTs only; optionally `SET TRANSACTION READ
-  ONLY` as belt).
-- Every call logged to `compliance_audit` (key id, route, params, rows) —
-  consistent with the audit posture.
+| Endpoint | Backed by | What differs from their ask |
+|---|---|---|
+| `/items` | social_items + enrichment + authors | No `relevance_score` — we send `engagement_score`, `sentiment`, noise-filtered by default. Their platform names accepted as input; we EMIT ours (twitter, community_forum, app_review) + bonus `instagram`. `raw` included minus internal keys (s3_*, tier state). |
+| `/items/search` | Postgres `websearch_to_tsquery` | Their OR/quoted-phrase syntax works natively. Needs one migration (tsvector + GIN index). `match_snippet` via ts_headline. |
+| `/authors` | authors + per-author aggregates | `avg_relevance` → `avg_engagement`. |
+| `/broker-issues` | issue rollups (Issues heatmap data) | No `severity` — we send mention_count + engagement_sum; they derive. |
+| `/feature-requests` | feature_rollup + feature_item_map | Exact fit. Counts are replay-proof by construction. |
+| `/trends` | topic rollups (Trends page data) | `delta_vs_prev` = same math the dashboard shows. |
+| `/runs` | pipeline_state (source-health data) | `run_id` synthetic (we track per-source state, not runs). |
 
-Why not a separate service: one prod-grade codebase (locked decision), the
-read-api is already the single query layer, and partner load is polling-
-scale. If usage ever grows real, the escape hatch is a PG read replica —
-not a rewrite.
+Cross-cutting, as they asked: ISO8601 UTC · opaque `next_cursor` (base64
+keyset on ingested_at+item_id — stable AND faster than offset) · auth =
+`X-API-Key` header (Bearer also accepted).
 
-## 1 · Endpoint mapping (their ask → our source of truth)
+## Speed/accuracy guards (the no-compromise clause)
 
-| Their endpoint | Backed by | Fit | Deviations we ship (they adapt) |
-|---|---|---|---|
-| `GET /items` | `social_items` + `item_enrichment` + `authors` (same SQL family as internal `/items`) | Direct | `platform` accepts their aliases (`x`→twitter, `forum`→community_forum, `review`→app_review) but we EMIT our canonical names, and we additionally offer `instagram`. No `relevance_score` (we don't compute one): we ship `engagement_score` (unified log score), `sentiment`, `is_noise` (noise excluded by default) — honest fields instead of an invented 0-100. `topics[]` = enrichment topic_key (+ entities). `raw` passthrough included minus internal bookkeeping keys (s3_*, transcript_state, tiers_done). |
-| `GET /items/search` | Postgres full-text (`websearch_to_tsquery`) over `social_items.text` | Direct after 1 migration | `q` natively supports OR and quoted phrases (PG websearch syntax). `match_snippet` via `ts_headline`. Needs a generated tsvector column + GIN index (migration 0014) — one-time build, then fast; ILIKE fallback until then. |
-| `GET /authors` | `authors` + aggregates over their items | Direct | first_seen from earliest item; `topics[]` = top-N enrichment topics; `avg_relevance` → `avg_engagement` (same honesty rule). |
-| `GET /broker-issues` | issue rollups (broker × issue_type segments the Issues heatmap already renders) + item links | Direct | No `severity` field exists — we ship `mention_count` + `engagement_sum` and let them derive severity. `summary` = representative quotes/entity summaries we already store. |
-| `GET /feature-requests` | `feature_rollup` + `feature_item_map` (exactly-once ledger) | Direct | Category = our taxonomy; mention_count is replay-proof by construction. |
-| `GET /trends` | topic rollups behind the Trends page (hourly/daily windows) | Direct | `delta_vs_prev` computed vs the previous same-length window — same math the dashboard shows, nothing new. |
-| `GET /runs` | `pipeline_state` (what source-health reads) | Direct | `run_id` is synthetic (stage+source+timestamp) — we track per-source state, not run objects; fields otherwise as asked. |
+1. 2s statement timeout on every partner query — a bad query cancels itself.
+2. Hard limit cap 200 rows + per-key rate limit 60/min (registry knobs).
+3. Read-only SQL; every call logged to compliance_audit with key id.
+4. Same tables + same rollup math as the dashboard → zero drift possible.
+5. Kill switch: `partner_api.enabled: false` in registry — no release needed.
 
-Cross-cutting, as asked: ISO8601 UTC everywhere (our timestamps are tz-aware
-already) · opaque `next_cursor` = base64 keyset `(ingested_at, item_id)` —
-stable ordering AND faster than our internal offset pagination (no OFFSET
-scans) · auth = `X-API-Key` header (also accepted as `Authorization:
-Bearer`).
+Exposure stays LAN/VPN-only. Nothing becomes internet-facing.
 
-## 2 · Auth for machines: API keys (this run)
+## API keys (this run)
 
-- New table `api_keys` (migration 0014): key_id, sha256(secret), label,
-  scopes (v1: `read`), created_by, created_at, last_used_at, revoked_at.
-- Minting: `scripts/mint_api_key.py` — prints the secret ONCE, stores the
-  hash; revocation = one UPDATE. No UI needed in v1.
-- Keys are per-consumer (one per team/tool), so usage and rate limits are
-  attributable in `compliance_audit`.
-- Exposure: :8400 stays LAN/VPN-only (current posture). Nothing becomes
-  internet-facing in this run.
+1. Migration: `api_keys` table — key_id, sha256(secret), label, created_by,
+   last_used_at, revoked_at.
+2. Mint: `scripts/mint_api_key.py` — prints the secret once, stores the hash.
+3. Revoke: one UPDATE. One key per consumer team → attributable usage.
 
-## 3 · SSO for humans: OIDC proxy (next run, as planned in the backlog)
+## SSO (next run — humans via Google, machines via keys)
 
-Design (matches the backlog's "auth = OIDC proxy; LAN-only meanwhile"):
+1. oauth2-proxy sidecar in compose, Google Workspace OIDC, company domain(s)
+   only.
+2. Only the proxy port stays exposed; webapp + api go compose-internal.
+   Proxy routes `/` → webapp, `/api/v1/*` → api.
+3. `/api/partner/v1/*` + `/health` in skip_auth_routes — API keys govern
+   them. One front door, two locks.
+4. Free win: the read-api already consumes the `X-Auth-Request-Email` header
+   the proxy forwards — dashboard actions get attributed to real people
+   with zero code change.
+5. User-owed at that point: create the Google OAuth client (redirect
+   `http://<box>/oauth2/callback`), pick allowed domains, put client
+   id/secret + cookie secret in prod `.env` (manual, as always).
 
-- **oauth2-proxy sidecar** in compose (profile `app`), Google Workspace as
-  the OIDC provider, restricted to the company domain(s) + optional email
-  allowlist.
-- Topology change: today webapp (:3000) and api (:8400) are exposed
-  directly. After SSO, ONLY the proxy port is exposed; webapp and api go
-  compose-internal. The proxy path-routes: `/` → webapp, `/api/v1/*` → api.
-  Browser API calls move behind the same origin (removes the hardcoded
-  :8400 assumption — one webapp env change at release).
-- **Partner API and SSO compose cleanly**: proxy `skip_auth_routes` for
-  `/api/partner/v1/*` (API-key auth governs it) and `/health`. Humans →
-  Google login; machines → keys. One front door, two locks.
-- The proxy forwards `X-Auth-Request-Email`; the read-api ALREADY consumes
-  this header for attribution (Sources page `added_by`) — dashboard actions
-  become attributed to real people the day SSO lands, no code change.
-- User-owed setup: create the Google OAuth client (redirect URL
-  `http://<box>/oauth2/callback`), pick allowed domain(s), drop
-  client-id/secret + cookie secret into prod `.env` (manual, as always).
+## Build order + touchpoints
 
-## 4 · Build phases + touchpoints
+Phase 1 (~1 day): `/items`, `/items/search`, `/authors`, `/runs` + keys,
+cursors, rate limit, audit.
+1. `community/api/partner_api.py` — new router, all logic lives here
+2. `community/api/read_api.py` — one mount line
+3. `migrations/0014_partner_api.sql` — api_keys + GIN index
+4. `scripts/mint_api_key.py` + registry `partner_api:` block
+5. `docs/partner-api-2026-08-14.md` — the contract doc handed to the team
 
-**Phase 1 — partner API core** (items, search, authors, runs + auth/keys/
-cursors/rate-limit/audit):
-- `community/api/partner_api.py` (new router; all endpoint logic)
-- `community/api/read_api.py` (one line: mount router)
-- `migrations/0014_partner_api.sql` (api_keys + tsvector GIN index)
-- `scripts/mint_api_key.py`
-- `community/config/registry.yaml` → `partner_api:` block (rate limit, caps,
-  enabled flag — kill switch is one registry line)
-- `docs/partner-api-2026-08-14.md` (the contract doc handed to the team)
+Phase 2 (~half day): `/broker-issues`, `/feature-requests`, `/trends` +
+partner section on the dashboard API-doc page.
 
-**Phase 2 — rollup endpoints** (broker-issues, feature-requests, trends):
-- same router file + possibly 1-2 SQL views for stable shapes
-- dashboard API-doc page gains the partner section (webapp, one page)
+Phase 3 = SSO run (files: docker-compose.yml, webapp env, prod .env — rolled
+per the manual-config rule).
 
-**Phase 3 — SSO (next run)**:
-- `docker-compose.yml` (oauth2-proxy service; webapp/api port unexposing)
-- webapp env: API base behind the proxy origin
-- prod `.env` additions (Google client id/secret, cookie secret) — user
-- prod rollout: git pull + .env + `make up S=...` per the manual-config rule
+Test protocol (house rule — real data): every endpoint against the restored
+prod dump; cursor stability across pages; forced timeout + rate-limit
+violations; one consumer script in scripts/ that doubles as documentation.
 
-Testing protocol (house rule — real data): every endpoint exercised locally
-against the restored prod dump; cursor stability verified across pages;
-statement-timeout and rate-limit verified by forcing violations; one
-end-to-end consumer script in `scripts/` doubling as living documentation.
+## Open with the user (none block Phase 1)
 
-## 5 · Performance/accuracy guarantees (the "no compromise" clause)
+1. Confirm consumers are internal/LAN-only (assumed yes).
+2. Name who gets keys.
+3. SSO run: Google OAuth client + allowed domain list.
 
-- Same tables + same rollup math the dashboard uses → zero drift by design.
-- Keyset pagination + GIN-indexed search + 2s statement timeout + limit cap
-  + per-key rate limit → bounded worst-case load; the pipeline's writes are
-  hourly and small, uncontended by polling reads.
-- Fields we don't compute (relevance 0-100, severity) are NOT faked — we
-  expose the real signals and document the mapping.
-- Kill switch: `partner_api.enabled: false` in the registry disables the
-  namespace without a release.
-
-## 6 · Open items needing the user (not blockers to start Phase 1)
-
-1. Confirm consumers are internal/LAN (assumed yes — no internet exposure).
-2. Who gets keys (one per consumer team/tool).
-3. For SSO: Google OAuth client creation + allowed domain list.
+Next action: user says "go" → Phase 1 starts on jatin/beacon-updates.
