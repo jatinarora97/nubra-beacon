@@ -102,12 +102,36 @@ evidence trail), feedback intake (dashboard-only), clean/dedup internals
 
 Total ~2.5 days REST (+0.5 optional MCP wrapper).
 
-## Open decisions (answer before Phase 1; defaults proposed)
+## LOCKED decisions (user, 2026-08-17)
 
-1. Default date range = current IST calendar day — confirm (alternative:
-   rolling 24h).
-2. v1 strictly read-only — confirm (write actions like "mark opportunity
-   actioned" become v2).
-3. Who hosts the MCP server — them (we hand REST + docs) or us (Phase 4).
+1. All 19 endpoints approved.
+2. **Default date range = rolling 24h** (`ingested_at >= now() - 24h`) —
+   marginally simpler than IST-day (no timezone math), and user's tiebreak
+   rule said rolling wins.
+3. **Read-only v1.** Writes are v2.
+4. **MCP server is their side.** Phase 4 dropped. Our deliverable =
+   functional REST + the contract doc.
+5. **Auth = per-consumer API keys** (not one shared key). Same code either
+   way; per-consumer means: revoke one leaker without breaking others,
+   per-key rate limits, and the audit log says WHO pulled what. Mechanics:
+   `scripts/mint_api_key.py` prints the secret once, DB stores only
+   sha256(secret); caller sends `X-API-Key: <secret>`; middleware hashes and
+   looks it up; unknown/revoked → 401. Issuing = we run the script per team
+   and hand each their key.
+6. **Full data by default** (compact-by-default REVERSED): full text, all
+   enrichment, `raw` included. Only internal pipeline bookkeeping stays
+   stripped from raw (s3_* keys, transcript_state, tiers_done — our plumbing,
+   not their data). Default limit stays 25 (cap 200) purely as a page size.
+7. `external_id` = the platform's own id for the item — the second half of
+   our (source, external_id) uniqueness pair, returned on every /items row
+   (copy it from a list response into the detail call). Examples: X tweet id
+   `1823...90`, reddit `t3_1abcd2`, youtube `yt_video_dQw4w9`, instagram
+   shortCode `DJJFNA-BV7f` (from instagram.com/p/DJJFNA-BV7f/), app review
+   id, github issue node.
+8. "Aggregates-first" framing dropped (it was usage guidance, not a
+   feature). **Cursor pagination stays on every list endpoint** as designed:
+   `next_cursor` opaque keyset, stable ordering. Rollup rows keep whatever
+   item links their tables already store (free); no extra cross-linking
+   work.
 
-Next action: confirm the three defaults above and Phase 1 starts.
+Next action: user says "go" → Phase 1 (plumbing + corpus family + /runs).
