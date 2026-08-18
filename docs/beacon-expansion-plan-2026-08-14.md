@@ -34,6 +34,14 @@ Every hour, one Slack message with three blocks:
    The link lands on the Beacon page where the compliant draft reply is
    already waiting.
 
+4. **Source-health alerts (added 2026-08-18, user ask)** — the digest's
+   fourth block, and the reason it exists: Reddit silently stopped ingesting
+   on Aug 10 and nobody knew until Aug 18. Rules: any source whose last
+   successful ingest is older than 2x its cadence (hourly sources: >2h;
+   daily: >30h) gets a warning line with its last error and last-success
+   time; a recovered source gets one "back" line. Sourced from
+   pipeline_state — the same data /runs serves.
+
 ## How (technical)
 
 Beacon already composes an hourly Slack overview message — the code path
