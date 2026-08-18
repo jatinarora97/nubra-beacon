@@ -274,9 +274,14 @@ def build_overview() -> str:
         return base + (f" ({inter} interactions)" if inter else "")
 
     top = db.query(
-        "SELECT o.priority, o.matched_insight AS insight FROM opportunities o "
-        "WHERE o.status='suggested' ORDER BY o.priority DESC LIMIT 3")
-    action_lines = [f"{i + 1}. {_why(r['insight'] or {})}" for i, r in enumerate(top)]
+        "SELECT o.priority, o.matched_insight AS insight, "
+        "       (o.brand_reply IS NOT NULL OR o.rep_reply IS NOT NULL) AS has_draft "
+        "FROM opportunities o "
+        "WHERE o.status='suggested' ORDER BY o.priority DESC LIMIT 5")
+    action_lines = [
+        f"{i + 1}. {_why(r['insight'] or {})} [priority {r['priority']}"
+        + (", draft ready" if r["has_draft"] else "") + "]"
+        for i, r in enumerate(top)]
 
     movers_day = (db.one("SELECT max(day) AS d FROM topic_daily") or {}).get("d") or today
     movers = db.query(
@@ -292,6 +297,33 @@ def build_overview() -> str:
         f"{'X' if f['source'] == 'twitter' else f['source']} {f['last'].astimezone(IST):%d %b %H:%M}"
         for f in fresh if f["last"])
 
+    # source-health alerts (2026-08-18, after Reddit ran silent Aug 10-18
+    # unseen): a source is ALERTED when its newest item is older than 2x its
+    # cadence — hourly sources >2h, daily sources >30h. Success-with-zero-items
+    # runs advance nothing here, which is exactly the failure mode this catches.
+    reg_sources = settings.registry.get("sources", {})
+    cadence_h = {"twitter": 1, "reddit": 1}
+    for cfg_key, stored in (("youtube", "youtube"), ("github", "github"),
+                            ("broker_communities", "community_forum"),
+                            ("app_reviews", "app_review"), ("instagram", "instagram")):
+        cfg = reg_sources.get(cfg_key, {}) or {}
+        if not cfg.get("enabled", False):
+            continue
+        cadence_h[stored] = 1 if str(cfg.get("cadence", "daily")).lower() == "hourly" else 24
+    now_utc = datetime.now(timezone.utc)
+    alert_lines = []
+    last_by_src = {f["source"]: f["last"] for f in fresh if f["last"]}
+    for src, hours in sorted(cadence_h.items()):
+        last = last_by_src.get(src)
+        threshold = 2 * hours + (6 if hours == 24 else 0)   # hourly: 2h, daily: 30h
+        if last is None:
+            alert_lines.append(f"! {src}: no items ever collected")
+        elif (now_utc - last).total_seconds() > threshold * 3600:
+            silent_h = int((now_utc - last).total_seconds() // 3600)
+            alert_lines.append(
+                f"! {'X' if src == 'twitter' else src}: silent for {silent_h}h "
+                f"(last item {last.astimezone(IST):%d %b %H:%M} IST)")
+
     now_ist = datetime.now(IST)
     parts = [
         f"*Nubra Beacon — overview* · {now_ist:%a %d %b %Y, %H:%M} IST",
@@ -300,17 +332,25 @@ def build_overview() -> str:
         f"{high_prio} new high-priority · {mentions} Nubra mentions 24h · "
         f"{drafts} drafts ready{llm_line}",
     ]
+    if alert_lines:
+        parts.append("*Source alerts:*\n" + "\n".join(alert_lines))
     if headline:
         parts.append(f"*Headline:* {headline}")
+    # DASHBOARD_URL env wins: prod registry ships inside the image, so the
+    # prod-specific URL lives in .env like every other prod-only value
+    import os as _os
+    dash = _os.getenv("DASHBOARD_URL") or settings.registry["delivery"].get("dashboard_url") or ""
     if action_lines:
-        parts.append("*Top actions:*\n" + "\n".join(action_lines))
+        header = (f"*Top actions* (<{dash}/opportunities|open drafts>):"
+                  if dash else "*Top actions:*")
+        parts.append(header + "\n" + "\n".join(action_lines))
     if movers_line:
-        parts.append(f"*Moving topics:* {movers_line}")
+        movers_hdr = f"*Moving topics* (<{dash}/trends|details>):" if dash else "*Moving topics:*"
+        parts.append(f"{movers_hdr} {movers_line}")
     if fresh_line:
         parts.append(f"*Freshness:* {fresh_line}")
-    dash = settings.registry["delivery"].get("dashboard_url") or ""
     if dash:
         parts.append(f"Dashboard: {dash}")
 
     text = "\n\n".join(parts)
-    return text[:1497] + "…" if len(text) > 1500 else text
+    return text[:2897] + "…" if len(text) > 2900 else text
