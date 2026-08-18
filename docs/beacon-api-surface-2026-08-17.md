@@ -134,4 +134,11 @@ Total ~2.5 days REST (+0.5 optional MCP wrapper).
    item links their tables already store (free); no extra cross-linking
    work.
 
-Next action: user says "go" → Phase 1 (plumbing + corpus family + /runs).
+BUILT 2026-08-18 (all phases in one pass): namespace renamed to
+`/api/beacon/v1` (user call), 22 endpoints live, migration 0014 (api_keys +
+beacon_api_log + tsvector GIN), keys mintable from the dashboard API-access
+page AND scripts/mint_api_key.py, audit middleware, per-key rate limit,
+2s statement timeout, read-only connections. Verified on real local data:
+22/22 endpoints 200, cursor pages disjoint, full text + raw (internals
+stripped), websearch snippets, 429 at limit, revocation → 401, all
+negative params 422/404. Consumer contract: docs/beacon-api-contract-2026-08-18.md.

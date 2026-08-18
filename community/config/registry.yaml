@@ -308,3 +308,9 @@ aggregate:
   feature_sim_threshold: 0.86      # centroid match τ. NOTE: e5-small compresses cosines
                                    # (distinct asks ≈0.78–0.85, same ask ≥0.86 — measured on real
                                    # data 2026-07-05); LLD's 0.80 assumed a wider-range model
+
+beacon_api:                        # external read-only API (/api/beacon/v1)
+  enabled: true                    # kill switch — flip false, restart api, namespace 503s
+  rate_limit_per_min: 60           # per key
+  max_limit: 200                   # page-size ceiling (default 25)
+  statement_timeout_ms: 2000       # every beacon-API query self-cancels past this

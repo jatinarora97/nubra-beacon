@@ -22,6 +22,25 @@ from community.store import db
 app = FastAPI(title="Nubra Community Manager — read-API", version="2.0")
 from community.api.discover_api import router as discover_router  # noqa: E402
 app.include_router(discover_router)
+from community.api.beacon_api import router as beacon_router  # noqa: E402
+app.include_router(beacon_router)
+
+
+@app.middleware("http")
+async def _beacon_api_audit(request, call_next):
+    """Log every /api/beacon/ call (who pulled what) — internal routes skip."""
+    response = await call_next(request)
+    if request.url.path.startswith("/api/beacon/"):
+        try:
+            db.execute(
+                "INSERT INTO beacon_api_log (key_id, route, params, status) "
+                "VALUES (%s, %s, %s, %s)",
+                (getattr(request.state, "beacon_key_id", None),
+                 request.url.path, db.jsonb(dict(request.query_params)),
+                 response.status_code))
+        except Exception:  # noqa: BLE001 — audit failure must not break reads
+            logging.getLogger("beacon.api").exception("beacon_api_log insert failed")
+    return response
 try:
     from community.api.social_recommend_api import router as social_recommend_router  # noqa: E402
 
@@ -1482,3 +1501,40 @@ def toggle_source(source_id: int):
 def delete_source(source_id: int):
     if not db.execute("DELETE FROM watch_sources WHERE id=%s", (source_id,)):
         raise HTTPException(404, "no such source")
+
+
+# ── beacon-API key management (internal, UI-managed like watch sources) ────
+
+@app.get(API + "/api-keys")
+def list_api_keys():
+    return db.query(
+        "SELECT key_id, label, created_by, created_at, last_used_at, revoked_at "
+        "FROM api_keys ORDER BY revoked_at NULLS FIRST, created_at DESC")
+
+
+@app.post(API + "/api-keys", status_code=201)
+def mint_api_key(payload: dict = Body(...),
+                 x_auth_request_email: str | None = Header(default=None)):
+    """Mint a per-consumer key. The SECRET IS RETURNED EXACTLY ONCE — only
+    its sha256 is stored. UI shows it once with a copy button."""
+    import hashlib
+    import secrets as pysecrets
+    label = str(payload.get("label") or "").strip()
+    if not label:
+        raise HTTPException(422, "label is required (who is this key for?)")
+    secret = "nbk_" + pysecrets.token_urlsafe(32)
+    row = db.one(
+        "INSERT INTO api_keys (key_hash, label, created_by) "
+        "VALUES (%s, %s, %s) RETURNING key_id, label, created_at",
+        (hashlib.sha256(secret.encode()).hexdigest(), label,
+         x_auth_request_email or "dashboard"))
+    return {**row, "secret": secret,
+            "note": "store this secret now — it is never shown again"}
+
+
+@app.post(API + "/api-keys/{key_id}/revoke")
+def revoke_api_key(key_id: int):
+    if not db.execute("UPDATE api_keys SET revoked_at = now() "
+                      "WHERE key_id = %s AND revoked_at IS NULL", (key_id,)):
+        raise HTTPException(404, "no such active key")
+    return {"key_id": key_id, "revoked": True}
