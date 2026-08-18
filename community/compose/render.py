@@ -339,7 +339,8 @@ def build_overview() -> str:
     # DASHBOARD_URL env wins: prod registry ships inside the image, so the
     # prod-specific URL lives in .env like every other prod-only value
     import os as _os
-    dash = _os.getenv("DASHBOARD_URL") or settings.registry["delivery"].get("dashboard_url") or ""
+    dash = (_os.getenv("DASHBOARD_URL")
+            or settings.registry["delivery"].get("dashboard_url") or "").rstrip("/")
     if action_lines:
         header = (f"*Top actions* (<{dash}/opportunities|open drafts>):"
                   if dash else "*Top actions:*")
