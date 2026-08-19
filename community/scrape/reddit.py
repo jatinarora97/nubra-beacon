@@ -43,13 +43,18 @@ def _comment_id(author: str, body: str) -> str:
 
 def _preflight() -> bool:
     """One old.reddit listing page via httpx: True when it looks like a real
-    listing (post links present), False when blocked/challenged/unreachable."""
+    listing (post links present), False when blocked/challenged/unreachable.
+    Honors REDDIT_PROXY_URL (same egress the crawl uses) — prod's VM IP gets
+    served the new-site shell without it (incident 2026-08-10..18)."""
+    import os
+
     import httpx
     try:
         r = httpx.get("https://old.reddit.com/r/IndianStockMarket/new/",
                       headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"},
-                      timeout=15.0, follow_redirects=True)
+                      timeout=25.0, follow_redirects=True,
+                      proxy=os.getenv("REDDIT_PROXY_URL") or None)
         return r.status_code == 200 and 'data-fullname="t3_' in r.text
     except Exception:  # noqa: BLE001 — unreachable network = don't crawl
         return False

@@ -95,12 +95,50 @@ _SCRAPER_GLOBAL_OLD = '''BASE = "https://old.reddit.com"'''
 _SCRAPER_GLOBAL_NEW = '''BASE = "https://old.reddit.com"
 SKIP_IDS: set = set()  # PATCH: pre-known ids to skip (set by the caller)'''
 
+# PATCH 3 (2026-08-19): optional egress proxy. Reddit serves the new-site
+# shell to some datacenter/VM IPs (prod incident Aug 10-18) — REDDIT_PROXY_URL
+# (e.g. http://groups-RESIDENTIAL:<pw>@proxy.apify.com:8000) routes the crawl
+# through a clean IP. Residential bandwidth is metered per GB, so under a
+# proxy we abort images/media/fonts/stylesheets — parsing needs only the
+# server-rendered HTML.
+_SCRAPER_LAUNCH_OLD = """        browser = await pw.chromium.launch(headless=HEADLESS)
+        ctx = await browser.new_context(
+            user_agent=_UA,
+            viewport={"width": 1280, "height": 900},
+            locale="en-US",
+        )"""
+_SCRAPER_LAUNCH_NEW = """        _proxy = None  # PATCH: optional egress proxy (REDDIT_PROXY_URL)
+        _proxy_url = os.getenv("REDDIT_PROXY_URL", "").strip()
+        if _proxy_url:
+            from urllib.parse import unquote, urlsplit
+            _pu = urlsplit(_proxy_url)
+            _proxy = {"server": f"{_pu.scheme}://{_pu.hostname}:{_pu.port}"}
+            if _pu.username:
+                _proxy["username"] = unquote(_pu.username)
+                _proxy["password"] = unquote(_pu.password or "")
+            log.info("egress proxy active: %s", _proxy["server"])
+        browser = await pw.chromium.launch(headless=HEADLESS, proxy=_proxy)
+        ctx = await browser.new_context(
+            user_agent=_UA,
+            viewport={"width": 1280, "height": 900},
+            locale="en-US",
+        )
+        if _proxy:
+            # metered bandwidth: HTML only — drop page assets
+            await ctx.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in ("image", "media", "font", "stylesheet")
+                else route.fallback(),
+            )"""
+
 PATCHES = {
     "models.py": [(_MODELS_FIELD_OLD, _MODELS_FIELD_NEW),
                   (_MODELS_DICT_OLD, _MODELS_DICT_NEW)],
     "scraper.py": [(_SCRAPER_APPEND_OLD, _SCRAPER_APPEND_NEW),
                    (_SCRAPER_SKIP_OLD, _SCRAPER_SKIP_NEW),
-                   (_SCRAPER_GLOBAL_OLD, _SCRAPER_GLOBAL_NEW)],
+                   (_SCRAPER_GLOBAL_OLD, _SCRAPER_GLOBAL_NEW),
+                   (_SCRAPER_LAUNCH_OLD, _SCRAPER_LAUNCH_NEW)],
 }
 
 

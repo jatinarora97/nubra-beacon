@@ -433,12 +433,30 @@ async def run():
     combined: Dict[str, List[dict]] = {}
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=HEADLESS)
+        _proxy = None  # PATCH: optional egress proxy (REDDIT_PROXY_URL)
+        _proxy_url = os.getenv("REDDIT_PROXY_URL", "").strip()
+        if _proxy_url:
+            from urllib.parse import unquote, urlsplit
+            _pu = urlsplit(_proxy_url)
+            _proxy = {"server": f"{_pu.scheme}://{_pu.hostname}:{_pu.port}"}
+            if _pu.username:
+                _proxy["username"] = unquote(_pu.username)
+                _proxy["password"] = unquote(_pu.password or "")
+            log.info("egress proxy active: %s", _proxy["server"])
+        browser = await pw.chromium.launch(headless=HEADLESS, proxy=_proxy)
         ctx = await browser.new_context(
             user_agent=_UA,
             viewport={"width": 1280, "height": 900},
             locale="en-US",
         )
+        if _proxy:
+            # metered bandwidth: HTML only — drop page assets
+            await ctx.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in ("image", "media", "font", "stylesheet")
+                else route.fallback(),
+            )
         # Block ad/tracker domains to speed things up
         await ctx.route(
             re.compile(r"(doubleclick\.net|googlesyndication|adnxs|amazon-adsystem)"),
