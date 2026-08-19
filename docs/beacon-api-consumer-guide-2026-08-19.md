@@ -4,7 +4,7 @@ Working call in 30 seconds:
 
 ```bash
 export KEY="<your-api-key>"        # provided by the Beacon owner; only secret in this doc
-export B="http://172.21.0.56:8101/api/beacon/v1"
+export B="http://172.28.0.69:8101/api/beacon/v1"
 
 curl -s -H "X-API-Key: $KEY" "$B/taxonomy"
 ```
