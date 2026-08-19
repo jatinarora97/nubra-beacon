@@ -114,15 +114,15 @@ services:
       retries: 3
       start_period: 20s
 
-  # ── SSO front door (2026-08-19): Google login for the dashboard ──────────
-  # The reverse proxy serving nubra-beacon.zanskar.xyz points HERE (:4180)
-  # instead of the webapp port; oauth2-proxy authenticates against Google and
-  # only then forwards to the webapp. Access = deploy/beacon-allowlist.txt
-  # (one email/line; edit + `docker compose restart oauth2-proxy` to approve).
-  # The beacon API (:8101, key-authed) is NOT behind this — machines keep keys.
+  # ── SSO front door — ON HOLD (2026-08-19, user decision) ─────────────────
+  # Behind its OWN profile ("sso", not "app") so no release or `--profile app
+  # up` can start it accidentally. Ships when the Slack-approval flow is built
+  # (design: docs/sso-runbook-2026-08-19.md). Start explicitly with:
+  #   docker compose --profile sso up -d oauth2-proxy
+  # The beacon API (:8101, key-authed) will NOT be behind this — machines keep keys.
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
-    profiles: ["app"]
+    profiles: ["sso"]
     environment:
       OAUTH2_PROXY_PROVIDER: google
       OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:-}
