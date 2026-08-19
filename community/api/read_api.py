@@ -987,7 +987,8 @@ def _week_stats(window: dict) -> dict:
 def _item_filters(topic: str | None, broker: str | None, intent: str | None,
                   audience: str | None, q: str | None, min_engagement: float,
                   source: str | None,
-                  w: tuple[datetime, datetime] | None = None) -> tuple[str, dict]:
+                  w: tuple[datetime, datetime] | None = None,
+                  q_mode: str = "or") -> tuple[str, dict]:
     """Shared FROM/WHERE for /items and /items/export — one filter semantic."""
     sql = """
         FROM social_items si
@@ -1013,8 +1014,15 @@ def _item_filters(topic: str | None, broker: str | None, intent: str | None,
         sql += " AND e.entities::text ILIKE %(broker)s"
         params["broker"] = f"%{broker}%"
     if q:
-        sql += " AND si.text ILIKE %(q)s"
-        params["q"] = f"%{q}%"
+        # comma-separated multi-keyword: "brokerage, zerodha" — q_mode=or|and
+        terms = [t.strip() for t in q.split(",") if t.strip()]
+        joiner = " AND " if q_mode == "and" else " OR "
+        clauses = []
+        for i, term in enumerate(terms):
+            clauses.append(f"si.text ILIKE %(q{i})s")
+            params[f"q{i}"] = f"%{term}%"
+        if clauses:
+            sql += " AND (" + joiner.join(clauses) + ")"
     return sql, params
 
 
@@ -1026,14 +1034,14 @@ def _item_order(sort: str) -> str:
 @app.get(API + "/items")
 def items(topic: str | None = None, broker: str | None = None,
           intent: str | None = None, audience: str | None = None,
-          q: str | None = None, min_engagement: float = 0,
+          q: str | None = None, q_mode: str = "or", min_engagement: float = 0,
           source: str | None = None,
           sort: Literal["engagement", "recent"] = "engagement",
           window: str | None = None,
           from_ts: str | None = None, to_ts: str | None = None,
           limit: int = 20, offset: int = 0):
     body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
-                                 source, _window(from_ts, to_ts, window))
+                                 source, _window(from_ts, to_ts, window), q_mode)
     params.update({"limit": _lim(limit), "offset": max(offset, 0)})
     sql = """
         SELECT si.source, si.external_id, si.thread_id, left(si.text, 300) AS text,
@@ -1052,11 +1060,38 @@ _EXPORT_COLUMNS = ["source", "external_id", "thread_id", "author", "text", "url"
                    "duplicate_count"]
 
 
+@app.get(API + "/items/intent-series")
+def items_intent_series(topic: str | None = None, broker: str | None = None,
+                        intent: str | None = None, audience: str | None = None,
+                        q: str | None = None, q_mode: str = "or",
+                        min_engagement: float = 0, source: str | None = None,
+                        window: str | None = None,
+                        from_ts: str | None = None, to_ts: str | None = None):
+    """Intent counts per time bucket, honoring the exact /items filters —
+    feeds the Explore line + stacked charts. Bucket auto-picks: hour for
+    windows <= 3 days, day otherwise."""
+    w = _window(from_ts, to_ts, window)
+    if w is None:
+        now = datetime.now(timezone.utc)
+        w = (now - timedelta(days=7), now)
+    span_h = (w[1] - w[0]).total_seconds() / 3600
+    bucket = "hour" if span_h <= 72 else "day"
+    body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
+                                 source, w, q_mode)
+    rows = db.query(
+        f"SELECT date_trunc('{bucket}', si.created_at) AS bucket, "
+        "       COALESCE(e.intent, 'unclassified') AS intent, count(*)::int AS n "
+        + body +
+        " GROUP BY 1, 2 ORDER BY 1, 2", params)
+    return {"bucket": bucket, "from": w[0].isoformat(), "to": w[1].isoformat(),
+            "points": rows}
+
+
 @app.get(API + "/items/export")
 def items_export(format: Literal["csv", "xlsx"] = "csv",
                  topic: str | None = None, broker: str | None = None,
                  intent: str | None = None, audience: str | None = None,
-                 q: str | None = None, min_engagement: float = 0,
+                 q: str | None = None, q_mode: str = "or", min_engagement: float = 0,
                  source: str | None = None,
                  sort: Literal["engagement", "recent"] = "engagement",
                  window: str | None = None,
@@ -1072,7 +1107,7 @@ def items_export(format: Literal["csv", "xlsx"] = "csv",
     from fastapi.responses import Response
 
     body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
-                                 source, _window(from_ts, to_ts, window))
+                                 source, _window(from_ts, to_ts, window), q_mode)
     params["limit"] = max(1, min(limit, 10000))
     rows = db.query("""
         SELECT si.source, si.external_id, si.thread_id, si.text, si.url,

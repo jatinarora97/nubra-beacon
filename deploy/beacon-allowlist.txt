@@ -1,0 +1,9 @@
+# Beacon SSO allowlist — one email per line (comments + blanks ignored).
+# Approve a request: add the email here, then: docker compose restart oauth2-proxy
+# (prod copy of this file is user-managed on the VM, like all deploy/ files)
+jatinarora@zanskar.xyz
+anuragsrivastava@zanskar.xyz
+vandana@zanskar.xyz
+dhanush@zanskar.xyz
+deepender@zanskarsec.com
+subothsundar@zanskar.xyz
