@@ -131,8 +131,9 @@ services:
       OAUTH2_PROXY_REDIRECT_URL: ${BEACON_SSO_REDIRECT_URL:-https://nubra-beacon.zanskar.xyz/oauth2/callback}
       OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
       OAUTH2_PROXY_UPSTREAMS: http://webapp:3000
-      OAUTH2_PROXY_EMAIL_DOMAINS: "*"          # the allowlist FILE governs, not domains
-      OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE: /etc/oauth2/allowlist.txt
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"          # authz lives in Beacon sso_allowlist table
+      # Slack button callbacks are signature-authed, not cookie-authed:
+      OAUTH2_PROXY_SKIP_AUTH_ROUTES: 'POST=^/api/v1/slack/interactions$'
       OAUTH2_PROXY_COOKIE_SECURE: "true"
       OAUTH2_PROXY_COOKIE_EXPIRE: 168h
       OAUTH2_PROXY_REVERSE_PROXY: "true"       # TLS terminates at the company front
@@ -142,8 +143,6 @@ services:
       OAUTH2_PROXY_FOOTER: "No access yet? Post your email in the Beacon Slack group; an admin approves and you are in within a minute."
     ports:
       - "4180:4180"
-    volumes:
-      - ./deploy/beacon-allowlist.txt:/etc/oauth2/allowlist.txt:ro
     depends_on:
       - webapp
     restart: unless-stopped

@@ -12,7 +12,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import Body, FastAPI, Header, HTTPException, Query
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request
 from fastapi import Response as FastResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -1538,7 +1538,145 @@ def delete_source(source_id: int):
         raise HTTPException(404, "no such source")
 
 
-# ── beacon-API key management (internal, UI-managed like watch sources) ────
+# ── SSO authorization (docs/sso-decisions-2026-08-19.md) ───────────────────
+# Google (oauth2-proxy) authenticates; this table authorizes. Unknown-but-
+# authenticated emails become pending rows + ONE Slack ping per 24h with
+# Approve/Reject buttons; the buttons land on /slack/interactions below.
+
+def _sso_slack_ping(email: str) -> bool:
+    """Interactive access-request message to the Beacon channel. Uses the
+    incoming webhook (outbound only); button clicks come back via the Slack
+    app's interactivity URL. Returns True when actually sent."""
+    import os
+
+    import httpx
+
+    from community.config.settings import settings
+    url = os.getenv(settings.registry["delivery"].get("slack_webhook_env",
+                                                      "SLACK_WEBHOOK_URL"), "")
+    if not url or settings.mode != "prod":
+        return False
+    blocks = [
+        {"type": "section", "text": {"type": "mrkdwn",
+         "text": f"*Beacon access request*\n{email} signed in with Google and "
+                 "is waiting for approval."}},
+        {"type": "actions", "elements": [
+            {"type": "button", "action_id": "sso_approve", "value": email,
+             "style": "primary", "text": {"type": "plain_text", "text": "Approve"}},
+            {"type": "button", "action_id": "sso_reject", "value": email,
+             "style": "danger", "text": {"type": "plain_text", "text": "Reject"}},
+        ]},
+    ]
+    try:
+        r = httpx.post(url, json={"text": f"Beacon access request: {email}",
+                                  "blocks": blocks}, timeout=10)
+        return r.status_code == 200
+    except Exception:  # noqa: BLE001 — a ping failure must not block the page
+        logging.getLogger("beacon.api").exception("sso slack ping failed")
+        return False
+
+
+@app.get(API + "/sso/authz")
+def sso_authz(email: str):
+    """The webapp middleware's one call: current status for an authenticated
+    email; unknown emails become pending and trigger the Slack ping (deduped
+    to one per 24h)."""
+    email = email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(422, "email required")
+    row = db.one("SELECT status, last_pinged_at FROM sso_allowlist WHERE email=%s",
+                 (email,))
+    if row is None:
+        db.execute("INSERT INTO sso_allowlist (email) VALUES (%s) "
+                   "ON CONFLICT (email) DO NOTHING", (email,))
+        if _sso_slack_ping(email):
+            db.execute("UPDATE sso_allowlist SET last_pinged_at=now() WHERE email=%s",
+                       (email,))
+        return {"email": email, "status": "pending"}
+    if row["status"] == "pending" and (
+            row["last_pinged_at"] is None
+            or (datetime.now(timezone.utc) - row["last_pinged_at"]).total_seconds() > 86400):
+        if _sso_slack_ping(email):
+            db.execute("UPDATE sso_allowlist SET last_pinged_at=now() WHERE email=%s",
+                       (email,))
+    return {"email": email, "status": row["status"]}
+
+
+@app.get(API + "/sso/requests")
+def sso_requests():
+    return db.query("SELECT email, status, requested_at, decided_by, decided_at "
+                    "FROM sso_allowlist ORDER BY status = 'pending' DESC, requested_at DESC")
+
+
+def _sso_decide(email: str, status: str, decided_by: str) -> dict:
+    if status not in ("approved", "rejected"):
+        raise HTTPException(422, "status must be approved or rejected")
+    n = db.execute("UPDATE sso_allowlist SET status=%s, decided_by=%s, decided_at=now() "
+                   "WHERE email=%s", (status, decided_by, email.strip().lower()))
+    if not n:
+        raise HTTPException(404, "no such request")
+    return {"email": email, "status": status, "decided_by": decided_by}
+
+
+@app.post(API + "/sso/requests/{email}/decide")
+def sso_decide(email: str, payload: dict = Body(...),
+               x_auth_request_email: str | None = Header(default=None)):
+    """Dashboard-side decision (the Access-requests card)."""
+    return _sso_decide(email, str(payload.get("status", "")),
+                       x_auth_request_email or "dashboard")
+
+
+@app.post(API + "/slack/interactions")
+async def slack_interactions(request: Request):
+    """Slack button clicks (Approve/Reject). Auth = Slack signature (this path
+    is proxy-skip_auth and internet-reachable BY DESIGN — the HMAC with the
+    app signing secret is the credential). Replay window 5 min."""
+    import hashlib
+    import hmac
+    import json as _json
+    import os
+    import time as _time
+    from urllib.parse import parse_qs
+
+    import httpx
+
+    secret = os.getenv("SLACK_SIGNING_SECRET", "")
+    if not secret:
+        raise HTTPException(503, "SLACK_SIGNING_SECRET not configured")
+    body = await request.body()
+    ts = request.headers.get("x-slack-request-timestamp", "0")
+    if abs(_time.time() - float(ts or 0)) > 300:
+        raise HTTPException(401, "stale request")
+    base = f"v0:{ts}:".encode() + body
+    expected = "v0=" + hmac.new(secret.encode(), base, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, request.headers.get("x-slack-signature", "")):
+        raise HTTPException(401, "bad signature")
+
+    payload = _json.loads(parse_qs(body.decode()).get("payload", ["{}"])[0])
+    action = (payload.get("actions") or [{}])[0]
+    email = action.get("value", "")
+    verdict = {"sso_approve": "approved", "sso_reject": "rejected"}.get(
+        action.get("action_id", ""))
+    decider = (payload.get("user") or {}).get("username") \
+        or (payload.get("user") or {}).get("name") or "slack"
+    if not (email and verdict):
+        return {"ok": False}
+    _sso_decide(email, verdict, f"slack:{decider}")
+    # replace the buttons with the outcome so the channel sees who decided
+    response_url = payload.get("response_url")
+    if response_url:
+        try:
+            httpx.post(response_url, json={
+                "replace_original": True,
+                "text": f"Beacon access: {email} {verdict} by @{decider}."
+                        + (" They are in on their next page load."
+                           if verdict == "approved" else "")}, timeout=10)
+        except Exception:  # noqa: BLE001
+            logging.getLogger("beacon.api").exception("slack response_url failed")
+    return {"ok": True}
+
+
+# ── beacon-API key management (internal, UI-managed like watch sources) ────# ── beacon-API key management (internal, UI-managed like watch sources) ────
 
 @app.get(API + "/api-keys")
 def list_api_keys():
