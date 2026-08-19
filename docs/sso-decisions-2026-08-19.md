@@ -1,4 +1,4 @@
-# SSO — decisions (LOCKED 2026-08-20; build pending, code inert behind `sso` profile)
+# SSO — decisions (LOCKED 2026-08-20; BUILT 2026-08-20 — awaiting the 3 go-live steps below)
 
 Setup steps live separately in `google-sso-setup.md`. This file is the WHAT
 and WHY.
@@ -32,7 +32,23 @@ and WHY.
    (needs identities, which SSO provides via X-Auth-Request-Email — the
    read-api already consumes that header for attribution).
 
-## Build list when SSO resumes (~1 day, in order)
+## Go-live steps (ONLY these remain — everything below this section is BUILT)
+
+1. USER: Slack app (5 min) — api.slack.com/apps -> Create (Blank app) ->
+   Interactivity ON with request URL
+   https://nubra-beacon.zanskar.xyz/api/v1/slack/interactions -> add an
+   Incoming Webhook to #nubra-beacon under this app (replace the old
+   standalone webhook's URL in prod .env) -> copy Signing Secret ->
+   prod .env: SLACK_SIGNING_SECRET=...
+2. USER: prod release cycle (code is on the branch) + start the proxy:
+   docker compose --profile sso up -d oauth2-proxy
+   (the 4 OAUTH2_PROXY_* .env lines are already parked in prod .env).
+3. USER/IT: cutover — repoint the front for nubra-beacon.zanskar.xyz to
+   :4180. Before this moment nothing changes for anyone; after it, Google
+   login + the approval flow are live. Also remember: each newly approved
+   person needs 2 clicks in Google console -> Audience -> Test users.
+
+## Build list — DONE 2026-08-20 (for the record)
 
 1. Migration: `sso_allowlist` (email, status pending/approved/rejected,
    requested_at, decided_by, decided_at) + seed the 6 launch emails.
