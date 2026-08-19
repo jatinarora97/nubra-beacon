@@ -6,6 +6,7 @@ import { get } from "@/lib/api";
 import type { Item, ItemDetail } from "@/lib/types";
 import { Badge, EmptyState } from "@/components/ui";
 import { pickWindow, windowQuery } from "@/lib/window";
+import { IntentCharts } from "./intent-charts";
 
 const PAGE = 50;
 
@@ -49,6 +50,8 @@ export function ExploreTable() {
   const [intent, setIntent] = useState("");
   const [q, setQ] = useState(initialQ);
   const [qLive, setQLive] = useState(initialQ);
+  // Multi-keyword search: q is comma-separated; q_mode picks any/all matching.
+  const [qMode, setQMode] = useState<"or" | "and">("or");
   const [detail, setDetail] = useState<Item | null>(null);
   // the list endpoint truncates text at 300 chars — the drawer fetches the
   // full row (untruncated text incl. TRANSCRIPT/ON-SCREEN blocks + raw flags)
@@ -69,17 +72,32 @@ export function ExploreTable() {
     return () => clearTimeout(t);
   }, [qLive]);
 
-  function pageUrl(off: number): string {
-    const params = new URLSearchParams({
-      sort: "engagement",
-      limit: String(PAGE),
-      offset: String(off),
-    });
+  // Shared filter fragment: charts, table pages and exports all speak the
+  // same query language (source, intent, q + q_mode, window).
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
     if (source) params.set("source", source);
     if (intent) params.set("intent", intent);
-    if (q) params.set("q", q);
+    if (q) {
+      params.set("q", q);
+      params.set("q_mode", qMode);
+    }
+    return params;
+  }
+
+  function pageUrl(off: number): string {
+    const params = filterParams();
+    params.set("sort", "engagement");
+    params.set("limit", String(PAGE));
+    params.set("offset", String(off));
     return `/items?${params}&${windowQS}`;
   }
+
+  // Same filters, for the intent-series charts (debounced q — this string
+  // only changes on settled filter state, so charts never fetch per keystroke).
+  const seriesQuery = [filterParams().toString(), windowQS]
+    .filter(Boolean)
+    .join("&");
 
   // Monotonic id per filter-state: a Load-more response landing after the
   // filters changed is stale and must be dropped, not appended.
@@ -97,7 +115,7 @@ export function ExploreTable() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, intent, q, windowQS]);
+  }, [source, intent, q, qMode, windowQS]);
 
   async function loadMore() {
     if (loadingMore) return;
@@ -119,10 +137,10 @@ export function ExploreTable() {
 
   // Server-side export honouring the active filters + window (full text).
   function exportUrl(format: "csv" | "xlsx"): string {
-    const params = new URLSearchParams({ sort: "engagement", limit: "2000", format });
-    if (source) params.set("source", source);
-    if (intent) params.set("intent", intent);
-    if (q) params.set("q", q);
+    const params = filterParams();
+    params.set("sort", "engagement");
+    params.set("limit", "2000");
+    params.set("format", format);
     return `/api/v1/items/export?${params}&${windowQS}`;
   }
 
@@ -157,9 +175,29 @@ export function ExploreTable() {
         <input
           value={qLive}
           onChange={(e) => setQLive(e.target.value)}
-          placeholder="search text…"
+          placeholder="search text… (comma-separates keywords: brokerage, zerodha)"
           className="min-w-56 flex-1 rounded-md border border-line bg-surface px-3 py-1.5 text-[12.5px] placeholder:text-muted/60"
         />
+        <div className="flex overflow-hidden rounded-md border border-line">
+          {(["or", "and"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setQMode(m)}
+              title={
+                m === "or"
+                  ? "match items containing any keyword"
+                  : "match items containing all keywords"
+              }
+              className={`px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                qMode === m
+                  ? "bg-surface2 text-ink"
+                  : "bg-surface text-muted hover:text-ink"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
         <span className="text-[11.5px] text-muted">
           sorted by engagement · snapshot at fetch
         </span>
@@ -178,6 +216,8 @@ export function ExploreTable() {
         </div>
       </div>
 
+      <IntentCharts query={seriesQuery} />
+
       {loading ? (
         <div className="py-16 text-center text-[13px] text-muted">loading…</div>
       ) : sorted.length === 0 ? (
@@ -187,10 +227,10 @@ export function ExploreTable() {
         />
       ) : (
         <div className="overflow-x-auto rounded-[10px] border border-line">
-          <table className="w-full min-w-[880px]">
+          <table className="w-full min-w-[1080px]">
             <thead className="bg-surface2/70">
               <tr className="text-left">
-                {["what was said", "our read", "source", "intent", "engagement", "fetched"].map((h) => (
+                {["what was said", "our read", "source", "intent", "topic", "engagement", "posted", "fetched"].map((h) => (
                   <th key={h} className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                     {h}
                   </th>
@@ -219,8 +259,25 @@ export function ExploreTable() {
                   <td className="px-3 py-2.5 text-[12px] text-muted">
                     {it.intent?.replace(/_/g, " ") ?? "–"}
                   </td>
+                  <td
+                    className="max-w-[10rem] truncate px-3 py-2.5 text-[12px] text-muted"
+                    title={it.topic_key ?? undefined}
+                  >
+                    {it.topic_key?.replace(/_/g, " ") ?? "–"}
+                  </td>
                   <td className="px-3 py-2.5 text-[12.5px] tabular-nums">
                     {interactions(it)}
+                  </td>
+                  <td className="px-3 py-2.5 text-[11.5px] tabular-nums text-muted">
+                    {it.created_at
+                      ? new Date(it.created_at).toLocaleString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZone: "Asia/Kolkata",
+                        })
+                      : "–"}
                   </td>
                   <td className="px-3 py-2.5 text-[11.5px] tabular-nums text-muted">
                     {it.ingested_at

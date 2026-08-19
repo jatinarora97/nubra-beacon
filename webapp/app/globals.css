@@ -19,6 +19,18 @@ html[data-theme="dark"] {
   --acc-opps: #10b981;
   --acc-content: #8b5cf6;
   --acc-voices: #06b6d4;
+
+  /* Chart series: fixed intent → color map (validated on the dark surface).
+     Order: complaint, feature_request, question, praise, comparison, how_to,
+     news_opinion, spam. "unclassified" renders in var(--muted). */
+  --chart-complaint: #3987e5;
+  --chart-feature-request: #199e70;
+  --chart-question: #c98500;
+  --chart-praise: #008300;
+  --chart-comparison: #9085e9;
+  --chart-how-to: #e66767;
+  --chart-news-opinion: #d55181;
+  --chart-spam: #d95926;
 }
 
 html[data-theme="light"] {
@@ -38,6 +50,16 @@ html[data-theme="light"] {
   --acc-opps: #047857;
   --acc-content: #6d28d9;
   --acc-voices: #0e7490;
+
+  /* Chart series, light-mode steps (same fixed intent order). */
+  --chart-complaint: #2a78d6;
+  --chart-feature-request: #1baf7a;
+  --chart-question: #eda100;
+  --chart-praise: #008300;
+  --chart-comparison: #4a3aa7;
+  --chart-how-to: #e34948;
+  --chart-news-opinion: #e87ba4;
+  --chart-spam: #eb6834;
 }
 
 @theme inline {
