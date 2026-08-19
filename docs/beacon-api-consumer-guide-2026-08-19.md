@@ -4,13 +4,15 @@ Working call in 30 seconds:
 
 ```bash
 export KEY="<your-api-key>"        # provided by the Beacon owner; only secret in this doc
-export B="http://mcp-server:8101/api/beacon/v1"
+export B="http://172.21.0.56:8101/api/beacon/v1"
 
 curl -s -H "X-API-Key: $KEY" "$B/taxonomy"
 ```
 
-Host: `mcp-server:8101` on the office network/VPN (not internet-exposed).
-If `mcp-server` doesn't resolve for you, use the VM's IP — same port.
+Host: `172.21.0.56:8101` — the Beacon VM's private IP; reachable from any
+machine INSIDE the company network. Not internet-exposed. From a laptop
+outside the network, tunnel through SSH first, then use localhost:
+`ssh -N -L 8101:localhost:8101 nubra` → `export B="http://localhost:8101/api/beacon/v1"`.
 
 ## Rules that apply to EVERY endpoint
 
