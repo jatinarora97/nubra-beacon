@@ -68,18 +68,35 @@ def run(daily: bool = False, **_) -> dict:
                 _store(item, counters)
             log.info("X csv backfill: %d rows imported", fetched["twitter_csv"])
 
-    # Reddit live — all feeds: hourly new+hot+rising, +top when daily
+    # Reddit live — cadence-gated (2026-08-19: residential-proxy egress bills
+    # per GB, so reddit runs every fetch_every_hours instead of hourly; the
+    # morning build always runs and carries the daily-extra feeds)
     r_reg = settings.registry["sources"]["reddit"]
-    sorts = list(r_reg.get("sort_types_hourly", ["new"]))
-    if daily:
-        sorts += list(r_reg.get("sort_types_daily_extra", []))
-    log.info("reddit: fetching feeds %s across watched subs (daily=%s) — the crawl "
-             "is silent while it works and can take 10-30+ min depending on the "
-             "machine; progress visible via file mtimes in out/reddit_scraper/",
-             sorts, daily)
-    reddit_items, reddit_health = reddit.fetch_live(sorts=sorts)
-    log.info("reddit: %d items fetched (health: %s)", len(reddit_items),
-             str(reddit_health)[:150])
+    every_h = int(r_reg.get("fetch_every_hours", 1))
+    reddit_due = True
+    if every_h > 1 and not daily:
+        state = repo.get_state("ingest", "reddit")
+        last = (state or {}).get("last_success_at")
+        # -0.25h slack: cron fires a few minutes past the hour; without it a
+        # 3h cadence would slip to 4h whenever the previous run started late
+        if last and (repo.now_utc() - last).total_seconds() < (every_h - 0.25) * 3600:
+            reddit_due = False
+    reddit_items, reddit_health = [], []
+    if not reddit_due:
+        log.info("reddit: skipped — cadence fetch_every_hours=%d, last run %s",
+                 every_h, last.isoformat())
+        reddit_health = [f"cadence skip (every {every_h}h)"]
+    else:
+        sorts = list(r_reg.get("sort_types_hourly", ["new"]))
+        if daily:
+            sorts += list(r_reg.get("sort_types_daily_extra", []))
+        log.info("reddit: fetching feeds %s across watched subs (daily=%s) — the crawl "
+                 "is silent while it works and can take 10-30+ min depending on the "
+                 "machine; progress visible via file mtimes in out/reddit_scraper/",
+                 sorts, daily)
+        reddit_items, reddit_health = reddit.fetch_live(sorts=sorts)
+        log.info("reddit: %d items fetched (health: %s)", len(reddit_items),
+                 str(reddit_health)[:150])
     for item in reddit_items:
         fetched["reddit"] += 1
         cat = (item.raw or {}).get("category", "uncategorized")
@@ -96,6 +113,9 @@ def run(daily: bool = False, **_) -> dict:
 
     for source, n in (("twitter", fetched["twitter_csv"] + fetched["twitter_live"]),
                       ("reddit", fetched["reddit"])):
+        if source == "reddit" and not reddit_due:
+            continue   # a cadence-skip must not stamp last_success_at,
+                       # or the gate would never come due again
         repo.advance_state("ingest", source, watermark=repo.now_utc(), items=n)
 
     # engagement refresh for action-candidate threads (work plan B4) — a
