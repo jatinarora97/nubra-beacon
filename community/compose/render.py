@@ -30,6 +30,18 @@ _TAGS = {"broker_issue": "COMPETITOR ISSUE", "feature_request": "FEATURE REQUEST
          "question": "QUESTION", "comparison": "COMPARISON", "topic": "TOPIC"}
 
 
+import re as _re
+
+_FEATURE_REF = _re.compile(r"\s*\((?:\s*f_\d+\s*,?)+\)")
+
+
+def strip_feature_refs(text: str | None) -> str | None:
+    """Drop grounding citations like (f_65) / (f_65, f_71) from drafts.
+    They are the compliance layer's audit trail (nubra_features ids) — stored
+    rows keep them; Slack/email readers should not see them (user 2026-08-19)."""
+    return _FEATURE_REF.sub("", text) if text else text
+
+
 def _today_start_utc() -> datetime:
     now_ist = datetime.now(IST)
     return now_ist.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
@@ -68,7 +80,8 @@ def _action_items() -> list[dict]:
             "age": f"{age_h:.0f}h" if age_h is not None else "?",
             "timing": (r.get("recommended_timing") or {}).get("window"),
             "url": r.get("url"),
-            "brand_reply": r.get("brand_reply"), "rep_reply": r.get("rep_reply"),
+            "brand_reply": strip_feature_refs(r.get("brand_reply")),
+            "rep_reply": strip_feature_refs(r.get("rep_reply")),
         })
     return actions
 
@@ -123,9 +136,25 @@ def _ops_block(all_stats: dict) -> dict:
     enr = all_stats.get("enrich") or {}
     fetched = ing.get("fetched", ing.get("fetched_by_source") or {})
 
+    # one line, every plugged-in source (user 2026-08-19): core fetches from
+    # `fetched`, add-on collectors from extra_sources stats; the ancient
+    # twitter-csv backfill counter and its note are dropped from display
     src_bits = []
-    for src, n in fetched.items():
-        src_bits.append(f"{src.replace('_', ' ')} **{n}**")
+    if fetched.get("twitter_live") is not None:
+        src_bits.append(f"X **{fetched.get('twitter_live', 0)}**")
+    if "reddit" in fetched:
+        src_bits.append(f"reddit **{fetched['reddit']}**")
+    extra = ing.get("extra_sources") or {}
+    for key, label in (("youtube", "youtube"), ("github", "github"),
+                       ("community_forum", "forums"), ("app_review", "app reviews"),
+                       ("instagram", "instagram")):
+        st = extra.get(key) or {}
+        if st.get("skipped"):
+            continue                      # daily-cadence source outside its slot
+        if st.get("enabled") is False:
+            continue
+        if "fetched" in st:
+            src_bits.append(f"{label} **{st.get('inserted', st['fetched'])}**")
     fetched_line = " · ".join(src_bits) if src_bits else "no new fetches this run"
     blocked = [h for h in (ing.get("reddit_health") or []) if "block" in h.lower() or "FAIL" in h]
     if blocked:

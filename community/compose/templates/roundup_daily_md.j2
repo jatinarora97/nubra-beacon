@@ -11,7 +11,7 @@ _grounding: **{{ payload.grounding }}**{% if payload.grounding == "assumed-v0" %
 
 ## 2 · Broker issues
 {% if payload.broker_issues %}{% for i in payload.broker_issues %}
-- **{{ i.broker }}** · {{ i.issue_key }} — {{ i.count }} complaint{{ "s" if i.count != 1 else "" }}{{ " · severity %.1f"|format(i.severity) if i.severity else "" }}
+- **{{ i.broker }}** · {{ i.issue_key }} — {{ i.count }} complaint{{ "s" if i.count != 1 else "" }}{{ " · severity %.1f"|format(i.severity) if i.severity else "" }}{{ " · threads: %s"|format(i.example_urls | join(" · ")) if i.example_urls else "" }}
 {% endfor %}{% else %}_none today_{% endif %}
 
 ## 3 · Feature requests (bar: ≥{{ payload.features_bar or 2 }} mentions)
@@ -70,4 +70,6 @@ _none today_
 - [@{{ v.handle }}]({{ v.profile_url or "#" }}) · {{ v.source }}{{ " authenticity flagged" if v.authenticity_flag else "" }}
 {% endfor %}{% else %}_not enough history yet_{% endif %}
 
-_Local build: on prod this goes to Slack + email._
+{% if payload.stats %}
+_Spend today: LLM ${{ payload.stats.llm_cost_today or 0 }}{{ " · Apify $%.2f of $%.0f this cycle"|format(payload.stats.apify_used, payload.stats.apify_cap) if payload.stats.apify_cap else "" }}_
+{% endif %}
