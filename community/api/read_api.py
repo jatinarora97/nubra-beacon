@@ -27,6 +27,19 @@ app.include_router(beacon_router)
 
 
 @app.middleware("http")
+async def _sso_identity_alias(request, call_next):
+    """oauth2-proxy forwards the verified login as X-Forwarded-Email; every
+    attribution site here reads X-Auth-Request-Email. Alias once, centrally."""
+    raw = request.scope.get("headers") or []
+    names = {k for k, _ in raw}
+    if b"x-auth-request-email" not in names:
+        fwd = next((v for k, v in raw if k == b"x-forwarded-email"), None)
+        if fwd:
+            request.scope["headers"] = [*raw, (b"x-auth-request-email", fwd)]
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def _beacon_api_audit(request, call_next):
     """Log every /api/beacon/ call (who pulled what) — internal routes skip."""
     response = await call_next(request)

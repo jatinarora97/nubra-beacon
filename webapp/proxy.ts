@@ -17,7 +17,10 @@ const CACHE_TTL_MS = 60_000;
 const authzCache = new Map<string, { status: string; ts: number }>();
 
 export async function proxy(request: NextRequest) {
-  const email = request.headers.get("x-auth-request-email");
+  // oauth2-proxy sends the verified identity UPSTREAM as x-forwarded-email
+  // (x-auth-request-email only appears on auth-endpoint responses) — accept both.
+  const email = request.headers.get("x-auth-request-email")
+    ?? request.headers.get("x-forwarded-email");
   if (!email) return NextResponse.next(); // no oauth2-proxy in front — SSO off
 
   const now = Date.now();
