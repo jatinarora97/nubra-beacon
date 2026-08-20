@@ -135,7 +135,7 @@ services:
       # Slack button callbacks are signature-authed, not cookie-authed:
       OAUTH2_PROXY_SKIP_AUTH_ROUTES: 'POST=^/api/v1/slack/interactions$'
       OAUTH2_PROXY_COOKIE_SECURE: "true"
-      OAUTH2_PROXY_COOKIE_EXPIRE: 168h
+      OAUTH2_PROXY_COOKIE_EXPIRE: 1h        # auto re-login hourly (user 2026-08-21)
       OAUTH2_PROXY_REVERSE_PROXY: "true"       # TLS terminates at the company front
       OAUTH2_PROXY_SET_XAUTHREQUEST: "true"    # forwards X-Auth-Request-Email → action attribution
       OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
