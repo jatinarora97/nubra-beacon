@@ -8,7 +8,7 @@ export default function AccessRequestsPage() {
     <div>
       <PageHeader
         title="Access requests"
-        blurb="Everyone who signs in through Google SSO lands here for approval. Approvals take effect on the person's next page load. Newly approved people must also be added as test users in the Google Cloud console, since the OAuth app is still in Testing mode."
+        blurb="Everyone who signs in through Google SSO lands here for approval. Approvals take effect on the person's next page load. Newly approved people must also be added as test users in the Google Cloud console, since the OAuth app is still in Testing mode. Removing a decided entry just resets that person — signing in again puts them back in the pending queue."
         accent="bg-muted"
       />
       <AccessRequestsManager />

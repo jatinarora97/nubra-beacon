@@ -18,6 +18,7 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/sources", label: "Sources", dot: "bg-muted", group: "Configure" },
   { href: "/api-access", label: "API access", dot: "bg-muted" },
   { href: "/access-requests", label: "Access requests", dot: "bg-muted" },
+  { href: "/team-activity", label: "Team activity", dot: "bg-muted" },
   { href: "/grounding", label: "Grounding (USPs)", dot: "bg-warn" },
   { href: "/weekly", label: "Weekly roundup", dot: "bg-trends", group: "Roundups" },
   { href: "/requests", label: "Beacon requests", dot: "bg-content", group: "Improve" },

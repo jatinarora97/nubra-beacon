@@ -32,6 +32,7 @@ export function AccessRequestsManager() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -56,6 +57,35 @@ export function AccessRequestsManager() {
       );
       if (!res.ok) {
         setMsg(res.detail ?? "Could not record the decision.");
+        setTimeout(() => setMsg(null), 4000);
+      }
+      await refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function remove(email: string) {
+    // Two-click confirm: first click arms the button, second click deletes.
+    if (confirming !== email) {
+      setConfirming(email);
+      setTimeout(() => setConfirming((c) => (c === email ? null : c)), 4000);
+      return;
+    }
+    setConfirming(null);
+    if (busy) return;
+    setBusy(email);
+    try {
+      // lib/api has no DELETE helper — plain fetch against apiBase().
+      const res = await fetch(
+        `${apiBase()}/sso/requests/${encodeURIComponent(email)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setMsg(
+          typeof d?.detail === "string" ? d.detail : "Could not remove the entry.",
+        );
         setTimeout(() => setMsg(null), 4000);
       }
       await refresh();
@@ -142,7 +172,7 @@ export function AccessRequestsManager() {
             <table className="w-full">
               <thead>
                 <tr className="text-left">
-                  {["email", "status", "decided by", "decided"].map((h, i) => (
+                  {["email", "status", "decided by", "decided", ""].map((h, i) => (
                     <th
                       key={i}
                       className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted"
@@ -164,6 +194,19 @@ export function AccessRequestsManager() {
                     </td>
                     <td className="px-2 py-2 text-[12px] tabular-nums">
                       {fmtIst(r.decided_at)}
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      <button
+                        onClick={() => remove(r.email)}
+                        disabled={busy !== null}
+                        className={`rounded-md border px-2.5 py-1 text-[11.5px] transition-colors disabled:opacity-50 ${
+                          confirming === r.email
+                            ? "border-danger text-danger"
+                            : "border-line text-muted hover:border-danger hover:text-danger"
+                        }`}
+                      >
+                        {confirming === r.email ? "Confirm remove" : "Remove"}
+                      </button>
                     </td>
                   </tr>
                 ))}

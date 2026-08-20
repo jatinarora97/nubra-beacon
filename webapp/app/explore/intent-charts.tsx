@@ -153,8 +153,8 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
   return [ref, w];
 }
 
-const H = 210;
-const PAD = { top: 10, right: 10, bottom: 22, left: 36 };
+const H = 300;
+const PAD = { top: 10, right: 10, bottom: 24, left: 44 };
 
 const intentLabel = (k: string) => k.replace(/_/g, " ");
 
@@ -164,10 +164,12 @@ function Grid({
   ticks,
   top,
   width,
+  fmt = (t) => String(t),
 }: {
   ticks: number[];
   top: number;
   width: number;
+  fmt?: (t: number) => string;
 }) {
   const plotH = H - PAD.top - PAD.bottom;
   return (
@@ -188,10 +190,10 @@ function Grid({
               x={PAD.left - 6}
               y={y + 3}
               textAnchor="end"
-              fontSize={10}
+              fontSize={12}
               fill="var(--muted)"
             >
-              {t}
+              {fmt(t)}
             </text>
           </g>
         );
@@ -226,9 +228,9 @@ function XLabels({
           <text
             key={b}
             x={xAt(i)}
-            y={H - PAD.bottom + 14}
+            y={H - PAD.bottom + 16}
             textAnchor="middle"
-            fontSize={10}
+            fontSize={12}
             fill="var(--muted)"
           >
             {bucketLabel(b, bucket)}
@@ -241,22 +243,22 @@ function XLabels({
 
 function Legend({
   intents,
-  hidden,
-  onToggle,
+  selected,
+  onSelect,
 }: {
   intents: string[];
-  hidden: Set<string>;
-  onToggle: (i: string) => void;
+  selected: string | null;
+  onSelect: (i: string) => void;
 }) {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
       {intents.map((i) => (
         <button
           key={i}
-          onClick={() => onToggle(i)}
-          title={hidden.has(i) ? "show this intent" : "hide this intent"}
-          className={`inline-flex items-center gap-1.5 text-[11px] text-muted transition-opacity hover:text-ink ${
-            hidden.has(i) ? "opacity-40" : ""
+          onClick={() => onSelect(i)}
+          title={selected === i ? "show all intents" : "show only this intent"}
+          className={`inline-flex items-center gap-1.5 text-[12.5px] text-muted transition-opacity hover:text-ink ${
+            selected !== null && selected !== i ? "opacity-40" : ""
           }`}
         >
           <span
@@ -300,15 +302,17 @@ function Tooltip({
 
 function LineChart({
   series,
-  hidden,
+  selected,
 }: {
   series: Series;
-  hidden: Set<string>;
+  selected: string | null;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hoverI, setHoverI] = useState<number | null>(null);
   const { buckets, counts, bucket } = series;
-  const intents = series.intents.filter((i) => !hidden.has(i));
+  const intents = selected
+    ? series.intents.filter((i) => i === selected)
+    : series.intents;
 
   const max = Math.max(
     1,
@@ -430,26 +434,39 @@ function LineChart({
   );
 }
 
-/* ── Stacked bar chart: intent mix per bucket ──────────────────────────── */
+/* ── Stacked bar chart: intent mix per bucket, normalized to 100% ──────── */
 
-type SegHover = { i: number; intent: string; n: number; x: number; y: number };
+type SegHover = {
+  i: number;
+  intent: string;
+  n: number;
+  pct: number;
+  x: number;
+  y: number;
+};
 
 function StackedBars({
   series,
-  hidden,
+  selected,
 }: {
   series: Series;
-  hidden: Set<string>;
+  selected: string | null;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<SegHover | null>(null);
   const { buckets, counts, bucket } = series;
-  const intents = series.intents.filter((i) => !hidden.has(i));
+  const intents = selected
+    ? series.intents.filter((i) => i === selected)
+    : series.intents;
 
+  // Denominator is always the bucket's FULL total (all intents), so an
+  // isolated intent reads as its share of the mix — the bar then only
+  // partially fills, which is the point.
   const totals = buckets.map((_, bi) =>
-    intents.reduce((s, it) => s + counts[it][bi], 0),
+    series.intents.reduce((s, it) => s + counts[it][bi], 0),
   );
-  const { top, ticks } = yScale(Math.max(1, ...totals));
+  const top = 100;
+  const ticks = [0, 25, 50, 75, 100];
   const plotW = Math.max(0, width - PAD.left - PAD.right);
   const plotH = H - PAD.top - PAD.bottom;
   const n = buckets.length;
@@ -466,20 +483,22 @@ function StackedBars({
     <div ref={ref} className="relative">
       {width > 0 && (
         <svg width={width} height={H} onMouseLeave={() => setHover(null)}>
-          <Grid ticks={ticks} top={top} width={width} />
+          <Grid ticks={ticks} top={top} width={width} fmt={(t) => `${t}%`} />
           <XLabels
             buckets={buckets}
             bucket={bucket}
             xAt={(i) => xAt(i) + barW / 2}
           />
           {buckets.map((b, bi) => {
+            if (totals[bi] <= 0) return null; // empty bucket — nothing to show
             let acc = 0;
             return intents.map((it) => {
               const v = counts[it][bi];
               if (v <= 0) return null;
-              acc += v;
+              const pct = (v / totals[bi]) * 100;
+              acc += pct;
               const yTop = PAD.top + plotH * (1 - acc / top);
-              const h = (plotH * v) / top;
+              const h = (plotH * pct) / top;
               return (
                 <rect
                   key={`${b}-${it}`}
@@ -491,7 +510,7 @@ function StackedBars({
                   stroke="var(--surface)"
                   strokeWidth={2}
                   onMouseMove={(e) =>
-                    onSegMove(e, { i: bi, intent: it, n: v, x: 0, y: 0 })
+                    onSegMove(e, { i: bi, intent: it, n: v, pct, x: 0, y: 0 })
                   }
                   onMouseLeave={() => setHover(null)}
                 />
@@ -508,7 +527,9 @@ function StackedBars({
               style={{ background: INTENT_COLOR[hover.intent] }}
             />
             <span className="text-muted">{intentLabel(hover.intent)}</span>
-            <span className="pl-2 font-medium tabular-nums">{hover.n}</span>
+            <span className="pl-2 font-medium tabular-nums">
+              {hover.pct.toFixed(1)}% ({hover.n})
+            </span>
           </div>
           <div className="mt-0.5 text-[11px] text-muted">
             {bucketTitle(buckets[hover.i], bucket)}
@@ -524,7 +545,8 @@ function StackedBars({
 export function IntentCharts({ query }: { query: string }) {
   const [resp, setResp] = useState<SeriesResponse | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  // Selected intent (isolate mode) — null shows all. Shared by both charts.
+  const [selected, setSelected] = useState<string | null>(null);
 
   // `query` already carries the debounced q — this re-runs on filter/window
   // changes only, never per keystroke.
@@ -548,27 +570,22 @@ export function IntentCharts({ query }: { query: string }) {
     [resp],
   );
 
-  function toggle(i: string) {
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
+  function select(i: string) {
+    setSelected((prev) => (prev === i ? null : i));
   }
 
   const empty = (
-    <div className="flex h-[210px] items-center justify-center text-[12.5px] text-muted">
+    <div className="flex h-[300px] items-center justify-center text-[12.5px] text-muted">
       {loaded ? "No data in this window" : "loading…"}
     </div>
   );
 
   return (
-    <div className="mb-5 grid gap-4 lg:grid-cols-2">
+    <div className="mb-5 grid gap-4 2xl:grid-cols-2">
       {(
         [
           ["Intent over time", LineChart],
-          ["Intent mix", StackedBars],
+          ["Intent mix (%)", StackedBars],
         ] as const
       ).map(([title, Chart]) => (
         <div
@@ -578,11 +595,11 @@ export function IntentCharts({ query }: { query: string }) {
           <div className="micro mb-2">{title}</div>
           {series ? (
             <>
-              <Chart series={series} hidden={hidden} />
+              <Chart series={series} selected={selected} />
               <Legend
                 intents={series.intents}
-                hidden={hidden}
-                onToggle={toggle}
+                selected={selected}
+                onSelect={select}
               />
             </>
           ) : (
