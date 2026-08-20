@@ -77,8 +77,11 @@ def run(all_stats: dict | None = None) -> dict:
         written.append(_archive(md, f"{now_ist:%Y-%m-%d-%H%M}-headsup.md"))
         subject = f"Community heads-up · {now_ist:%d %b %H:%M} IST"
         in_window = _in_headsup_window(now_ist)
+        slack_digests_on = str(settings.registry["delivery"].get(
+            "slack_digests", "on")).lower() != "off"
         if in_window:
-            channels["headsup_slack"] = slack_ch.send(md, subject)
+            channels["headsup_slack"] = (slack_ch.send(md, subject) if slack_digests_on
+                                         else "off (delivery.slack_digests)")
             channels["headsup_email"] = email_ch.send(md, subject)
         else:
             note = f"outside {SEND_WINDOW[0]:02d}–{SEND_WINDOW[1]:02d} IST window (archive only)"
@@ -106,9 +109,14 @@ def run(all_stats: dict | None = None) -> dict:
                    (r["markdown"], period, r["date"]))
         state = _roundup_channel_state(period, r["date"])
         subject = f"Community roundup ({period}) · {r['date']}"
+        slack_digests_on = str(settings.registry["delivery"].get(
+            "slack_digests", "on")).lower() != "off"
         for name, sender in (("slack", slack_ch), ("email", email_ch)):
             if (state.get(name) or {}).get("status") == "sent":
                 channels[f"roundup_{period}_{name}"] = "already sent for this row"
+                continue
+            if name == "slack" and not slack_digests_on:
+                channels[f"roundup_{period}_{name}"] = "off (delivery.slack_digests)"
                 continue
             status = sender.send(r["markdown"], subject)
             channels[f"roundup_{period}_{name}"] = status
