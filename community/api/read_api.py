@@ -1599,6 +1599,19 @@ def sso_authz(email: str):
         raise HTTPException(422, "email required")
     row = db.one("SELECT status, last_pinged_at FROM sso_allowlist WHERE email=%s",
                  (email,))
+    if row is not None and row["status"] == "approved":
+        # team-activity: the gate calls this ~1/min per active user; a fresh
+        # "visit" = activity gap > 30 min (sessions, not clicks)
+        db.execute(
+            """
+            INSERT INTO user_activity (email, day) VALUES (%s, current_date)
+            ON CONFLICT (email, day) DO UPDATE SET
+                visits = user_activity.visits
+                         + CASE WHEN user_activity.last_seen < now() - interval '30 minutes'
+                                THEN 1 ELSE 0 END,
+                last_seen = now()
+            """,
+            (email,))
     if row is None:
         db.execute("INSERT INTO sso_allowlist (email) VALUES (%s) "
                    "ON CONFLICT (email) DO NOTHING", (email,))
@@ -1637,6 +1650,43 @@ def sso_decide(email: str, payload: dict = Body(...),
     """Dashboard-side decision (the Access-requests card)."""
     return _sso_decide(email, str(payload.get("status", "")),
                        x_auth_request_email or "dashboard")
+
+
+@app.get(API + "/team-activity")
+def team_activity(days: int = 30):
+    """Per-person usage: visits + last seen (from the SSO gate's authz pings)
+    joined with attributed actions (sources added, access decisions, keys)."""
+    days = max(1, min(days, 180))
+    people = db.query(
+        """
+        SELECT email, sum(visits)::int AS visits, min(first_seen) AS first_seen,
+               max(last_seen) AS last_seen,
+               count(DISTINCT day)::int AS active_days
+        FROM user_activity WHERE day > current_date - %s
+        GROUP BY email ORDER BY max(last_seen) DESC
+        """, (days,))
+    actions = {r["by"]: r for r in db.query(
+        """
+        SELECT by, sum(sources_added)::int AS sources_added,
+               sum(decisions)::int AS access_decisions, sum(keys)::int AS keys_minted
+        FROM (
+            SELECT added_by AS by, count(*) AS sources_added, 0 AS decisions, 0 AS keys
+            FROM watch_sources WHERE added_by NOT IN ('seed', 'dashboard') GROUP BY added_by
+            UNION ALL
+            SELECT decided_by, 0, count(*), 0 FROM sso_allowlist
+            WHERE decided_by IS NOT NULL AND decided_by NOT IN ('seed') GROUP BY decided_by
+            UNION ALL
+            SELECT created_by, 0, 0, count(*) FROM api_keys
+            WHERE created_by IS NOT NULL AND created_by NOT IN ('cli', 'dashboard')
+            GROUP BY created_by
+        ) x GROUP BY by
+        """)}
+    for p in people:
+        a = actions.get(p["email"], {})
+        p["sources_added"] = a.get("sources_added", 0)
+        p["access_decisions"] = a.get("access_decisions", 0)
+        p["keys_minted"] = a.get("keys_minted", 0)
+    return {"days": days, "people": people}
 
 
 @app.delete(API + "/sso/requests/{email}", status_code=204)
