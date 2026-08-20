@@ -1014,9 +1014,12 @@ def _item_filters(topic: str | None, broker: str | None, intent: str | None,
     if w is not None:
         sql += " AND si.created_at >= %(w_from)s AND si.created_at < %(w_to)s"
         params.update({"w_from": w[0], "w_to": w[1]})
+    if intent:
+        # comma list = multi-select (Explore ask 2026-08-21); single value unchanged
+        sql += " AND e.intent = ANY(%(intents)s)"
+        params["intents"] = [t.strip() for t in intent.split(",") if t.strip()]
     for name, val, clause in (
         ("topic", topic, " AND e.topic_key = %(topic)s"),
-        ("intent", intent, " AND e.intent = %(intent)s"),
         ("audience", audience, " AND e.audience = %(audience)s"),
         ("source", source, " AND si.source = %(source)s"),
     ):
