@@ -6,12 +6,9 @@ import { get } from "@/lib/api";
 import type { Item, ItemDetail } from "@/lib/types";
 import { Badge, EmptyState } from "@/components/ui";
 import { pickWindow, windowQuery } from "@/lib/window";
-import { IntentCharts } from "./intent-charts";
+import { INTENT_COLOR, IntentCharts, SELECTABLE_INTENTS } from "./intent-charts";
 
 const PAGE = 50;
-
-const INTENTS = ["", "complaint", "feature_request", "question", "praise",
-  "comparison", "how_to", "news_opinion", "spam"];
 
 const SOURCE_LABELS: Record<string, string> = {
   twitter: "X / Twitter",
@@ -27,6 +24,90 @@ function interactions(it: Item): number {
   const n = it.engagement?.native ?? {};
   return (n.likes ?? 0) + (n.upvotes ?? 0) + (n.replies ?? 0) +
     (n.comments ?? 0) + (n.retweets ?? 0) + (n.quotes ?? 0);
+}
+
+/* ── Intent multi-select (button + checkbox popover) ─────────────────────
+   Drives the SAME `intents` array as the chart legend chips — one selection
+   state filters table, exports and charts alike. Empty = all intents. */
+function IntentSelect({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: React.Dispatch<React.SetStateAction<string[]>>;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const label =
+    value.length === 0
+      ? "all intents"
+      : value.length === 1
+        ? value[0].replace(/_/g, " ")
+        : `${value.length} intents`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12.5px]"
+      >
+        {label}
+        <span className="text-[9px] text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-48 rounded-md border border-line bg-surface py-1 shadow-lg">
+          {SELECTABLE_INTENTS.map((i) => (
+            <label
+              key={i}
+              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[12.5px] transition-colors hover:bg-surface2/50"
+            >
+              <input
+                type="checkbox"
+                checked={value.includes(i)}
+                onChange={() =>
+                  onChange((prev) =>
+                    prev.includes(i)
+                      ? prev.filter((x) => x !== i)
+                      : [...prev, i],
+                  )
+                }
+              />
+              <span
+                className="h-2 w-2 rounded-[2px]"
+                style={{ background: INTENT_COLOR[i] }}
+              />
+              {i.replace(/_/g, " ")}
+            </label>
+          ))}
+          <button
+            onClick={() => onChange([])}
+            disabled={value.length === 0}
+            className="mt-1 w-full border-t border-line px-3 py-1.5 text-left text-[12px] text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            clear — show all intents
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ExploreTable() {
@@ -47,7 +128,9 @@ export function ExploreTable() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [source, setSource] = useState("");
-  const [intent, setIntent] = useState("");
+  // Intent multi-select — ONE source of truth for dropdown AND legend chips.
+  // Empty array = all intents (no filter applied).
+  const [intents, setIntents] = useState<string[]>([]);
   const [q, setQ] = useState(initialQ);
   const [qLive, setQLive] = useState(initialQ);
   // Multi-keyword search: q is comma-separated; q_mode picks any/all matching.
@@ -77,7 +160,7 @@ export function ExploreTable() {
   function filterParams(): URLSearchParams {
     const params = new URLSearchParams();
     if (source) params.set("source", source);
-    if (intent) params.set("intent", intent);
+    if (intents.length > 0) params.set("intent", intents.join(","));
     if (q) {
       params.set("q", q);
       params.set("q_mode", qMode);
@@ -103,6 +186,10 @@ export function ExploreTable() {
   // filters changed is stale and must be dropped, not appended.
   const fetchGen = useRef(0);
 
+  // Stable dep for the intents array (a toggled-then-untoggled selection
+  // yields the same key and skips a redundant refetch).
+  const intentKey = intents.join(",");
+
   useEffect(() => {
     const gen = ++fetchGen.current;
     setLoading(true);
@@ -115,7 +202,7 @@ export function ExploreTable() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, intent, q, qMode, windowQS]);
+  }, [source, intentKey, q, qMode, windowQS]);
 
   async function loadMore() {
     if (loadingMore) return;
@@ -161,17 +248,7 @@ export function ExploreTable() {
           <option value="app_review">app reviews</option>
           <option value="instagram">instagram</option>
         </select>
-        <select
-          value={intent}
-          onChange={(e) => setIntent(e.target.value)}
-          className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12.5px]"
-        >
-          {INTENTS.map((i) => (
-            <option key={i} value={i}>
-              {i === "" ? "all intents" : i.replace(/_/g, " ")}
-            </option>
-          ))}
-        </select>
+        <IntentSelect value={intents} onChange={setIntents} />
         <input
           value={qLive}
           onChange={(e) => setQLive(e.target.value)}
@@ -216,7 +293,7 @@ export function ExploreTable() {
         </div>
       </div>
 
-      <IntentCharts query={seriesQuery} />
+      <IntentCharts query={seriesQuery} intents={intents} setIntents={setIntents} />
 
       {loading ? (
         <div className="py-16 text-center text-[13px] text-muted">loading…</div>

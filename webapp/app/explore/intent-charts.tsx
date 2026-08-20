@@ -31,6 +31,12 @@ export const INTENT_COLOR: Record<string, string> = {
   unclassified: "var(--muted)",
 };
 
+/** The 8 filterable intents — everything in INTENT_ORDER except the derived
+ *  "unclassified" bucket (null intent in the DB, not addressable by filter). */
+export const SELECTABLE_INTENTS = INTENT_ORDER.filter(
+  (i) => i !== "unclassified",
+);
+
 type SeriesResponse = {
   bucket: "hour" | "day";
   from: string;
@@ -154,7 +160,8 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
 }
 
 const H = 300;
-const PAD = { top: 10, right: 10, bottom: 24, left: 44 };
+// right ≥ 28 so the last x label (anchored "end") never clips at the svg edge
+const PAD = { top: 10, right: 28, bottom: 24, left: 44 };
 
 const intentLabel = (k: string) => k.replace(/_/g, " ");
 
@@ -221,6 +228,11 @@ function XLabels({
   xAt: (i: number) => number;
 }) {
   const show = labelIndices(buckets.length);
+  // Edge labels hug their plot edge (first "start", last "end") so they never
+  // overflow the svg on either side; interior labels stay centered.
+  const shown = [...show].sort((a, b) => a - b);
+  const first = shown[0];
+  const last = shown[shown.length - 1];
   return (
     <>
       {buckets.map((b, i) =>
@@ -229,7 +241,7 @@ function XLabels({
             key={b}
             x={xAt(i)}
             y={H - PAD.bottom + 16}
-            textAnchor="middle"
+            textAnchor={i === first ? "start" : i === last ? "end" : "middle"}
             fontSize={12}
             fill="var(--muted)"
           >
@@ -241,33 +253,41 @@ function XLabels({
   );
 }
 
+/** All 8 selectable intents, always rendered (regardless of what the current
+ *  response contains) so the filter can always be widened again. Chips toggle
+ *  the SAME selection the dropdown drives — empty selection = everything. */
 function Legend({
-  intents,
   selected,
-  onSelect,
+  onToggle,
 }: {
-  intents: string[];
-  selected: string | null;
-  onSelect: (i: string) => void;
+  selected: string[];
+  onToggle: (i: string) => void;
 }) {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-      {intents.map((i) => (
-        <button
-          key={i}
-          onClick={() => onSelect(i)}
-          title={selected === i ? "show all intents" : "show only this intent"}
-          className={`inline-flex items-center gap-1.5 text-[12.5px] text-muted transition-opacity hover:text-ink ${
-            selected !== null && selected !== i ? "opacity-40" : ""
-          }`}
-        >
-          <span
-            className="h-2 w-2 rounded-[2px]"
-            style={{ background: INTENT_COLOR[i] }}
-          />
-          {intentLabel(i)}
-        </button>
-      ))}
+      {SELECTABLE_INTENTS.map((i) => {
+        const active = selected.includes(i);
+        return (
+          <button
+            key={i}
+            onClick={() => onToggle(i)}
+            title={
+              active
+                ? "remove this intent from the filter"
+                : "add this intent to the filter"
+            }
+            className={`inline-flex items-center gap-1.5 text-[12.5px] text-muted transition-opacity hover:text-ink ${
+              selected.length > 0 && !active ? "opacity-40" : ""
+            }`}
+          >
+            <span
+              className="h-2 w-2 rounded-[2px]"
+              style={{ background: INTENT_COLOR[i] }}
+            />
+            {intentLabel(i)}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -300,19 +320,12 @@ function Tooltip({
 
 /* ── Line chart: one line per intent over time ─────────────────────────── */
 
-function LineChart({
-  series,
-  selected,
-}: {
-  series: Series;
-  selected: string | null;
-}) {
+function LineChart({ series }: { series: Series }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hoverI, setHoverI] = useState<number | null>(null);
-  const { buckets, counts, bucket } = series;
-  const intents = selected
-    ? series.intents.filter((i) => i === selected)
-    : series.intents;
+  // No client-side series filtering: the intent filter is applied server-side,
+  // so the response already contains exactly the selected intents.
+  const { buckets, counts, bucket, intents } = series;
 
   const max = Math.max(
     1,
@@ -445,25 +458,15 @@ type SegHover = {
   y: number;
 };
 
-function StackedBars({
-  series,
-  selected,
-}: {
-  series: Series;
-  selected: string | null;
-}) {
+function StackedBars({ series }: { series: Series }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<SegHover | null>(null);
-  const { buckets, counts, bucket } = series;
-  const intents = selected
-    ? series.intents.filter((i) => i === selected)
-    : series.intents;
+  // Server-side intent filtering: the response holds only selected intents,
+  // so each bar shows the mix WITHIN the selection (normalizes to 100%).
+  const { buckets, counts, bucket, intents } = series;
 
-  // Denominator is always the bucket's FULL total (all intents), so an
-  // isolated intent reads as its share of the mix — the bar then only
-  // partially fills, which is the point.
   const totals = buckets.map((_, bi) =>
-    series.intents.reduce((s, it) => s + counts[it][bi], 0),
+    intents.reduce((s, it) => s + counts[it][bi], 0),
   );
   const top = 100;
   const ticks = [0, 25, 50, 75, 100];
@@ -542,11 +545,19 @@ function StackedBars({
 
 /* ── Container: fetches the series, renders both charts side by side ───── */
 
-export function IntentCharts({ query }: { query: string }) {
+export function IntentCharts({
+  query,
+  intents,
+  setIntents,
+}: {
+  query: string;
+  // The page-level intent selection (empty = all): the same array that drives
+  // the table filter and exports. Legend chips toggle entries in it.
+  intents: string[];
+  setIntents: React.Dispatch<React.SetStateAction<string[]>>;
+}) {
   const [resp, setResp] = useState<SeriesResponse | null>(null);
   const [loaded, setLoaded] = useState(false);
-  // Selected intent (isolate mode) — null shows all. Shared by both charts.
-  const [selected, setSelected] = useState<string | null>(null);
 
   // `query` already carries the debounced q — this re-runs on filter/window
   // changes only, never per keystroke.
@@ -570,8 +581,10 @@ export function IntentCharts({ query }: { query: string }) {
     [resp],
   );
 
-  function select(i: string) {
-    setSelected((prev) => (prev === i ? null : i));
+  function toggle(i: string) {
+    setIntents((prev) =>
+      prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i],
+    );
   }
 
   const empty = (
@@ -593,18 +606,10 @@ export function IntentCharts({ query }: { query: string }) {
           className="rounded-[10px] border border-line bg-surface p-4"
         >
           <div className="micro mb-2">{title}</div>
-          {series ? (
-            <>
-              <Chart series={series} selected={selected} />
-              <Legend
-                intents={series.intents}
-                selected={selected}
-                onSelect={select}
-              />
-            </>
-          ) : (
-            empty
-          )}
+          {series ? <Chart series={series} /> : empty}
+          {/* legend stays visible even with no data, so an over-narrowed
+              selection can always be widened again */}
+          <Legend selected={intents} onToggle={toggle} />
         </div>
       ))}
     </div>
