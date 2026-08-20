@@ -1639,6 +1639,15 @@ def sso_decide(email: str, payload: dict = Body(...),
                        x_auth_request_email or "dashboard")
 
 
+@app.delete(API + "/sso/requests/{email}", status_code=204)
+def sso_delete(email: str):
+    """Remove a row entirely (test accounts, offboarding). If the person
+    signs in again they simply re-enter the pending flow."""
+    if not db.execute("DELETE FROM sso_allowlist WHERE email=%s",
+                      (email.strip().lower(),)):
+        raise HTTPException(404, "no such entry")
+
+
 @app.post(API + "/slack/interactions")
 async def slack_interactions(request: Request):
     """Slack button clicks (Approve/Reject). Auth = Slack signature (this path
