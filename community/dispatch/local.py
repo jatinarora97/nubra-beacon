@@ -77,8 +77,8 @@ def run(all_stats: dict | None = None) -> dict:
         written.append(_archive(md, f"{now_ist:%Y-%m-%d-%H%M}-headsup.md"))
         subject = f"Community heads-up · {now_ist:%d %b %H:%M} IST"
         in_window = _in_headsup_window(now_ist)
-        slack_digests_on = str(settings.registry["delivery"].get(
-            "slack_digests", "on")).lower() != "off"
+        _sd = settings.registry["delivery"].get("slack_digests", "on")
+        slack_digests_on = _sd not in (False, None) and str(_sd).lower() != "off"
         if in_window:
             channels["headsup_slack"] = (slack_ch.send(md, subject) if slack_digests_on
                                          else "off (delivery.slack_digests)")
@@ -109,8 +109,8 @@ def run(all_stats: dict | None = None) -> dict:
                    (r["markdown"], period, r["date"]))
         state = _roundup_channel_state(period, r["date"])
         subject = f"Community roundup ({period}) · {r['date']}"
-        slack_digests_on = str(settings.registry["delivery"].get(
-            "slack_digests", "on")).lower() != "off"
+        _sd = settings.registry["delivery"].get("slack_digests", "on")
+        slack_digests_on = _sd not in (False, None) and str(_sd).lower() != "off"
         for name, sender in (("slack", slack_ch), ("email", email_ch)):
             if (state.get(name) or {}).get("status") == "sent":
                 channels[f"roundup_{period}_{name}"] = "already sent for this row"
@@ -143,8 +143,11 @@ def _dispatch_overview(now_ist: datetime, written: list[str]) -> dict:
     it nothing composes or sends (no 3am Slack messages). The watermark
     advances on COMPOSE (archive), not on successful send: deterministic
     artifacts; if Slack creds land mid-day, sending starts at the next slot."""
-    cadence = settings.registry["delivery"].get("overview", "daily")
-    if cadence == "off":
+    raw_cadence = settings.registry["delivery"].get("overview", "daily")
+    # bare off/no in YAML parses as boolean False — treat it as "off", and
+    # never let an unrecognized value fall through to send-every-run
+    cadence = "off" if raw_cadence in (False, None) else str(raw_cadence).lower()
+    if cadence not in ("hourly", "daily"):
         return {"overview": "off (delivery.overview)"}
     if not _in_headsup_window(now_ist):
         return {"overview": f"outside {SEND_WINDOW[0]:02d}-{SEND_WINDOW[1]:02d} IST window"}
