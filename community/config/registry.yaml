@@ -15,6 +15,22 @@ sources:
       - value: nubra            # brand watch — powers Nubra mentions + Broker issues (2026-07-07)
         x: true
         reddit: true
+      # API-trader lens keywords (2026-08-22) — tool entities from the landscape
+      - value: kite connect
+        x: true
+        reddit: true
+      - value: openalgo
+        x: true
+        reddit: true
+      - value: algotest
+        x: true
+        reddit: true
+      - value: tradetron
+        x: true
+        reddit: true
+      - value: broker api
+        x: true
+        reddit: true
     # hashtag/handle seeds (researched 2026-07-05; were DB-only until the prod
     # fresh-start showed seeds must live here — 2026-07-09). category: value
     hashtags:
@@ -54,6 +70,8 @@ sources:
       fno_algo:                 # F&O traders + algo/API crowd
         - IndiaOptionsSelling
         - IndiaAlgoTrading
+        - algorading              # API-trader lens (2026-08-22): India algo-dev community
+        - algotrading             # global algo community — direction-setter chatter
     max_posts_per_sub: 10
     comments_per_post: 15
     refresh_max_threads: 20    # engagement re-poll of suggested-opportunity root posts per scrape run; 0 disables (B4, 2026-07-07)
@@ -108,6 +126,13 @@ sources:
         - backtesting trading strategy India
         - paper trading API India
         - trading API historical data India
+        # API-trader lens (2026-08-22)
+        - kite connect python tutorial
+        - openalgo setup
+        - algotest backtesting
+        - tradetron strategy builder
+        - dhan api python trading
+        - tradingview webhook broker india
       competitors:
         - Zerodha Kite option chain
         - Dhan option chain
@@ -172,6 +197,9 @@ sources:
       - '"FYERS API"'
       - '"Nubra API"'
       - '"Nubra websocket"'
+      - '"openalgo"'
+      - '"algotest"'
+      - '"tradingview webhook" trading'
   broker_communities:
     enabled: true
     cadence: daily              # daily = morning build only; hourly = every run
