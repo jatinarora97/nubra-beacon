@@ -36,14 +36,21 @@ and exactly where our current sources are blind.
    followable, reachable cohort.
 5. No-code builders are the bridge for non-coders into systematic trading.
 
-## Real specimens (receipts live in out/api-trader-lens-all.json)
+## Real specimens (click to verify; full set: out/api-trader-lens-all.json)
 
-1. Reddit: Flattrade + Quantman NIFTY algo, +12% in 4 months, full stack named.
-2. YouTube: Claude + Dhan MCP AI trading workflow (15k engagement).
-3. Instagram: Monte-Carlo strategy simulation in Google Colab (14k).
-4. X: "ALGO UPDATE — Aug ROI +0%, Capital Rs 5 Cr" daily accountability posts.
-5. Instagram: dev hunting an open-source Bloomberg alternative, asking for
-   working guides (18k).
+1. Flattrade + Quantman NIFTY algo, +12% in 4 months, full stack named —
+   https://reddit.com/r/IndiaAlgoTrading/comments/1vbnuf1/algo_trading_doing_well_12_profit_so_far_in_4/
+2. Claude + Dhan MCP AI trading workflow, 15k engagement —
+   https://www.youtube.com/watch?v=1NN9HIK95gw
+3. Monte-Carlo strategy simulation in Google Colab, 14k —
+   https://www.instagram.com/p/DcOg4QxtOKk/
+4. "ALGO UPDATE — Capital Rs 5 Cr" daily P&L accountability: @VolArbitrage
+   posted 11 of these in our one-month window —
+   https://x.com/VolArbitrage/status/2087844181834350681
+5. Dev hunting an open-source Bloomberg alternative, asking for working
+   guides, 18k — https://www.instagram.com/p/DbvqowotqJN/
+6. Free NSE open-interest screener vs Rs 35k paid tools, 42k —
+   https://www.instagram.com/p/DbYP6PuTEDf/
 
 ## Honest limits of this scan
 
@@ -78,18 +85,26 @@ release. Skipped for now: Telegram/Discord (user call).
    - segment endpoints on the beacon API + its own weekly digest knob
 4. Write the leadership doc v1 from the full-corpus scan (half day).
 
-## Build candidates for Nubra (rank these, leadership)
+## Build candidates — checked against what Nubra ALREADY HAS (grounding v2)
 
-Each maps to an API feature Nubra ALREADY has (grounding v2):
+What exists today, per the grounding catalog (all status LIVE): Developer
+platform (automated TOTP login, static IPs, UAT test environment) ·
+Historical data APIs (OHLC/OI/IV/Greeks/volume, batch queries, EOD bhavcopy)
+· Realtime market-data APIs (quotes, option-chain, Greeks streams, 20-level
+order book, order-update socket) · Trading/portfolio APIs with flexi orders.
+That base changes the candidate list: three of five are DISTRIBUTION plays
+on existing features, not new builds.
 
-1. Nubra MCP server (AI-assistant trading) — clearest gap, proven demand,
-   only Dhan is there.
-2. First-order-in-5-minutes developer onboarding — attacks the invisible
-   first_api stage.
-3. Backtest-ready historical data bundles — feeds their bragging currency.
-4. OpenAlgo integration — presence in the middleware every builder uses.
-5. TradingView webhook execution — catches chart traders at the exact moment
-   they become API traders.
+| # | Candidate | Have it? | So the work is |
+|---|---|---|---|
+| 1 | Nubra MCP server (AI-assistant trading) | NO — genuine gap | Build. Thin wrapper over the LIVE trading + data APIs; demand proven (Dhan's version pulls 15k engagement) |
+| 2 | First-order-in-5-min onboarding | PARTIAL — dev platform + UAT env are live | Package + document the path; the tech exists, the journey does not |
+| 3 | Backtest-ready data bundles | MOSTLY — historical APIs incl. Greeks/IV are live | Package + content: publish notebooks/bundles that feed their bragging-currency format |
+| 4 | OpenAlgo integration | NO | Contribute a Nubra adapter to the open-source repo — distribution, not product |
+| 5 | TradingView webhook execution | NO | Build; catches chart traders at the conversion moment |
 
-Next action: say "go" on step 3 (the prod segment build) or hand Part 1 +
-the build candidates to leadership first.
+## The crux (agreed 2026-08-22)
+
+More data BEFORE building: steps 1-2 above (release + backfill + full-corpus
+scan) come first; the segment pipeline and any build-candidate pitch stand on
+that. Next action: run the release when the VM is reachable.
