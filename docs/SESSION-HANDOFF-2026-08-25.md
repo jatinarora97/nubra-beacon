@@ -6,23 +6,47 @@ WITHOUT asking the user for basics. Everything below is committed on
 
 ## The active workstream: API-trader segment → "API Trading" dashboard section
 
-1. **Approved + planned**: docs/api-trading-section-plan-2026-08-25.md is
-   the build blueprint (UI = sidebar group with Overview/Landscape/Data
-   pages; pipeline = candidate gate + Haiku lens into api_trader_items;
-   landscape monitor = weekly competitor-grounding job + manual add;
-   historical seed at $0 via out/scan-v1-all.json — PROD item_ids, the
-   Aug 25 dump preserves them). Estimates inside. BUILD NOT STARTED — begin
-   here after the user's go/corrections on the 3-page layout.
-2. **Analysis deliverables (done)**: docs/api-trader-insights-2026-08-25.md
-   (senior-grade: funnel, friction economics, landscape visibility map —
-   AlgoTest/Tradetron/no-code layer are blind spots) ·
-   docs/api-trader-segment-2026-08-22.md (working doc). Dataset:
-   out/scan-v1-all.json (4,733 classified rows, local).
-3. **Taxonomy decision**: first_api splits into broker-API-first /
-   any-API-first / unclear (seed rows = unclear).
-4. **Honesty note**: "first order in 5 minutes" is OUR framing, not a
-   quoted thread — fix the phrasing in the insights doc during the build
-   (plan §6 has receipts: 70 onboarding-friction threads).
+Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
+
+1. **DONE — migration 0017** (api_trader_items + landscape_features; NO FK
+   on item_id — social_items has a composite PK; stage CHECK includes
+   'irrelevant' marker rows so judged-irrelevant items are never re-spent).
+2. **DONE — pipeline lens**: community/enrich/api_trader.py (GATE_PG regex
+   gate → Haiku classify in 20s, irrelevant markers, first_api_type
+   broker/any/unclear, theme bucketers shared with the seed loader). Wired
+   into tagger.run() isolated. Live-tested on the local prod mirror.
+   Historical seed: data/api_trader_seed.json.gz + scripts/
+   load_api_trader_seed.py (4,733 rows loaded locally, $0). (86400c1)
+3. **DONE — endpoints**: community/api/api_trading_api.py, 7 routes under
+   /api/v1/api-trading/* (funnel w/ first_api_split, themes, candidates,
+   landscape GET/POST/DELETE, items). Registry api_trading block holds the
+   5 candidate defs + 10-player landscape roster. All tested green on real
+   data. (bbb1d03)
+4. **DONE — landscape weekly monitor**: community/enrich/
+   landscape_monitor.py — fetches roster urls, Haiku-extracts shipped/
+   upcoming features (existing names fed back = canonical dedupe), upserts
+   added_by='auto' (never clobbers manual rows' status), 6-day
+   pipeline_state gate, rides extra_sources.run(daily). Verified: 8/8
+   fetchable players, 89 features. AlgoTest + Angel One are JS/bot-gated →
+   urls: [] = manual-only by design. (c7ed566)
+5. **DONE — UI**: sidebar group "API trading" (Overview / Landscape /
+   Data) + webapp/app/api-trading/* (lens.ts vocabulary, days-filter,
+   funnel + theme boards + candidate cards; landscape coverage strip +
+   feature catalog + manual add/delete; filterable data explorer with
+   ?theme= deep links). lib/api.ts gained del(). Verified: npm run build
+   clean + SSR curl checks on all 3 pages + POST/DELETE round-trip clean.
+   Notes: candidates window capped at 90d (previous-window comparison must
+   stay inside 180d retention); unknown kinds render as "other" segment.
+6. **TODO — release + prod bring-up**: push-prod tag, then ON PROD run
+   `./cm migrate` (0017), `docker compose exec -T api python scripts/
+   load_api_trader_seed.py` (seed, $0), first landscape run happens on the
+   next morning build. ~1k historical gated-but-irrelevant items get
+   classified naturally by the hourly lens (~$0.40 total, bounded 200/run).
+
+Analysis deliverables (done): docs/api-trader-insights-2026-08-25.md
+(senior-grade; observed/inferred/chosen wording fixed, 7210ff8) ·
+out/scan-v1-all.json (4,733 rows, local only). Taxonomy: first_api splits
+broker/any/unclear; seed rows = 'unclear', live classification fills it.
 
 ## In flight on prod (check before anything else)
 

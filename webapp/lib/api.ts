@@ -45,3 +45,23 @@ export async function post(
     return { ok: false, status: 0, detail: String(e) };
   }
 }
+
+export async function del(
+  path: string,
+): Promise<{ ok: boolean; status: number; detail?: string }> {
+  try {
+    const res = await fetch(`${apiBase()}${path}`, { method: "DELETE" });
+    let detail: string | undefined;
+    if (!res.ok) {
+      try {
+        const j = await res.json();
+        detail = typeof j?.detail === "string" ? j.detail : JSON.stringify(j);
+      } catch {
+        /* ignore */
+      }
+    }
+    return { ok: res.ok, status: res.status, detail };
+  } catch (e) {
+    return { ok: false, status: 0, detail: String(e) };
+  }
+}
