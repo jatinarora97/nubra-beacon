@@ -38,14 +38,36 @@ def main() -> None:
     cfg = settings.registry["sources"]["reddit"]
     cfg["max_posts_per_sub"] = int(os.getenv("REDDIT_BACKFILL_POSTS", "100"))
 
-    items, health = reddit.fetch_live(sorts=["new", "hot", "rising", "top"])
-    counters = {"enabled": True, "fetched": 0, "inserted": 0, "skipped_existing": 0}
-    for item in items:
-        counters["fetched"] += 1
-        _store(item, counters)
-    print(json.dumps(counters, indent=1))
-    if health:
-        print("health notes:", json.dumps(health[:10], indent=1))
+    # one sub at a time, stored IMMEDIATELY after each: a killed session or a
+    # mid-crawl crash keeps everything already crawled (lesson 2026-08-25 —
+    # an all-at-end run died with the user's terminal and lost 40+ min of work)
+    subs = list(cfg.get("subreddits") or [])
+    flat = []
+    for entry in subs:
+        flat += list(entry.values())[0] if isinstance(entry, dict) else [entry]
+    if isinstance(cfg.get("subreddits"), dict):
+        flat = [s for lst in cfg["subreddits"].values() for s in lst]
+    totals = {"enabled": True, "fetched": 0, "inserted": 0, "skipped_existing": 0}
+    all_health = []
+    for i, sub in enumerate(flat, 1):
+        cfg["subreddits"] = {"backfill": [sub]}
+        try:
+            items, health = reddit.fetch_live(sorts=["new", "hot", "rising", "top"])
+        except Exception as e:  # noqa: BLE001 — one sub must not sink the rest
+            print(f"[{i}/{len(flat)}] r/{sub}: CRAWL ERROR {type(e).__name__}: {str(e)[:100]}",
+                  flush=True)
+            continue
+        before = totals["inserted"]
+        for item in items:
+            totals["fetched"] += 1
+            _store(item, totals)
+        all_health += health
+        print(f"[{i}/{len(flat)}] r/{sub}: +{totals['inserted'] - before} inserted "
+              f"(totals: {totals['inserted']} inserted / {totals['skipped_existing']} known)",
+              flush=True)
+    print(json.dumps(totals, indent=1))
+    if all_health:
+        print("health notes:", json.dumps(all_health[:10], indent=1))
     print("done — enrichment picks the new items up on the next pipeline run")
 
 
