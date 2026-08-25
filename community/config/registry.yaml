@@ -388,9 +388,12 @@ api_trading:                       # the API-trader segment (plan 2026-08-25)
     - name: Upstox
       patterns: '\yupstox\y'
       urls: [https://upstox.com/developer/api-documentation/open-api/]
+    # AlgoTest + Angel One pages are JS-rendered/bot-gated (checked 2026-08-25):
+    # no urls -> auto job skips them, features maintained via manual add on the
+    # Landscape page. Coverage strip still works (patterns only need chatter).
     - name: AlgoTest
       patterns: '\yalgotest\y'
-      urls: [https://algotest.in/]
+      urls: []
     - name: Tradetron
       patterns: '\ytradetron\y'
       urls: [https://tradetron.tech/]
@@ -402,10 +405,10 @@ api_trading:                       # the API-trader segment (plan 2026-08-25)
       urls: [https://www.tradingview.com/support/solutions/43000614331/]
     - name: Angel One
       patterns: '\y(angel ?one|smartapi)\y'
-      urls: [https://smartapi.angelone.in/docs]
+      urls: []
     - name: Fyers
       patterns: '\yfyers\y'
-      urls: [https://myapi.fyers.in/docsv3]
+      urls: [https://fyers.in/products/api/]
     - name: Groww
       patterns: '\ygroww\y'
       urls: [https://groww.in/trade-api/docs/curl]

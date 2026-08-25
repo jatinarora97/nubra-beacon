@@ -99,4 +99,13 @@ def run(daily: bool = False, **_) -> dict:
             except Exception as exc:  # noqa: BLE001 - source isolation by design
                 log.exception("instagram tier pass failed; continuing")
                 out[out_key]["tiers"] = {"error": f"{type(exc).__name__}: {str(exc)[:180]}"}
+    # landscape monitor rides the morning build (weekly self-gate inside) —
+    # isolated like every source
+    if daily:
+        try:
+            from community.enrich import landscape_monitor
+            out["landscape"] = landscape_monitor.run_weekly()
+        except Exception as exc:  # noqa: BLE001 - source isolation by design
+            log.exception("landscape monitor failed; continuing")
+            out["landscape"] = {"error": f"{type(exc).__name__}: {str(exc)[:180]}"}
     return out

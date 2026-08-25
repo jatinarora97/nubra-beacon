@@ -52,6 +52,18 @@ WORKING_THEMES = [
 ]
 
 
+def json_array(raw: str) -> list:
+    """Model replies sometimes wrap the array in prose/fences — cut to the
+    outermost [...] before parsing. Shared with landscape_monitor."""
+    raw = raw.strip().strip("`")
+    if raw.startswith("json"):
+        raw = raw[4:]
+    start, end = raw.find("["), raw.rfind("]")
+    if start < 0 or end <= start:
+        raise ValueError("no JSON array in reply")
+    return json.loads(raw[start:end + 1])
+
+
 def _theme(blob: str, themes: list[tuple[str, str]]) -> str | None:
     low = blob.lower()
     for name, pat in themes:
@@ -110,10 +122,7 @@ def classify_new(limit: int = 200) -> dict:
                 messages=[{"role": "user",
                            "content": _PROMPT + "\n\n" + json.dumps(items, ensure_ascii=False)}])
             stats["calls"] += 1
-            txt = resp.content[0].text.strip().strip("`")
-            if txt.startswith("json"):
-                txt = txt[4:]
-            out = json.loads(txt)
+            out = json_array(resp.content[0].text)
         except Exception as e:  # noqa: BLE001 — one chunk must not sink the run
             log.warning("chunk failed (%s: %s)", type(e).__name__, str(e)[:100])
             continue
