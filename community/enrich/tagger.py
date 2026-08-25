@@ -194,4 +194,13 @@ def run(sync: bool = False) -> dict:
     stats["est_llm_usd"] = round(est, 3)
     log.info(f"tokens in={stats['tokens_in']} out={stats['tokens_out']} "
           f"est ${stats['est_llm_usd']} ({stats['transport']})")
+    # API-trader lens rides the enrich stage (plan 2026-08-25): classifies the
+    # just-enriched candidates; isolated — its failure never fails enrichment
+    try:
+        from community.enrich import api_trader
+        stats["api_trader"] = api_trader.classify_new()
+    except Exception as e:  # noqa: BLE001
+        log.warning("api-trader lens failed; continuing (%s: %s)",
+                    type(e).__name__, str(e)[:120])
+        stats["api_trader"] = {"error": type(e).__name__}
     return stats

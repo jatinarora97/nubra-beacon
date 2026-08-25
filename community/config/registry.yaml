@@ -348,3 +348,7 @@ beacon_api:                        # external read-only API (/api/beacon/v1)
   rate_limit_per_min: 60           # per key
   max_limit: 200                   # page-size ceiling (default 25)
   statement_timeout_ms: 2000       # every beacon-API query self-cancels past this
+
+api_trading:                       # the API-trader segment (plan 2026-08-25)
+  enabled: true
+  max_classified_per_run: 200      # lens classifications per hourly run (Haiku, ~20/call)
