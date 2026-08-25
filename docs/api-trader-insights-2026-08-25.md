@@ -182,10 +182,12 @@ coverage in the coming weeks.
 
 ## 5 · Build candidates — demand patterns, sized by the data above
 
+How to read: **Observed** = counted in the data. **Inferred** = our reasoning on the counts. Named targets are CHOSEN goalposts (our framing), never quotes.
+
 | # | Pattern | Demand evidence | Grounding hooks (Nubra capability catalog v2) |
 |---|---|---|---|
 | A | **AI-native trading access** (assistant/MCP) | AI-building 129 showcases + 15k-engagement MCP content + AI codegen as the first_api bridge; Dhan alone owns this narrative today | Developer platform · Trading/portfolio APIs · data APIs. An internal Nubra MCP exists already (marketing-shaped: github.com/anuragsrivastava-zanskar/nubra-marketing-mcp-deploy) — pattern experience in-house |
-| B | **Zero-friction first order** | 41% friction at first_api; onboarding theme 119; testnet demand visible | Developer platform (UAT env, TOTP automation) |
+| B | **Zero-friction first order** | Observed: 41% friction at the first_api stage; 116 distinct onboarding/auth threads (daily TOTP re-login breaking bots, OAuth failures with cryptic codes, webhook prerequisites just to backtest, broken client libraries); tutorial genres exist purely for broker signup. Inferred: each is a delay between intent and first order at the trader's moment of maximum broker-openness — onboarding speed is an acquisition weapon. "First order in minutes" is our CHOSEN target, not a quoted complaint | Developer platform (UAT env, TOTP automation) |
 | C | **Risk primitives as API calls** | Order-primitive gaps 172 + risk-control asks 54, incl. churners' circuit-breaker requests | Trading APIs with flexi orders |
 | D | **Data that feeds the proof culture** | Data-cost 158 + backtest-distrust 170 + quality 43; free-data builds = 11% of all showcases | Historical (OHLC/OI/IV/Greeks/bhavcopy) + realtime APIs |
 | E | **Presence in the layers they build in** | OpenAlgo #1 at building stage; TradingView across all stages | Developer platform |
