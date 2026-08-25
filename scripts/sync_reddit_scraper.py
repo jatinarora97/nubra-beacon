@@ -114,7 +114,16 @@ _SCRAPER_LAUNCH_NEW = """        _proxy = None  # PATCH: optional egress proxy (
             _pu = urlsplit(_proxy_url)
             _proxy = {"server": f"{_pu.scheme}://{_pu.hostname}:{_pu.port}"}
             if _pu.username:
-                _proxy["username"] = unquote(_pu.username)
+                _user = unquote(_pu.username)
+                # Rotating residential exits within ONE browser session trip
+                # Reddit's checks (0-posts, live 2026-08-25); session-<id>
+                # pins one exit for the whole crawl.
+                if "session-" not in _user and "apify.com" in (_pu.hostname or ""):
+                    import random
+                    import string
+                    _user += ",session-" + "".join(
+                        random.choices(string.ascii_lowercase + string.digits, k=10))
+                _proxy["username"] = _user
                 _proxy["password"] = unquote(_pu.password or "")
             log.info("egress proxy active: %s", _proxy["server"])
         browser = await pw.chromium.launch(headless=HEADLESS, proxy=_proxy)
