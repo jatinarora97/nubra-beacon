@@ -7,22 +7,30 @@ from one month of real chatter. Part 2 = the to-do list. Read either alone.
 
 # PART 1 — WHAT THE DATA SAYS (analysis only, no plans)
 
-Basis: 2,000 items, Jul 23–Aug 22, all sources. 130 matched the API-trader
-lens (~60 high-confidence). Small sample — treat as directional.
+Basis (v1, 2026-08-25): the FULL prod corpus — 99,004 items, Jul 8–Aug 25,
+all sources. 24,235 screened by the lens, **4,746 relevant** (36x the first
+capped sample). Every stage is now populated.
 
 ## Where people are in the journey
 
 | Stage | Count | Meaning |
 |---|---|---|
-| exploring | ~50 | curious, asking where to start (noisiest bucket) |
-| first_api | 11 | setting up keys / first order — ALMOST INVISIBLE |
-| building | 45 | writing strategies, backtesting — richest bucket |
-| scaling | 24 | real capital, live algos, public P&L |
-| churning | 0 | tool-switching pain — WE CANNOT SEE IT YET |
+| exploring | 881 | curious, asking where to start |
+| first_api | 619 | keys / auth / first order — visible now, and painful |
+| building | 1,773 | strategies, code, backtests — the biggest bucket |
+| scaling | 1,396 | real capital, live algos, infra concerns |
+| churning | 64 | quitting or switching — small but loud |
 
-The two zeros-and-elevens are the story: the entry moment (first_api) and
-the frustration moment (churning) are exactly where a broker wins customers,
-and exactly where our current sources are blind.
+Kinds: 1,795 guidance-seeking · 1,717 showcases · **1,032 frictions** (the
+capped sample had found exactly 1) · 197 tool comparisons.
+
+## Tool leaderboard (what relevant items actually name)
+
+upstox 90 · **openalgo 87** · dhan 82 · zerodha 72 · sensibull 64 ·
+tradingview 64 · python 42 · fyers 30. OpenAlgo at #2 confirms the
+"middleware is the distribution layer" thesis. Nubra is named in 26 relevant
+items — including third-party YouTube content on the Nubra Python SDK
+("lowers entry friction") that already exists without us asking.
 
 ## What is working for them (from their own success posts)
 
@@ -52,12 +60,41 @@ and exactly where our current sources are blind.
 6. Free NSE open-interest screener vs Rs 35k paid tools, 42k —
    https://www.instagram.com/p/DbYP6PuTEDf/
 
+## The friction board — what actually blocks API traders (479 API-layer frictions)
+
+1. **No atomic bracket orders in India** — entry+target+SL in one API call;
+   traders openly question whether brokers fake it via GTT —
+   https://reddit.com/r/IndiaAlgoTrading/comments/1v3m4e7/no_atomic_bracket_order_support_in_india/
+2. **Paid data feeds at the entry stage** — "which API is best" threads turn
+   on who includes data free —
+   https://reddit.com/r/IndiaAlgoTrading/comments/1uqfozi/which_api_is_best_for_algo_trading/
+3. **Reliability incidents kill trust**: WebSocket 403/1006 halting live
+   algos (Upstox forum), partial fills without auto-squareoff creating
+   unintended exposure —
+   https://community.upstox.com/t/websocket-market-feed-request-return-403-with-error-code-1006/16193
+   https://community.upstox.com/t/algo-trading-leg-partially-executed-auto-square-off-not-triggered/15477
+4. **Data trust**: same stock, different ticks across broker APIs (>50-point
+   ATH variance) —
+   https://reddit.com/r/IndianStockMarket/comments/1vcbtvh/itcs_high_price_differs_across_platforms_and_by_a/
+5. **Deployment friction**: static-IP requirements, subscription tiers, and
+   local-to-cloud infra stall first live deployments; corporate-actions /
+   earnings-calendar data has no good API home —
+   https://reddit.com/r/IndiaAlgoTrading/comments/1uq82g6/i_have_been_building_an_algo_trading_bot_on_my/
+   https://reddit.com/r/IndianStockMarket/comments/1vbnz69/where_can_i_track_earnings_and_all_other/
+
+Stage-specific extras: first_api chatter names Kite Connect registration
+itself as an entry barrier (https://www.youtube.com/watch?v=r88L9AqnNaE);
+churning traders ask for risk-exposure APIs / drawdown circuit-breakers
+(https://reddit.com/r/IndianStreetBets/comments/1vgzjs1/thanks_a_ton_for_your_feedback_on_my_last_post_i/).
+
 ## Honest limits of this scan
 
-1. Export was capped at 2,000 items — the full corpus is ~10x and unscanned.
-2. "Exploring" bucket is ~half noise (generic finfluencer content).
-3. churning = 0 means our sources cannot see pain, not that pain is absent.
-4. ~50 items went unscreened (two parse failures).
+1. Wide-screen precision is looser than the keyword tier — some general
+   F&O-mechanics confusion rides along (counts are directional +-15%).
+2. A handful of global/off-topic rows slip in (e.g. one Polymarket GitHub
+   issue) — the prod segment classifier gets an India/market filter.
+3. Reddit data ends Aug 19 in this corpus (collector gap; backfill planned).
+4. ~100 of 24,235 items went unscreened (four parse failures).
 
 ---
 
@@ -74,8 +111,8 @@ release. Skipped for now: Telegram/Discord (user call).
 
 1. Release + backfill (30 min of commands, then it runs itself): ships the
    new sources; the churning/first_api blind spots start filling.
-2. `make dump` on the VM when reachable → restore locally → re-run the scan
-   on the FULL corpus (~1 hr) → Part 1's numbers get real depth.
+2. DONE 2026-08-25: prod dump restored, full corpus scanned — Part 1 now
+   carries the real numbers.
 3. Build the segment as a prod system (~2 days, after leadership nods):
    - cheap keyword gate (high recall) → Haiku classifier (high precision)
      → own table `api_trader_items` with stage / layer / kind / tools /
@@ -103,8 +140,10 @@ on existing features, not new builds.
 | 4 | OpenAlgo integration | NO | Contribute a Nubra adapter to the open-source repo — distribution, not product |
 | 5 | TradingView webhook execution | NO | Build; catches chart traders at the conversion moment |
 
-## The crux (agreed 2026-08-22)
+## The crux — UPDATED 2026-08-25
 
-More data BEFORE building: steps 1-2 above (release + backfill + full-corpus
-scan) come first; the segment pipeline and any build-candidate pitch stand on
-that. Next action: run the release when the VM is reachable.
+The more-data condition is met: 4,746 relevant items, all stages populated,
+1,032 frictions on the board. What remains before the segment build: ship
+the pending release (new sources + reddit proxy env + backfill script), run
+the reddit backfill, then leadership reads Part 1. Next action: deploy the
+2026-08-25 tag, then say "go" on the segment pipeline build (~2 days).
