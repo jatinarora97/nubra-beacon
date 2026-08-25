@@ -47,17 +47,27 @@ def _preflight() -> bool:
     Honors REDDIT_PROXY_URL (same egress the crawl uses) — prod's VM IP gets
     served the new-site shell without it (incident 2026-08-10..18)."""
     import os
+    import time
 
     import httpx
-    try:
-        r = httpx.get("https://old.reddit.com/r/IndianStockMarket/new/",
-                      headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
-                               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"},
-                      timeout=25.0, follow_redirects=True,
-                      proxy=os.getenv("REDDIT_PROXY_URL") or None)
-        return r.status_code == 200 and 'data-fullname="t3_' in r.text
-    except Exception:  # noqa: BLE001 — unreachable network = don't crawl
-        return False
+    proxy = os.getenv("REDDIT_PROXY_URL") or None
+    # residential proxies rotate exits per request and an occasional exit gets
+    # Reddit's decoy page — one bad draw must not veto the crawl (live 2026-08-25)
+    attempts = 3 if proxy else 1
+    for i in range(attempts):
+        try:
+            r = httpx.get("https://old.reddit.com/r/IndianStockMarket/new/",
+                          headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
+                                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"},
+                          timeout=40.0 if proxy else 25.0, follow_redirects=True,
+                          proxy=proxy)
+            if r.status_code == 200 and 'data-fullname="t3_' in r.text:
+                return True
+        except Exception:  # noqa: BLE001 — unreachable network = keep trying
+            pass
+        if i < attempts - 1:
+            time.sleep(1)
+    return False
 
 
 def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[str]]:
