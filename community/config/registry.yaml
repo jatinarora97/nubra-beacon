@@ -352,3 +352,60 @@ beacon_api:                        # external read-only API (/api/beacon/v1)
 api_trading:                       # the API-trader segment (plan 2026-08-25)
   enabled: true
   max_classified_per_run: 200      # lens classifications per hourly run (Haiku, ~20/call)
+  # Build candidates shown on the Overview page — evidence counters compute
+  # live from api_trader_items themes; edit here without a code change.
+  candidates:
+    - key: ai_native
+      title: AI-native trading access (assistant / MCP)
+      themes: [ai_assisted]
+      grounding: [Developer platform, Trading and portfolio APIs with flexi orders]
+    - key: first_order
+      title: Zero-friction first order
+      themes: [onboarding_auth]
+      grounding: [Developer platform]
+    - key: risk_primitives
+      title: Risk primitives as API calls
+      themes: [order_primitives, risk_controls]
+      grounding: [Trading and portfolio APIs with flexi orders]
+    - key: proof_data
+      title: Data that feeds the proof culture
+      themes: [data_access, backtest_trust, data_quality, cost_pricing, backtest_proof, free_data_builds]
+      grounding: [Historical data APIs, Realtime market-data APIs]
+    - key: distribution
+      title: Presence in the layers they build in
+      themes: [no_code]
+      grounding: [Developer platform]
+  # Landscape monitor: tracked players. patterns = pg regex for coverage
+  # counts; urls = public pages the weekly job reads for shipped/upcoming
+  # features. Edit freely; the weekly job re-reads this list.
+  landscape:
+    - name: Dhan
+      patterns: '\y(dhan|dhanhq)\y'
+      urls: [https://dhanhq.co/docs/v2/, https://dhan.co/pricing/]
+    - name: Zerodha
+      patterns: '\y(zerodha|kite connect|streak|sensibull|varsity)\y'
+      urls: [https://kite.trade/docs/connect/v3/, https://zerodha.com/pricing/]
+    - name: Upstox
+      patterns: '\yupstox\y'
+      urls: [https://upstox.com/developer/api-documentation/open-api/]
+    - name: AlgoTest
+      patterns: '\yalgotest\y'
+      urls: [https://algotest.in/]
+    - name: Tradetron
+      patterns: '\ytradetron\y'
+      urls: [https://tradetron.tech/]
+    - name: OpenAlgo
+      patterns: '\yopenalgo\y'
+      urls: [https://docs.openalgo.in/]
+    - name: TradingView
+      patterns: '\y(tradingview|pine ?script)\y'
+      urls: [https://www.tradingview.com/support/solutions/43000614331/]
+    - name: Angel One
+      patterns: '\y(angel ?one|smartapi)\y'
+      urls: [https://smartapi.angelone.in/docs]
+    - name: Fyers
+      patterns: '\yfyers\y'
+      urls: [https://myapi.fyers.in/docsv3]
+    - name: Groww
+      patterns: '\ygroww\y'
+      urls: [https://groww.in/trade-api/docs/curl]
