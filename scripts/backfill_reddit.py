@@ -41,18 +41,16 @@ def main() -> None:
     # one sub at a time, stored IMMEDIATELY after each: a killed session or a
     # mid-crawl crash keeps everything already crawled (lesson 2026-08-25 —
     # an all-at-end run died with the user's terminal and lost 40+ min of work)
-    subs = list(cfg.get("subreddits") or [])
-    flat = []
-    for entry in subs:
-        flat += list(entry.values())[0] if isinstance(entry, dict) else [entry]
-    if isinstance(cfg.get("subreddits"), dict):
-        flat = [s for lst in cfg["subreddits"].values() for s in lst]
+    # Sub list = watch_sources when available (the live source of truth;
+    # registry is only the seed), and restriction goes through only_subs —
+    # mutating cfg["subreddits"] does nothing when watch_sources has rows.
+    flat = sorted(reddit._sub_categories(cfg))
     totals = {"enabled": True, "fetched": 0, "inserted": 0, "skipped_existing": 0}
     all_health = []
     for i, sub in enumerate(flat, 1):
-        cfg["subreddits"] = {"backfill": [sub]}
         try:
-            items, health = reddit.fetch_live(sorts=["new", "hot", "rising", "top"])
+            items, health = reddit.fetch_live(sorts=["new", "hot", "rising", "top"],
+                                              only_subs=[sub])
         except Exception as e:  # noqa: BLE001 — one sub must not sink the rest
             print(f"[{i}/{len(flat)}] r/{sub}: CRAWL ERROR {type(e).__name__}: {str(e)[:100]}",
                   flush=True)
@@ -67,7 +65,7 @@ def main() -> None:
               flush=True)
     print(json.dumps(totals, indent=1))
     if all_health:
-        print("health notes:", json.dumps(all_health[:10], indent=1))
+        print("health notes:", json.dumps(all_health, indent=1))
     print("done — enrichment picks the new items up on the next pipeline run")
 
 

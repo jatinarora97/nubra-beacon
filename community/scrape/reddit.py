@@ -70,11 +70,16 @@ def _preflight() -> bool:
     return False
 
 
-def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[str]]:
+def fetch_live(sorts: list[str] | None = None,
+               only_subs: list[str] | None = None) -> tuple[list[SocialItem], list[str]]:
     """Fetch posts + comments (+ one level of replies) for every registry sub.
-    Returns (items, health_notes) — a failing sub is a note, never an exception."""
+    Returns (items, health_notes) — a failing sub is a note, never an exception.
+    only_subs restricts the crawl to exactly those subs (backfill uses this —
+    mutating cfg does NOT restrict, because _sub_categories prefers the
+    watch_sources table over the passed registry; bug found 2026-08-26)."""
     reg = settings.registry.get("sources", {}).get("reddit", {})
-    cat_map = _sub_categories(reg)
+    cat_map = ({s: "backfill" for s in only_subs} if only_subs
+               else _sub_categories(reg))
     sorts = sorts or list(reg.get("sort_types_hourly", ["new"]))
 
     from community.lib import reddit_scraper as pkg
