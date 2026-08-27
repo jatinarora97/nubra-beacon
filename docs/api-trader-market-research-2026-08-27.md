@@ -1,16 +1,16 @@
 # Finding and targeting API traders — market research, 2026-08-27
 
-**What this is.** Three questions, answered with two evidence bases: (1) Beacon's corpus — ~99k items Jun–Aug 2026, of which ~4,760 classified API-trader-relevant ("lens items"); (2) live web audits run 2026-08-27 (docs portals, pricing pages, GitHub API, forum stats, t.me previews). Every claim carries a link. **Observed** = counted in data or fetched from a page. **Inferred** = our reading, labeled as such.
+**What this is.** Three questions, answered with two evidence bases: (1) Beacon's corpus — ~112.6k items Jun–Aug 2026 (Aug-27 prod snapshot, reddit outage backfilled), of which 5,242 classified API-trader-relevant ("lens items"); (2) live web audits run 2026-08-27 (docs portals, pricing pages, GitHub API, forum stats, t.me previews). Every claim carries a link. **Observed** = counted in data or fetched from a page. **Inferred** = our reading, labeled as such.
 
 ---
 
 ## The 10-second version
 
-1. **Where they are**: r/IndiaAlgoTrading is the single best venue (448 lens items, 52% API-trader density, 21k members growing ~200%/yr). OpenAlgo (GitHub+Discord) is the densest developer pool — and Nubra is already on its broker list. Broker-owned forums are where first-time API users concentrate — and Nubra doesn't have one.
+1. **Where they are**: r/IndiaAlgoTrading is the single best venue (568 lens items at 38% API-trader density — ~10x denser than the big generalist subs; [21k members growing ~200%/yr](https://gummysearch.com/r/IndiaAlgoTrading/)). OpenAlgo (GitHub+Discord) is the densest developer pool — and Nubra is already on its broker list. Broker-owned forums are where first-time API users concentrate — and Nubra doesn't have one.
 2. **The #1 complaint against every incumbent is API/data pricing** — and Nubra's API pricing is publicly undisclosed. That's a free positioning win being left on the table.
 3. **Nubra's owned surface is good** (public docs, PyPI SDK, UAT env, tutorials); **its third-party surface is near-zero**: 0 TradingQnA posts, ~0 discoverable Reddit threads, 1 GitHub star, absent from AlgoTest/Tradetron's own broker lists, no Chittorgarh page. Dhan out-mentions Nubra ~8–11x in the corpus.
 4. **The incumbents' universal weak spots — no test env (3 of 6), daily-token auth pain, websocket reliability, paywalled/removed depth — are exactly what Nubra's stack already attacks.** The story exists; the distribution doesn't.
-5. **Three segments, three doors**: explorers (19%) live on YouTube/generalist subs and ask learning questions; first-timers (13%) over-index on broker forums and hit auth/data-cost walls; the 68% already building live in r/IndiaAlgoTrading + GitHub and respond to proof (latency benchmarks, live P&L, integrations), not ads.
+5. **Three segments, three doors**: explorers (18%) live on YouTube/generalist subs and ask learning questions; first-timers (13%) over-index on broker forums and hit auth/data-cost walls; the 69% already building live in r/IndiaAlgoTrading + GitHub and respond to proof (latency benchmarks, live P&L, integrations), not ads.
 
 ---
 
@@ -204,16 +204,19 @@ One table per player: the dimensions that decide adoption, them vs Nubra, chatte
 
 ## B1. Venue map (lens items ÷ venue total = density; observed)
 
+Numbers below are from the Aug-27 snapshot (reddit backfilled; lens = 5,242).
+
 | Venue | Lens items | Density | Verdict |
 |---|---|---|---|
-| GitHub (all repos) | 304 | **68%** | Purest habitat, small |
-| **r/IndiaAlgoTrading** | **448** | **52%** | **#1 by size AND concentration**; [21k members, ~+200%/yr](https://gummysearch.com/r/IndiaAlgoTrading/) |
-| Upstox Community forum | 241 | 27% | First-timers' habitat, broker-owned |
-| Zerodha TradingQnA | 235 | 12% | Large + open ([5,061-topic algo category](https://tradingqna.com/categories)) |
-| YouTube | 438 | 12% | Tutorial supply; core-algo channels are 3k–56k subs, not the 1M options celebrities |
-| Twitter/X | 2,488 | 7% | Biggest raw pool, heavily vendor/bot-diluted (observed in voices analysis) |
-| r/IndianStockMarket · r/IndianStreetBets | 218 · 120 | 2–5% | Reach venues, incidental algo content |
-| Instagram · app reviews | 28 · 31 | ~1% | Not habitats for this segment |
+| GitHub (all repos) | 307 | **~68%** | Purest habitat, small |
+| **r/IndiaAlgoTrading** | **568** | **38%** | **#1 by size AND concentration** — ~10x denser than the big subs; [21k members, ~+200%/yr](https://gummysearch.com/r/IndiaAlgoTrading/) |
+| Upstox Community forum | 257 | 26% | First-timers' habitat, broker-owned |
+| Zerodha TradingQnA | 239 | 12% | Large + open ([5,061-topic algo category](https://tradingqna.com/categories)) |
+| YouTube | 471 | 12% | Tutorial supply; core-algo channels are 3k–56k subs, not the 1M options celebrities |
+| Twitter/X | 2,687 | 7% | Biggest raw pool, heavily vendor/bot-diluted (observed in voices analysis) |
+| r/IndianStockMarket · r/IndianStreetBets | 244 · 135 | 2–4% | Reach venues, incidental algo content |
+| r/IndiaOptionsSelling · r/DalalStreetTalks | 47 · 31 | 11% · 8% | Small but dense |
+| Instagram · app reviews | 32 · 56 | ~1% | Not habitats for this segment |
 
 Not in our corpus but verified live: **OpenAlgo Discord (3,000+, highest dev density)**, **[AlgoTest support Telegram (17.5k members)](https://t.me/AlgoTest_in)**, **[kite.trade forum (15.3K discussions)](https://kite.trade/forum/)**, Dhan's MadeForTrade, [Fyers Telegram (10.9k)](https://t.me/fyersofficial), QuantInsti/EPAT + IIT quant-fest circuit. These are the venues Beacon can't see yet (backlog: Telegram/Discord/forum collectors).
 
@@ -248,7 +251,7 @@ Sizes from the lens corpus (observed); stage → segment mapping: exploring→G1
 
 | | **G1 — want to trade with APIs** | **G2 — first time using APIs** | **G3 — already tried / using** |
 |---|---|---|---|
-| Size | 883 (19%) | 621 (13%) | 3,260 (68%) |
+| Size | 956 (18%) | 676 (13%) — early first-API split: broker-API-first 32, any-API-first 26, rest unclear (seed rows) | 3,610 (69%) |
 | Where | Twitter, YouTube, r/IndianStockMarket, generalist subs | **Broker-owned forums over-index**, YouTube, r/IndiaAlgoTrading | r/IndiaAlgoTrading, **GitHub**, forums, Twitter |
 | What they post | 67% guidance-seeking: learning paths, "is my strategy scalable", how to go manual→systematic. Almost nothing about APIs themselves yet | 45% guidance + **41% friction**: API keys, TOTP/static-IP setup, websocket how-tos, "which API is best / has free data" | **50% showcase**: live P&L, automation running, backtest proof; plus VPS/infra, expired-options data, and a fast-growing **AI/MCP/LLM** cluster |
 | What converts them (inferred from asks) | Education that meets them pre-API: manual→systematic content, strategy-validation tools, backtesting as the hook (NubraOSS story if it ships publicly) | **Time-to-first-order.** Onboarding guides, UAT sandbox (no funded account to experiment — unlike Fyers), TOTP automation, transparent pricing, responsive forum | Proof, not promises: Speedtest rank, published rate limits, historical-Greeks depth, integrations (OpenAlgo/TradingView/MCP), engineers visible in their venues |
@@ -260,7 +263,7 @@ Sizes from the lens corpus (observed); stage → segment mapping: exploring→G1
 
 ## Caveats
 
-1. Reddit coverage in the corpus thins after Aug 10 (outage; prod is backfilled, this analysis DB was restored Aug 25) — recent reddit trends undercounted.
+1. Corpus = the Aug-27 prod snapshot including the reddit backfill (9.2k recovered items, ~8.6k created in August). The Aug 10–25 outage window is reconstructed from listing crawls — posts carry original timestamps but comments/engagement are as-of-recovery, and low-ranking gap posts that fell off listings are gone for good.
 2. Twitter lens counts measure content *supply* (vendors/bots heavy), not organic demand; venue analysis corrected for this via density + voices inspection.
 3. Tradetron/AlgoTest/Streak chatter counts are too thin to judge sentiment — their audiences live in venues Beacon doesn't collect yet (Telegram/Discord/own forums).
 4. "r/algorading" (in our source list and the original brief) **does not exist** — 404s everywhere; almost certainly a typo for r/algotrading. Source-list cleanup candidate.
