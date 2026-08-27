@@ -50,6 +50,15 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    build. ~1k historical gated-irrelevant items classify naturally
    (~$0.40, bounded 200/run).
 
+Market research (2026-08-27, user request): docs/
+api-trader-market-research-2026-08-27.md — competitor S/W vs Nubra
+(ground-up, docs-first), venue/targeting map, 3 segments (G1 explore /
+G2 first-API / G3 active) with plays. Built from the lens corpus + 4 web
+research agents; every claim URL'd. Flags found: Nubra API pricing
+undisclosed, AlgoTest/Tradetron listing discrepancy, NubraOSS not public
+(grounding doc says live — wording review), PyPI missing project URLs,
+r/algorading doesn't exist (source-list cleanup).
+
 Analysis deliverables (done): docs/api-trader-insights-2026-08-25.md
 (senior-grade; observed/inferred/chosen wording fixed, 7210ff8) ·
 out/scan-v1-all.json (4,733 rows, local only). Taxonomy: first_api splits
