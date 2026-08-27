@@ -116,7 +116,10 @@ doc §4).
    prod Makefile/compose/env are USER-MANAGED — give diffs, never assume.
 5. VM→Mac file transfer = S3 presigned URL (docker cp into container,
    upload via boto3 from api container).
-6. Local dev DB is a RESTORED PROD MIRROR as of 2026-08-25 (99k items,
-   item_ids match prod — that's why the scan seed works).
+6. Local dev DB is a RESTORED PROD MIRROR as of 2026-08-27 (112.6k items
+   incl. reddit backfill; item_ids match prod — that's why the scan seed
+   works). Prod dumps are CUSTOM format (.dump) — pg_restore, not the
+   gunzip path in make restore-local; lens re-seeded + 1,090 new gate
+   matches classified locally (lens = 5,242).
 7. oauth2-proxy sends identity upstream as X-FORWARDED-EMAIL.
 8. Next 16: middleware.ts is proxy.ts.
