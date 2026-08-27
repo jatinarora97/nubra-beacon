@@ -9,12 +9,22 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Body, Header, HTTPException
+from fastapi import APIRouter, Body, Depends, Header, HTTPException
 
 from community.config.settings import settings
+from community.enrich.api_trader import lens_enabled
 from community.store import db
 
-router = APIRouter(prefix="/api/v1/api-trading", tags=["api-trading"])
+
+def _gate() -> None:
+    # section-wide launch hold: API_TRADING_ENABLED=off in .env darkens every
+    # route (404), and the sidebar hides the group when its probe fails
+    if not lens_enabled():
+        raise HTTPException(404, "api-trading section is disabled")
+
+
+router = APIRouter(prefix="/api/v1/api-trading", tags=["api-trading"],
+                   dependencies=[Depends(_gate)])
 
 _BASE = """
     FROM api_trader_items a

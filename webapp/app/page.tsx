@@ -95,7 +95,17 @@ export default async function Home({
 
       {f && (
         <section className="space-y-1 rounded-[10px] border border-line bg-surface/50 px-4 py-2.5 text-[12px] text-muted">
-          {(["hourly", "daily"] as const).map((cad) => {
+          {/* cadences are data-driven: reddit reports e.g. "every 3h" since the
+              metered-proxy gating — hourly first, then the gated ones, then daily */}
+          {Array.from(
+            new Set(Object.values(f.source_schedule ?? {}).map((v) => v.cadence)),
+          )
+            .sort(
+              (a, b) =>
+                (a === "hourly" ? 0 : a === "daily" ? 2 : 1) -
+                (b === "hourly" ? 0 : b === "daily" ? 2 : 1),
+            )
+            .map((cad) => {
             const entries = Object.entries(f.source_schedule ?? {}).filter(
               ([, v]) => v.cadence === cad,
             );
@@ -105,7 +115,7 @@ export default async function Home({
               ({ twitter: "X", community_forum: "forums", app_review: "app reviews" }[s] ?? s);
             return (
               <div key={cad} className="flex flex-wrap items-center gap-x-5 gap-y-1">
-                <span className="micro w-24">{cad === "hourly" ? "hourly" : "daily 06:00"}</span>
+                <span className="micro w-24">{cad === "daily" ? "daily 06:00" : cad}</span>
                 {entries.map(([src, v]) => (
                   <span key={src}>
                     {label(src)}{" "}

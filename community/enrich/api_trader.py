@@ -17,6 +17,18 @@ from community.store import db
 
 log = get_logger("enrich.api_trader")
 
+
+def lens_enabled() -> bool:
+    """One switch for the whole API-trading section (classifier spend,
+    landscape monitor, dashboard endpoints). Env API_TRADING_ENABLED
+    overrides the registry flag — prod .env is user-managed, so the section
+    can stay dark on prod while dev keeps it on (launch hold, 2026-08-27)."""
+    import os
+    env = os.getenv("API_TRADING_ENABLED", "").strip().lower()
+    if env:
+        return env not in ("off", "false", "0", "no")
+    return bool((settings.registry.get("api_trading", {}) or {}).get("enabled", True))
+
 # Candidate gate — validated on the full corpus 2026-08-25 (3,866 gated of
 # 99k; ~74% of gated items classified relevant). Postgres form uses \y.
 GATE_PG = (r"\y(kite connect|smartapi|dhanhq|dhan api|fyers api|breeze api|shoonya|"
@@ -96,7 +108,7 @@ def classify_new(limit: int = 200) -> dict:
     """Classify enriched-but-unclassified gate matches. Bounded per run;
     isolated — a failure never breaks the pipeline (caller wraps)."""
     reg = settings.registry.get("api_trading", {}) or {}
-    if not reg.get("enabled", True):
+    if not lens_enabled():
         return {"enabled": False}
     rows = db.query(
         """

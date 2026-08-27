@@ -50,9 +50,10 @@ def _page_text(url: str) -> str:
 
 
 def run_weekly() -> dict:
+    from community.enrich.api_trader import lens_enabled
     reg = settings.registry.get("api_trading", {}) or {}
     players = reg.get("landscape") or []
-    if not reg.get("enabled", True) or not players:
+    if not lens_enabled() or not players:
         return {"enabled": False}
     state = repo.get_state("ingest", "landscape")
     last = (state or {}).get("last_success_at")

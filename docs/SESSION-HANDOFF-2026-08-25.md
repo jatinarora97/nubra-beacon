@@ -37,11 +37,18 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    clean + SSR curl checks on all 3 pages + POST/DELETE round-trip clean.
    Notes: candidates window capped at 90d (previous-window comparison must
    stay inside 180d retention); unknown kinds render as "other" segment.
-6. **TODO — release + prod bring-up**: push-prod tag, then ON PROD run
-   `./cm migrate` (0017), `docker compose exec -T api python scripts/
-   load_api_trader_seed.py` (seed, $0), first landscape run happens on the
-   next morning build. ~1k historical gated-but-irrelevant items get
-   classified naturally by the hourly lens (~$0.40 total, bounded 200/run).
+6. **ON HOLD — user decision 2026-08-27: do NOT release the section yet.**
+   The whole section sits behind one switch: `API_TRADING_ENABLED` env
+   (overrides registry api_trading.enabled; off/false/0/no = dark). Dark =
+   endpoints 404, sidebar group hides (client probe), classifier spends
+   nothing, landscape monitor skips. Prod launch day: set
+   API_TRADING_ENABLED=on in prod .env (or just leave it unset — registry
+   default is on... so ON PROD SET API_TRADING_ENABLED=off BEFORE the next
+   release, since the branch ships the section), recreate api container,
+   `./cm migrate` (0017), `docker compose exec -T api python
+   scripts/load_api_trader_seed.py` ($0), landscape runs next morning
+   build. ~1k historical gated-irrelevant items classify naturally
+   (~$0.40, bounded 200/run).
 
 Analysis deliverables (done): docs/api-trader-insights-2026-08-25.md
 (senior-grade; observed/inferred/chosen wording fixed, 7210ff8) ·

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { NubraMark } from "@/components/logo";
 
 const NAV: { href: string; label: string; dot: string; group?: string }[] = [
@@ -32,6 +33,15 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
 
 export function Sidebar() {
   const path = usePathname();
+  // API-trading section is behind a launch hold (API_TRADING_ENABLED in the
+  // api's .env) — probe once and hide the group while the API 404s
+  const [apiTrading, setApiTrading] = useState(false);
+  useEffect(() => {
+    fetch("/api/v1/api-trading/funnel?days=7", { cache: "no-store" })
+      .then((r) => setApiTrading(r.ok))
+      .catch(() => setApiTrading(false));
+  }, []);
+  const nav = apiTrading ? NAV : NAV.filter((n) => !n.href.startsWith("/api-trading"));
   let lastGroup: string | undefined;
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface px-4 py-6 md:flex">
@@ -47,7 +57,7 @@ export function Sidebar() {
       {/* min-h-0 lets the nav scroll inside the h-screen column instead of
           pushing System/Learn (and the footer) off the page */}
       <nav className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1 pb-4">
-        {NAV.map((n) => {
+        {nav.map((n) => {
           const showGroup = n.group && n.group !== lastGroup;
           lastGroup = n.group ?? lastGroup;
           const active = path === n.href;

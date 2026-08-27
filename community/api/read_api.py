@@ -283,16 +283,29 @@ def _freshness() -> dict:
     stored_to_cfg = {"youtube": "youtube", "github": "github",
                      "community_forum": "broker_communities", "app_review": "app_reviews",
                      "instagram": "instagram"}
+    # reddit is cadence-gated since 2026-08-19 (metered residential proxy):
+    # every fetch_every_hours, not hourly — the Overview must say so
+    reddit_every = int((reg_sources.get("reddit") or {}).get("fetch_every_hours", 1))
+    reddit_next = nxt
+    if reddit_every > 1:
+        row = db.one("SELECT last_success_at FROM pipeline_state "
+                     "WHERE stage='ingest' AND source='reddit'")
+        due = ((row["last_success_at"] + timedelta(hours=reddit_every)).astimezone(ist)
+               if row and row["last_success_at"] else nxt)
+        reddit_next = max(nxt, due.replace(minute=0, second=0, microsecond=0))
     schedule = {}
     for src in set(per_source) | set(stored_to_cfg):
-        if src in ("twitter", "reddit"):
+        if src == "twitter":
             cad = "hourly"
+        elif src == "reddit":
+            cad = "hourly" if reddit_every <= 1 else f"every {reddit_every}h"
         else:
             cad = cadence_by_cfg.get(stored_to_cfg.get(src, ""), "daily")
         schedule[src] = {
             "cadence": cad,
             "last": per_source.get(src).isoformat() if per_source.get(src) else None,
-            "next": (nxt if cad == "hourly" else morning).isoformat(),
+            "next": (reddit_next if src == "reddit" else
+                     nxt if cad == "hourly" else morning).isoformat(),
         }
     return {
         "sources": {k: v.isoformat() for k, v in per_source.items() if v},
