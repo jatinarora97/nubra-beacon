@@ -59,15 +59,18 @@ undisclosed, AlgoTest/Tradetron listing discrepancy, NubraOSS not public
 (grounding doc says live — wording review), PyPI missing project URLs,
 r/algorading doesn't exist (source-list cleanup).
 
-Ads strategy (2026-08-29, user request): docs/
-api-trader-ads-strategy-2026-08-29.md — compliance gate (G2RS/Meta SEBI
-verification, NSE ad-code incl. §5.7 no-algo-past-performance, exchange
-pre-approval), Search/YouTube/Meta campaign + keyword plans from corpus
-mining + gl=IN autocomplete, email compliance map (no scraping — 5
-grounds), GEO/AEO playbook (numbers page, SSR fix for the JS-invisible
-/products/api/ page, Bing/IndexNow, listicle outreach, LLM prompt panel
-as future Beacon cron). Blockers: publish API pricing; SI-portal sync;
-DPDP consent wording; §5.7 legal read.
+Ads workstream (2026-08-29, user request), split after feedback into:
+- docs/api-trader-ads-strategy-2026-08-29.md — actionable playbook:
+  3 audiences (plain names, not G1/G2/G3), 5 evidence-backed hooks
+  (UAT/paper-trading 256 corpus items = validated top hook), Search
+  campaigns w/ per-keyword evidence tables, YouTube keywords + channel
+  placements backed by Beacon lens-channel counts, Meta 3-play table,
+  GEO priority table, cross-doc consistency table.
+- docs/api-trader-ads-compliance-ops-2026-08-29.md — verification
+  chains (G2RS/Meta SEBI), NSE ad code incl. §5.7
+  no-algo-past-performance, DPDP/email rules (scraping out on 5
+  grounds), budget shape, measurement wiring, blockers (publish API
+  pricing; SI-portal sync; DPDP consent wording; §5.7 legal read).
 
 Analysis deliverables (done): docs/api-trader-insights-2026-08-25.md
 (senior-grade; observed/inferred/chosen wording fixed, 7210ff8) ·
