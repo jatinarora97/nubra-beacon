@@ -72,6 +72,16 @@ Ads workstream (2026-08-29, user request), split after feedback into:
   grounds), budget shape, measurement wiring, blockers (publish API
   pricing; SI-portal sync; DPDP consent wording; §5.7 legal read).
 
+Organic AI visibility (2026-08-29): docs/
+nubra-organic-ai-visibility-2026-08-29.md — live crawl audit (API
+landing/blogs/insti pages serve 70 chars to AI bots — client-rendered;
+zero API URLs in any sitemap; docs are the only crawlable API pages),
+ranked fix list (SSR the API section, sitemaps, numbers page, Bing/
+IndexNow, question-shaped headings, JSON-LD, PyPI urls), organic mention
+playbook, and a 10-query 4-engine experiment kit the USER runs manually
+and pastes results back for pattern extraction (baseline: Nubra ~0
+mentions expected; re-run 6 weeks post-fix).
+
 Analysis deliverables (done): docs/api-trader-insights-2026-08-25.md
 (senior-grade; observed/inferred/chosen wording fixed, 7210ff8) ·
 out/scan-v1-all.json (4,733 rows, local only). Taxonomy: first_api splits
