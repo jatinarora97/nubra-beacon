@@ -82,6 +82,16 @@ playbook, and a 10-query 4-engine experiment kit the USER runs manually
 and pastes results back for pattern extraction (baseline: Nubra ~0
 mentions expected; re-run 6 weeks post-fix).
 
+AI-search experiment (2026-08-30, user ran the 10-query panel):
+docs/ai-search-experiment-results-2026-08-30.md — Nubra 0/40 answer
+slots, 0/155 citations (baseline confirmed). Patterns: Zerodha's own
+support/docs pages = #1 cited source (15) -> validates numbers/FAQ-page
+play; Claude cites Brave-tail blogs (tradejini/liquide/sahi) = cheapest
+engine to win; Pocketful already in Claude's set = feasibility proof;
+Gemini memory-stale (quoted Kite Rs2000, actual Rs500); multibagg never
+appeared (demoted from outreach). Re-run panel ~6wk post site fixes.
+Raw capture: docs/experiment.rtfd (user file, don't commit).
+
 Analysis deliverables (done): docs/api-trader-insights-2026-08-25.md
 (senior-grade; observed/inferred/chosen wording fixed, 7210ff8) ·
 out/scan-v1-all.json (4,733 rows, local only). Taxonomy: first_api splits
