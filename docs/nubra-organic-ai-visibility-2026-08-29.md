@@ -1,4 +1,4 @@
-# Nubra organic AI visibility — master plan (v2, 2026-08-30)
+# Nubra organic AI visibility — master plan (v3, 2026-08-30)
 
 Combines the crawl audit (2026-08-29), the 10-query × 4-engine experiment the user ran (2026-08-30, extraction in `ai-search-experiment-results-2026-08-30.md`), and the GEO research. One goal: Nubra named and cited when people ask Google/ChatGPT/Claude/Gemini about API/algo trading in India — organically.
 
@@ -68,22 +68,64 @@ Expectations, sourced: first citations ~47 days median after indexing ([Xale](ht
 
 ---
 
-## 4. Crawl audit (2026-08-29, measured with AI-bot user-agents, no JavaScript)
+## 4. Crawl audit — what Claude faces when crawling/searching Nubra
 
-| Page | Human sees | AI bot receives | Severity |
+Measured 2026-08-29 by fetching each page exactly as an AI bot does (no JavaScript).
+
+### The gap: what a visitor sees vs what an AI bot receives
+
+| Page | What a human visitor sees | What an AI bot receives (measured) | Severity |
 |---|---|---|---|
-| `/products/api/` | Full marketing page | **70 chars** (title only) | High |
-| `/products/api/blogs/*` (every post) | Complete how-to articles | **70 chars** | High |
-| `/insti/trading-apis.html` | Institutional pitch | **34 chars** | High |
-| Sitemaps | n/a | **0 API URLs** listed | High |
-| `/pricing` | Charges | Full text — but no API line | High |
-| `/` and `/products/api/docs/*` | Full | Full (docs RateLimits = 7,563 chars) | good |
+| `/products/api/` (API landing) | Full marketing page: SDK pitch, feature list, CTAs | **70 characters** — just the words "Nubra API - Python SDK for Algorithmic Trading on Indian Stock Markets" | High |
+| `/products/api/blogs/...` (every API blog post, e.g. the TradingView-webhook guide) | Complete how-to article — exactly the content AI answers like to cite | **70 characters** — the same title-only shell | High |
+| `/insti/trading-apis.html` | Institutional pitch: REST, WebSocket & FIX APIs, co-location | **34 characters** | High |
+| Sitemaps (`sitemap-0.xml` = 8 URLs, `blogs/sitemap.xml` = 85 URLs) | n/a | **0 API URLs in either** — crawlers aren't told the API section exists | High |
+| `/pricing` | Brokerage & charges | Full text (3,163 chars) — **but no API pricing line exists** on it | High |
+| `/` (homepage) | Full site | Full text (3,984 chars), title + meta description + schema markup | — (good) |
+| `/products/api/docs/*` (documentation) | Docs | Full text (RateLimits page = 7,563 chars; index = 4,401) | — (good) |
 
-Good already: robots.txt allows all AI bots · docs fully crawlable · homepage + pricing server-rendered · rate limits published. Structural: ops facts scattered in FAQs (chunking/authority issue) · V3-vs-old version mixing risk · no OpenAPI spec (open win — competitors lack one too). Standing rule: **any page meant to be quoted must pass the curl test.**
+### What's already good
+
+- robots.txt allows every AI bot (GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot — none blocked)
+- The documentation (built as a static site) is fully crawlable — it's why AI answers about Nubra's API are accurate and deep
+- Homepage and /pricing are server-rendered with proper titles and meta descriptions
+- Rate limits are published in the docs
+
+### Diagnosis, in two lines
+
+- **Retrieval works**: ask an AI *about Nubra* and it builds an excellent picture — from docs + homepage + pricing (verified with a live ChatGPT run; every fact in its answer traced to those crawlable pages, none to the 70-char pages).
+- **Discovery fails**: ask "best trading API in India" and Nubra isn't in the candidate set — that set is assembled from third-party pages (listicles, forums), where Nubra is near-absent. Section 5 fixes retrieval-completeness; sections 1–3 win discovery.
+
+### Structural issues (also flagged independently by the ChatGPT crawl run)
+
+| Issue | Why it matters |
+|---|---|
+| Operational facts (rate limits, retry/reconciliation rules, TOTP guidance) live in FAQ pages, not the endpoint reference | AI/RAG systems chunk pages; facts outside the reference get missed or cited with lower authority |
+| V3 and older doc paths coexist without clear separation | Naive crawlers merge obsolete and current API behavior |
+| No machine-readable OpenAPI spec | The single strongest artifact for agentic/AI consumers of an API; competitors don't have one either — open win |
 
 ---
 
-## 5. The frozen experiment panel (for the re-run)
+## 5. Website fixes and good practices, ranked
+
+| # | Fix | How |
+|---|---|---|
+| 1 | **Server-render the API section** (landing, blog listing, every post, insti page) | • Next.js SSG for `/products/api/*` (content is static — no server needed at runtime) • Acceptance test: `curl -A "GPTBot" <url>` must return the full article text • Until then these pages depend on Google/Bing's delayed JS-rendering and are blank to Claude/Perplexity/direct ChatGPT fetches |
+| 2 | **Put the API section in sitemaps** | • Add all `/products/api/**` URLs (landing, blogs, docs) to a sitemap listed in robots.txt • Keep `<lastmod>` honest |
+| 3 | **Publish the numbers page** (API pricing + rate limits + session rules + UAT) | • One static crawlable page • This is what listicle writers and AI answers quote; Nubra's column in every comparison is currently blank |
+| 4 | **Register with the indexes AI engines read** | • Bing Webmaster Tools (ChatGPT ≈ Bing results) + IndexNow pings on publish • Google Search Console • Check server logs that AI-bot requests aren't WAF-blocked |
+| 5 | **Question-shaped headings in crawlable pages** | • H2/H3 = the literal questions traders type (from our corpus): "How do I test my algo without real money?", "What does the Nubra API cost?" • First paragraph under each = the direct answer with numbers |
+| 6 | **OpenAPI spec + consolidate ops facts into the reference** | • Publish `openapi.json` for REST V3 • Duplicate rate limits/retry rules onto the reference pages (keep FAQs too) |
+| 7 | **Structured data (JSON-LD)** on API pages | • `Organization` (disambiguates Nubra-the-broker from Nubra Valley and the apparel brand) • `SoftwareApplication` for the SDK • `FAQPage` for docs FAQs |
+| 8 | **Small hygiene** | • Add project URLs to the `nubra-sdk` PyPI package (5 min) • llms.txt + markdown doc mirrors (1-hr plugin; useful for developers pasting docs into AI tools — no proven ranking effect, per [Ahrefs' 137k-domain study](https://ahrefs.com/blog/llmstxt-study/)) |
+
+Standing rule: **any page meant to be quoted must pass the curl test** — fetch it with a bot user-agent, no JavaScript; if the fact isn't in the response, AI systems can't reliably quote it.
+
+---
+
+---
+
+## 6. The frozen experiment panel (for the re-run)
 
 Protocol: each query on Google (incognito, India), ChatGPT, Claude, Gemini; record Nubra presence, top cited domains, competitor names. Panel unchanged from v1 — the diff against 2026-08-30 baseline is the measurement.
 
