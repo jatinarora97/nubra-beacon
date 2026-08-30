@@ -1,90 +1,113 @@
-# Organic AI visibility — crawl audit, fixes, playbook, experiment kit (2026-08-29)
+# Organic AI visibility — crawl audit, fixes, playbook, experiment (2026-08-30)
 
-Four connected pieces: what an AI crawler actually sees on nubra.io today (probed live, 2026-08-29, as GPTBot/ClaudeBot/PerplexityBot user-agents, no JavaScript — none of these bots execute JS), the site fixes, the organic mention playbook, and the search experiment you'll run.
+Four parts: what Claude finds when crawling nubra.io (probed live with AI-bot user-agents), the site fixes, the organic-mention playbook (sourced), and the search experiment.
+
+**One term used throughout — "JS-only page":** a page whose HTML arrives essentially empty; a browser then runs JavaScript to draw the content. Humans see the full page. AI bots that fetch pages directly (OpenAI's GPTBot/ChatGPT-User, Anthropic's ClaudeBot, PerplexityBot) do not run JavaScript — they receive the empty shell. Google and Bing do run JavaScript, but in a delayed rendering queue, so such pages reach ChatGPT-search/AI-Overviews late and indirectly, and never reach Brave (the index Claude's web search uses).
 
 ---
 
-## 1. What I face when crawling/searching Nubra (live probe results)
+## 1. What Claude faces when crawling/searching Nubra
 
-Reachability nuance (corrected 2026-08-30 after a live ChatGPT retrieval test): CSR pages are **not unreachable** — Bing and Google render JS in their indexing pipelines, so ChatGPT-search/AI-Overviews can reach them indirectly (second-class: rendering queue). They ARE empty to every **direct** AI fetcher (GPTBot, ChatGPT-User, ClaudeBot, PerplexityBot) and to Brave (Claude's index). The ChatGPT test also confirmed the split: its entire Nubra picture came from the crawlable surfaces (docs, homepage, pricing) — nothing from the 70-char pages.
+Measured 2026-08-29 by fetching each page exactly as an AI bot does (no JavaScript).
 
-| # | Finding | Evidence (measured today) | Severity |
+### The gap: what a visitor sees vs what an AI bot receives
+
+| Page | What a human visitor sees | What an AI bot receives (measured) | Severity |
 |---|---|---|---|
-| 1 | **The API landing page is second-class.** `/products/api/` serves the title and nothing else to direct fetchers | **70 characters** of visible text (3.7KB HTML shell) vs homepage's 3,984 chars | High |
-| 2 | **Every API blog post is second-class.** The TradingView-webhook guide, Tradetron guide — the citable GEO content Nubra already wrote — serve the same empty shell to direct fetchers and Brave | `/products/api/blogs/tradingview-to-nubra-webhook-guide` → **70 chars** | High |
-| 3 | **No sitemap lists a single API URL.** Main sitemap-0 = 8 URLs (contact/support/pricing/faq...), blogs sitemap = 85 URLs, **API URLs in either: 0**. Crawlers can only find the API section by following nav links into pages that then render empty | fetched sitemap.xml, sitemap-0.xml, blogs/sitemap.xml | High |
-| 4 | The institutional API page is invisible too | `/insti/trading-apis.html` → **34 chars** | High |
-| 5 | **API pricing doesn't exist anywhere crawlable** — `/pricing` (which IS server-rendered, 3.2k chars) has no API line; docs don't state it; third parties flag "pricing undisclosed" | pricing page fetch + earlier audit | High |
-| 6 | Searching "Nubra" is polluted by Nubra Valley (Ladakh) and NuBra (apparel) — the broker only wins queries containing api/trading/broker | earlier audit | Medium (name reality — mitigate with schema + consistent "Nubra API" phrasing) |
-| 7 | Zero third-party surface: 1 GitHub star, 0 TradingQnA posts, ~0 discoverable Reddit threads, absent from every ranking listicle except one | earlier audit (08-27) | High (this is §3's job) |
-| 8 | No llms.txt (404), no JSON-LD on API/docs/pricing pages (homepage has some) | fetched | Low |
+| `/products/api/` (API landing) | Full marketing page: SDK pitch, feature list, CTAs | **70 characters** — just the words "Nubra API - Python SDK for Algorithmic Trading on Indian Stock Markets" | High |
+| `/products/api/blogs/...` (every API blog post, e.g. the TradingView-webhook guide) | Complete how-to article — exactly the content AI answers like to cite | **70 characters** — the same title-only shell | High |
+| `/insti/trading-apis.html` | Institutional pitch: REST, WebSocket & FIX APIs, co-location | **34 characters** | High |
+| Sitemaps (`sitemap-0.xml` = 8 URLs, `blogs/sitemap.xml` = 85 URLs) | n/a | **0 API URLs in either** — crawlers aren't told the API section exists | High |
+| `/pricing` | Brokerage & charges | Full text (3,163 chars) — **but no API pricing line exists** on it | High |
+| `/` (homepage) | Full site | Full text (3,984 chars), title + meta description + schema markup | — (good) |
+| `/products/api/docs/*` (documentation) | Docs | Full text (RateLimits page = 7,563 chars; index = 4,401) | — (good) |
 
-**What's already good:** robots.txt allows all AI bots (GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot not blocked) · the MkDocs documentation is fully crawlable (RateLimits page = 7,563 chars of clean text; index = 4,401) · homepage and /pricing are server-rendered with titles + meta descriptions · rate limits are published.
+### What's already good
 
-**The one-sentence diagnosis:** Nubra wins **retrieval** (ask an AI *about Nubra* and it builds an excellent picture from docs + homepage + pricing — verified with a live ChatGPT run 2026-08-30) but loses **discovery** ("best trading API India" — Nubra isn't in the candidate set, which third-party citations decide). Site fixes below serve retrieval-completeness; §3's off-site plays are what win discovery.
+- robots.txt allows every AI bot (GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot — none blocked)
+- The documentation (built as a static site) is fully crawlable — it's why AI answers about Nubra's API are accurate and deep
+- Homepage and /pricing are server-rendered with proper titles and meta descriptions
+- Rate limits are published in the docs
 
-Two additions from the ChatGPT run's own crawl critique (it agrees with the audit where it could see): operational facts (rate limits, retry/reconciliation rules, TOTP guidance) live in FAQ pages rather than the endpoint reference — fine for humans, a chunking/authority problem for RAG and citations — and V3-vs-older doc paths risk version-mixing for naive crawlers. A **machine-readable OpenAPI spec** would be a strong artifact for agentic consumers; none was found.
+### Diagnosis, in two lines
 
----
+- **Retrieval works**: ask an AI *about Nubra* and it builds an excellent picture — from docs + homepage + pricing (verified with a live ChatGPT run; every fact in its answer traced to those crawlable pages, none to the 70-char pages).
+- **Discovery fails**: ask "best trading API in India" and Nubra isn't in the candidate set — that set is assembled from third-party pages (listicles, forums), where Nubra is near-absent. Section 2 fixes retrieval-completeness; section 3 is what wins discovery.
 
-## 2. Website best practices — the fix list, ranked
+### Structural issues (also flagged independently by the ChatGPT crawl run)
 
-| # | Fix | How | Effort |
-|---|---|---|---|
-| 1 | **Server-render the API section** — landing page, blog listing, every blog post, insti page | Next.js SSG/SSR for `/products/api/*` (the content is mostly static — SSG is enough). Acceptance test: `curl -A GPTBot <url>` returns the full article text. Why it still matters post-correction: direct fetchers (ChatGPT-User, ClaudeBot, PerplexityBot) and Brave get nothing today, and Bing/Google rendering queues delay fresh content — the blogs are the citable material for DISCOVERY queries and should be first-class everywhere | days |
-| 1b | **Publish an OpenAPI spec** for REST V3 + consolidate operational facts (rate limits, retry rules) into the reference pages, not only FAQs | From the ChatGPT crawl critique — helps RAG/agentic consumers and citation chunking | days |
-| 2 | **Sitemaps that include the API section** | Add all `/products/api/**` URLs (landing, blogs, every docs page) to a sitemap referenced in robots.txt; keep `<lastmod>` honest | hours |
-| 3 | **Publish API pricing on a crawlable page** | One static page: pricing + rate limits + token/session rules + UAT access — the "numbers page". This is what listicle writers and LLMs quote; every Nubra comparison column is currently blank | days (needs the pricing decision) |
-| 4 | **Bing Webmaster Tools + IndexNow + GSC** | ChatGPT citations ≈ Bing top-10 (87% overlap); verify site, submit sitemaps, fire IndexNow pings on publish. Check server logs/CDN that AI-bot requests aren't being challenged (robots.txt is clean but a WAF can still block) | hours |
-| 5 | **Keyword-rich, question-shaped headings in crawlable HTML** | Docs + blog pages should carry the literal questions traders type (from our corpus): "How do I test my algo without real money?", "Nubra API pricing and rate limits", "Automate daily TOTP login". H2/H3 = questions, first paragraph = the direct answer with numbers. LLMs lift Q→A blocks | ongoing editorial rule |
-| 6 | **JSON-LD** on API pages: `Organization` (disambiguates Nubra-the-broker from the valley and the bra), `SoftwareApplication` (the SDK), `FAQPage` (docs FAQs) | template task | hours |
-| 7 | **PyPI project URLs** — `nubra-sdk` has no links back to docs/GitHub | 5-minute setup.py/pyproject fix | 5 min |
-| 8 | llms.txt + .md mirrors of docs | MkDocs plugin, ~1 hour. Honest expectation: no proven citation lift (Ahrefs: 97% of llms.txt files get zero bot requests) — do it for Cursor/Claude-Code users pasting docs, not for rankings | 1 hour |
-
-Rule of thumb going forward: **any page meant to be quoted must pass the curl test** — fetch it with a bot UA, no JS; if the fact you want quoted isn't in the response, it doesn't exist.
+| Issue | Why it matters |
+|---|---|
+| Operational facts (rate limits, retry/reconciliation rules, TOTP guidance) live in FAQ pages, not the endpoint reference | AI/RAG systems chunk pages; facts outside the reference get missed or cited with lower authority |
+| V3 and older doc paths coexist without clear separation | Naive crawlers merge obsolete and current API behavior |
+| No machine-readable OpenAPI spec | The single strongest artifact for agentic/AI consumers of an API; competitors don't have one either — open win |
 
 ---
 
-## 3. Organically boosting AI mentions (no ads) — how engines pick names, and the plays
+## 2. Website fixes, ranked
 
-Mechanics (all verified in the 08-29 research): ChatGPT search ≈ **Bing top-10** (87% citation overlap) · Gemini + AI Overviews ≈ **Google top-12 organic** (Google: normal indexing is the only requirement) · Claude ≈ **Brave index** · Perplexity = own crawler, most **Reddit**-weighted. Content traits that win citations: **statistics (+33%), quotable claims (+41%), cited sources (+28% — and +115% for lower-ranked challenger sites)** (Princeton GEO paper); commercial questions pull **40.9% of citations from listicles, 81% of those third-party**; **Reddit is the most-cited single domain across engines** (4B-citation study), feeding ChatGPT and Google via licensing deals; cited Reddit posts average ~1 year old.
-
-So the organic machine, in causal order:
-
-| Play | Why it moves AI answers | Concrete first step |
+| # | Fix | How |
 |---|---|---|
-| **A. Be quotable** (after §2 fixes) | LLMs assemble answers from numbers and claims they can lift. A page stating "₹X/mo, 10 orders/sec, full UAT, TOTP auth, historical Greeks since YYYY" becomes the canonical Nubra source | Ship the numbers page; add dated latency methodology when available |
-| **B. Own comparison pages** | "X vs Y" pages with tables + outbound links to competitors' official docs hit the +115% challenger citation boost | "Nubra vs Kite Connect", "Nubra vs Dhan API" (exchange-approval-safe wording: facts, no discrediting) |
-| **C. Get into third-party listicles** — the pages engines already cite | 81% of commercial citations are third-party lists; we have the named targets that rank today | Outreach queue: multibagg (fix the existing article + Dhan-alternatives table), moneycontain, univest, algocrab, indikator, letsthinkwise, qubera, startupog, investormoney, cernoquant; create techjockey/G2/alternativeto listings |
-| **D. Reddit, disclosed and authentic** | Most-cited domain; slow-burn (~1yr-old posts get cited) — start now for 2027 answers | Official flaired account in r/IndiaAlgoTrading; answer the threads that already name Nubra (TOTP thread, Greeks thread); never astroturf |
-| **E. Developer UGC** | Medium/LinkedIn/YouTube/GitHub are top-5 cited domains; X feeds Grok | Public latency-benchmark repo, engineering posts, Stack Overflow answers on `nubra-sdk` |
-| **F. Measure weekly** | You can't steer what you don't see | The §4 experiment (manual, now) → then a 15-prompt weekly panel as a Beacon cron (Gemini + Perplexity expose citations via API) |
+| 1 | **Server-render the API section** (landing, blog listing, every post, insti page) | • Next.js SSG for `/products/api/*` (content is static — no server needed at runtime) • Acceptance test: `curl -A "GPTBot" <url>` must return the full article text • Until then these pages depend on Google/Bing's delayed JS-rendering and are blank to Claude/Perplexity/direct ChatGPT fetches |
+| 2 | **Put the API section in sitemaps** | • Add all `/products/api/**` URLs (landing, blogs, docs) to a sitemap listed in robots.txt • Keep `<lastmod>` honest |
+| 3 | **Publish the numbers page** (API pricing + rate limits + session rules + UAT) | • One static crawlable page • This is what listicle writers and AI answers quote; Nubra's column in every comparison is currently blank |
+| 4 | **Register with the indexes AI engines read** | • Bing Webmaster Tools (ChatGPT ≈ Bing results) + IndexNow pings on publish • Google Search Console • Check server logs that AI-bot requests aren't WAF-blocked |
+| 5 | **Question-shaped headings in crawlable pages** | • H2/H3 = the literal questions traders type (from our corpus): "How do I test my algo without real money?", "What does the Nubra API cost?" • First paragraph under each = the direct answer with numbers |
+| 6 | **OpenAPI spec + consolidate ops facts into the reference** | • Publish `openapi.json` for REST V3 • Duplicate rate limits/retry rules onto the reference pages (keep FAQs too) |
+| 7 | **Structured data (JSON-LD)** on API pages | • `Organization` (disambiguates Nubra-the-broker from Nubra Valley and the apparel brand) • `SoftwareApplication` for the SDK • `FAQPage` for docs FAQs |
+| 8 | **Small hygiene** | • Add project URLs to the `nubra-sdk` PyPI package (5 min) • llms.txt + markdown doc mirrors (1-hr plugin; useful for developers pasting docs into AI tools — no proven ranking effect, per [Ahrefs' 137k-domain study](https://ahrefs.com/blog/llmstxt-study/)) |
 
-Sequencing matters: A and the §2 fixes come first — outreach (C) and Reddit answers (D) both *point at* the numbers page; without it there's nothing for a listicle writer or an LLM to copy. Timeline: retrieval engines pick up changes at index speed (first citations ~4–8 weeks); "Nubra by default next to Zerodha and Dhan" is a 2–4 quarter outcome that requires C + D, not just our own site.
+Standing rule: **any page meant to be quoted must pass the curl test** — fetch it with a bot user-agent, no JavaScript; if the fact isn't in the response, AI systems can't reliably quote it.
 
 ---
 
-## 4. The experiment — starter persona, 4 engines, you run it, we pattern-match
+## 3. Organically boosting AI mentions — the plays, with sources
 
-**Persona**: someone who trades manually, curious about API/algo trading, no code shipped yet (our Explorer→First-timer boundary — the corpus says this is where broker choice happens).
+How the engines pick names (each verified against the primary source):
 
-**Protocol**: run each query on Google (incognito, India), ChatGPT, Claude, Gemini. Per query per engine record: (1) does Nubra appear at all, (2) top 3–5 domains cited/ranked, (3) which competitor names appear. Paste results here in any raw form — I'll do the pattern extraction.
+| Engine | Where its answers come from | Source |
+|---|---|---|
+| ChatGPT (search) | Bing's index — 87% of citations match Bing top results | [Seer Interactive study](https://www.seerinteractive.com/insights/87-percent-of-searchgpt-citations-match-bings-top-results) |
+| Gemini / Google AI Overviews | Google's normal index; ~75% of links from top-12 organic; no special markup needed | [Google's official doc](https://developers.google.com/search/docs/appearance/ai-features) · [Botify via SEL](https://searchengineland.com/google-search-rankings-llm-mentions-450348) |
+| Claude | Brave Search's index | [Anthropic subprocessor evidence](https://simonwillison.net/2025/Mar/21/anthropic-use-brave/) |
+| Perplexity | Own crawler; most Reddit-weighted engine | [Perplexity bot docs](https://docs.perplexity.ai/guides/bots) · [Profound citation study](https://www.tryprofound.com/blog/the-data-on-reddit-and-ai-search) |
 
-**Query panel** (phrasings from our corpus language + verified autocomplete; Google gets keyword form, AIs get the conversational form):
+The plays, in causal order:
+
+| Play | First step | Evidence it works | Source |
+|---|---|---|---|
+| **A. Be quotable** — publish exact numbers (pricing, rate limits, dated latency) | Ship the numbers page (fix 3) | Adding statistics: +33% AI-answer visibility; quotable claims: +41% | [Princeton GEO paper, KDD 2024](https://arxiv.org/abs/2311.09735) |
+| **B. Own comparison pages** — "Nubra vs Kite Connect", "vs Dhan API", with tables + links to competitors' official docs | Draft 2 pages, route through exchange approval | Citing sources: +28% overall, **+115% for lower-ranked challenger sites** — the boost is biggest for exactly our position | same paper, [full text](https://arxiv.org/html/2311.09735v3) |
+| **C. Get into third-party listicles** — the pages engines cite for commercial questions | Outreach queue (all currently rank, all checked live): multibagg, moneycontain, univest, algocrab, indikator, letsthinkwise, qubera, startupog, investormoney, cernoquant + techjockey/G2/alternativeto listings | Commercial queries: 40.9% of AI citations are listicles; 81% of those third-party (self-authored lists earn only 19%) | [Wix AI Search study, 1M+ citations](https://searchengineland.com/ai-citations-favor-listicles-articles-product-pages-study-472364) |
+| **D. Reddit, disclosed + authentic** — official account answering r/IndiaAlgoTrading threads (two already name Nubra) | Answer the [TOTP thread](https://reddit.com/r/IndiaAlgoTrading/comments/1vh3obr/) and [Greeks thread](https://reddit.com/r/IndiaAlgoTrading/comments/1vbk8sg/) with disclosure | Reddit = most-cited single domain across AI engines (3.11% of 4B citations); feeds ChatGPT and Google via licensing deals; cited posts average ~1 year old — start now for 2027 answers | [Profound, 4B citations](https://www.tryprofound.com/blog/the-data-on-reddit-and-ai-search) · [OpenAI–Reddit deal](https://openai.com/index/openai-and-reddit-partnership/) |
+| **E. Developer UGC** — public latency-benchmark repo, engineering posts, Stack Overflow, X threads | One engineering post + one public benchmark repo | Medium/LinkedIn/YouTube are top-5 cited domains; X posts feed Grok | [Semrush, 100M+ citations](https://www.semrush.com/blog/most-cited-domains-ai/) · [Peec AI, 30M sources](https://searchengineland.com/ai-search-engines-cite-reddit-youtube-and-linkedin-most-study-473138) |
+| **F. Measure weekly** — the §4 panel now, then a 15-prompt weekly cron | Run §4 | Median time-to-first-citation ≈ 47 days after indexing; consistent publishers hit it 3.2x faster | [Xale.ai, 127 brands](https://www.xale.ai/studies/geo-time-before-results) |
+
+Sequencing: A before C and D — outreach and Reddit answers need the numbers page to point at, or there's nothing for anyone to copy. Expectation: retrieval engines move at index speed (weeks); "Nubra named by default next to Zerodha and Dhan" is a 2–4 quarter outcome driven by C + D.
+
+---
+
+## 4. The experiment — you run it, we pattern-match
+
+**Why these queries and not "trade with APIs":** the panel uses the words real starters type, not our internal vocabulary. Evidence: in India the category's entry language is **"algo trading"** (Google autocomplete has a full tree for it; the subreddit is r/IndiaAlgoTrading; the tools are "AlgoTest"/"algo platforms"), while **"trading api"** appears once someone is past the idea stage and choosing infrastructure (that's when our corpus shows the phrase). "Trade with APIs" as a phrase has neither an autocomplete tree nor corpus presence. So the panel covers the journey: entry queries in algo-language (1, 5, 9), infrastructure queries in api-language (2, 3, 4, 7, 8), and conquest/comparison queries (6, 10).
+
+**Go ahead — the panel is final, no changes coming.** Keeping it frozen is the point: we re-run the identical panel ~6 weeks after the fixes ship, and the diff is the result.
+
+**Protocol:** each query on Google (incognito, India), ChatGPT, Claude, Gemini. Record per query per engine: (1) does Nubra appear, (2) top 3–5 domains cited/ranked, (3) competitor names mentioned. Paste raw results here — pattern extraction is my job.
 
 | # | Google form | ChatGPT/Claude/Gemini form | What it tests |
 |---|---|---|---|
-| 1 | how to start algo trading in india | "I trade manually on charts. How do I start algo trading in India?" | The entry answer — who owns the beginner path |
+| 1 | how to start algo trading in india | "I trade manually on charts. How do I start algo trading in India?" | Who owns the beginner path |
 | 2 | best trading api india | "Which broker has the best trading API in India?" | The money query |
-| 3 | free trading api india | "Which Indian brokers give free trading APIs? What does data cost?" | Pricing-anchored pick (top autocomplete modifier) |
-| 4 | paper trading api india | "How can I test my trading strategy with an API without risking real money, in India?" | Our strongest hook (256 corpus items) — does anyone claim it? |
-| 5 | best broker for algo trading india | "I'm a Python developer in India. Which broker should I open an account with for algo trading?" | Broker-choice with dev framing |
+| 3 | free trading api india | "Which Indian brokers give free trading APIs? What does data cost?" | Pricing-anchored choice |
+| 4 | paper trading api india | "How can I test my trading strategy with an API without risking real money, in India?" | Our strongest hook — does anyone claim it? |
+| 5 | best broker for algo trading india | "I'm a Python developer in India. Which broker should I open an account with for algo trading?" | Broker choice, dev framing |
 | 6 | kite connect alternative | "Alternatives to Zerodha Kite Connect for algo trading?" | Conquest visibility |
 | 7 | nse api free | "Cheapest way to get NSE market data through an API?" | Data-access intent |
-| 8 | historical options data nse api | "Where can I get historical NSE options data with Greeks for backtesting?" | Our differentiator — who gets named today |
-| 9 | algo trading kaise kare | (Hindi/Hinglish on Gemini + ChatGPT only) "India me algo trading kaise shuru kare?" | Hindi answer space |
-| 10 | dhan api vs zerodha api | "Compare Dhan API and Zerodha Kite Connect — which is better for a beginner?" | The comparison slot the multibagg article occupies |
+| 8 | historical options data nse api | "Where can I get historical NSE options data with Greeks for backtesting?" | Our differentiator — who gets named |
+| 9 | algo trading kaise kare | (Gemini + ChatGPT) "India me algo trading kaise shuru kare?" | Hindi answer space |
+| 10 | dhan api vs zerodha api | "Compare Dhan API and Zerodha Kite Connect — which is better for a beginner?" | The comparison slot |
 
-**What we'll extract from your results** (the pattern hypothesis to confirm or break): citations should cluster into four source types — third-party listicles (moneycontain/univest tier), TradingQnA/Reddit threads, brokers' own crawlable pages, and the multibagg pair. For every source that actually appears, the counter-move is mechanical: listicle → outreach queue (play C); forum/Reddit thread → answer it, disclosed (play D); broker's own page → we need the equivalent crawlable page (plays A/B); multibagg → fix that article first. Anything that appears and *isn't* in that taxonomy is the interesting finding.
+**Pattern hypothesis to confirm or break:** citations cluster into four source types, each with a mechanical counter-move — third-party listicles → play C · forum/Reddit threads → play D · brokers' own crawlable pages → plays A/B · the multibagg pair → fix that article first. Anything outside this taxonomy is the interesting finding.
 
-**Baseline expectation to measure against**: today Nubra should appear ~0 times except possibly query 10 via multibagg. Re-run the same panel ~6 weeks after the §2 fixes ship — that diff is the experiment's result.
+**Baseline expectation:** Nubra appears ~0 times, except possibly query 10 (via multibagg). The re-run after fixes measures the movement.
