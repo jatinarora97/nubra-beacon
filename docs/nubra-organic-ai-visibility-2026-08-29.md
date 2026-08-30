@@ -6,10 +6,12 @@ Four connected pieces: what an AI crawler actually sees on nubra.io today (probe
 
 ## 1. What I face when crawling/searching Nubra (live probe results)
 
+Reachability nuance (corrected 2026-08-30 after a live ChatGPT retrieval test): CSR pages are **not unreachable** — Bing and Google render JS in their indexing pipelines, so ChatGPT-search/AI-Overviews can reach them indirectly (second-class: rendering queue). They ARE empty to every **direct** AI fetcher (GPTBot, ChatGPT-User, ClaudeBot, PerplexityBot) and to Brave (Claude's index). The ChatGPT test also confirmed the split: its entire Nubra picture came from the crawlable surfaces (docs, homepage, pricing) — nothing from the 70-char pages.
+
 | # | Finding | Evidence (measured today) | Severity |
 |---|---|---|---|
-| 1 | **The API landing page is invisible.** `/products/api/` serves the title and nothing else | **70 characters** of visible text (3.7KB HTML shell) vs homepage's 3,984 chars | Critical |
-| 2 | **Every API blog post is invisible.** The TradingView-webhook guide, Tradetron guide — the exact GEO content Nubra already wrote — serve the same empty shell | `/products/api/blogs/tradingview-to-nubra-webhook-guide` → **70 chars** | Critical |
+| 1 | **The API landing page is second-class.** `/products/api/` serves the title and nothing else to direct fetchers | **70 characters** of visible text (3.7KB HTML shell) vs homepage's 3,984 chars | High |
+| 2 | **Every API blog post is second-class.** The TradingView-webhook guide, Tradetron guide — the citable GEO content Nubra already wrote — serve the same empty shell to direct fetchers and Brave | `/products/api/blogs/tradingview-to-nubra-webhook-guide` → **70 chars** | High |
 | 3 | **No sitemap lists a single API URL.** Main sitemap-0 = 8 URLs (contact/support/pricing/faq...), blogs sitemap = 85 URLs, **API URLs in either: 0**. Crawlers can only find the API section by following nav links into pages that then render empty | fetched sitemap.xml, sitemap-0.xml, blogs/sitemap.xml | High |
 | 4 | The institutional API page is invisible too | `/insti/trading-apis.html` → **34 chars** | High |
 | 5 | **API pricing doesn't exist anywhere crawlable** — `/pricing` (which IS server-rendered, 3.2k chars) has no API line; docs don't state it; third parties flag "pricing undisclosed" | pricing page fetch + earlier audit | High |
@@ -19,7 +21,9 @@ Four connected pieces: what an AI crawler actually sees on nubra.io today (probe
 
 **What's already good:** robots.txt allows all AI bots (GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot not blocked) · the MkDocs documentation is fully crawlable (RateLimits page = 7,563 chars of clean text; index = 4,401) · homepage and /pricing are server-rendered with titles + meta descriptions · rate limits are published.
 
-**The one-sentence diagnosis:** Nubra writes the right content, then ships it inside a client-rendered Next.js shell that no AI crawler can read, and doesn't tell crawlers it exists (no sitemap entries). The docs — built with MkDocs, static — prove the fix works: they're the only API pages a bot can read.
+**The one-sentence diagnosis:** Nubra wins **retrieval** (ask an AI *about Nubra* and it builds an excellent picture from docs + homepage + pricing — verified with a live ChatGPT run 2026-08-30) but loses **discovery** ("best trading API India" — Nubra isn't in the candidate set, which third-party citations decide). Site fixes below serve retrieval-completeness; §3's off-site plays are what win discovery.
+
+Two additions from the ChatGPT run's own crawl critique (it agrees with the audit where it could see): operational facts (rate limits, retry/reconciliation rules, TOTP guidance) live in FAQ pages rather than the endpoint reference — fine for humans, a chunking/authority problem for RAG and citations — and V3-vs-older doc paths risk version-mixing for naive crawlers. A **machine-readable OpenAPI spec** would be a strong artifact for agentic consumers; none was found.
 
 ---
 
@@ -27,7 +31,8 @@ Four connected pieces: what an AI crawler actually sees on nubra.io today (probe
 
 | # | Fix | How | Effort |
 |---|---|---|---|
-| 1 | **Server-render the API section** — landing page, blog listing, every blog post, insti page | Next.js SSG/SSR for `/products/api/*` (the content is mostly static — SSG is enough). Acceptance test: `curl -A GPTBot <url>` returns the full article text | days — the highest-ROI item on this list |
+| 1 | **Server-render the API section** — landing page, blog listing, every blog post, insti page | Next.js SSG/SSR for `/products/api/*` (the content is mostly static — SSG is enough). Acceptance test: `curl -A GPTBot <url>` returns the full article text. Why it still matters post-correction: direct fetchers (ChatGPT-User, ClaudeBot, PerplexityBot) and Brave get nothing today, and Bing/Google rendering queues delay fresh content — the blogs are the citable material for DISCOVERY queries and should be first-class everywhere | days |
+| 1b | **Publish an OpenAPI spec** for REST V3 + consolidate operational facts (rate limits, retry rules) into the reference pages, not only FAQs | From the ChatGPT crawl critique — helps RAG/agentic consumers and citation chunking | days |
 | 2 | **Sitemaps that include the API section** | Add all `/products/api/**` URLs (landing, blogs, every docs page) to a sitemap referenced in robots.txt; keep `<lastmod>` honest | hours |
 | 3 | **Publish API pricing on a crawlable page** | One static page: pricing + rate limits + token/session rules + UAT access — the "numbers page". This is what listicle writers and LLMs quote; every Nubra comparison column is currently blank | days (needs the pricing decision) |
 | 4 | **Bing Webmaster Tools + IndexNow + GSC** | ChatGPT citations ≈ Bing top-10 (87% overlap); verify site, submit sitemaps, fire IndexNow pings on publish. Check server logs/CDN that AI-bot requests aren't being challenged (robots.txt is clean but a WAF can still block) | hours |
