@@ -45,16 +45,25 @@ Input: the 10-query panel from `nubra-organic-ai-visibility-2026-08-29.md` §4, 
 | **ChatGPT** | Few citations (6 total; nseindia, zerodha support, sebi) — answers mostly from model memory + light fetching | Two paths: Bing indexing for the fetch path, and UGC/Reddit for the memory path (slow) |
 | **Gemini** | Least citations of all (2) — answers almost purely from **training memory**, and it's stale: quoted Kite at ₹2,000/mo (it's ₹500 since 2025) | Can't be won by site fixes alone — needs the long game (Reddit/UGC/press that lands in training data). Stale facts = opening: "current pricing" content wins corrections elsewhere |
 
-## 4. Taxonomy check (the §4 hypothesis) — confirmed, with two surprises
+## 4. Prediction vs reality — did the sources we bet on actually show up?
 
-| Predicted source type | Showed up? | Counter-move |
+Context: before the experiment, the plan predicted that every source an AI engine cites would fall into **four types** — third-party listicles, forum/Reddit threads, brokers' own pages, and the one existing Nubra comparison article (multibagg). The point of predicting: each type has a prepared counter-move, so if the prediction holds, the plan needs no redesign — only prioritization. This section checks each prediction against the 155 citations actually collected, then lists what appeared that we did NOT predict (the surprises — the most valuable part).
+
+**Verdict: 3 of 4 predictions confirmed, 1 failed, 2 surprises. The plan's plays survive; their order changes (see §5).**
+
+| We predicted engines would cite… | What actually happened | So the plan's counter-move is… |
 |---|---|---|
-| Third-party listicles | Yes — algotest, groww blog, chittorgarh, fintegrationfs, sahi, liquide, tradejini | Play C outreach — **list updated below** |
-| Forum/Reddit threads | Yes — reddit in 7/10 questions, tradingqna | Play D — disclosed answers |
-| Brokers' own crawlable pages | **Yes, strongest single pattern** — Zerodha's support articles + kite.trade docs = 15 citations | Plays A/B validated: our docs/numbers/support pages CAN be cited directly — if crawlable and question-shaped |
-| multibagg pair | **No — didn't appear at all**, even Q10 | Deprioritize fixing it; it doesn't rank where it matters |
-| **Surprise 1** | Claude's Brave tail: tradejini/liquide/sahi/ashlarindia — low-authority blogs winning citations | New outreach targets + confirms Brave is undefended |
-| **Surprise 2** | Pocketful (younger than Nubra's API) already in Claude's answer set 5/10 | Existence proof: a new broker can enter the candidate set — likely via crawlable free-API positioning picked up by these blogs |
+| Third-party "best of" lists | **Confirmed** — algotest, chittorgarh, fintegrationfs, sahi, liquide, tradejini all cited | Valid: outreach to get Nubra added to those lists (play C) — priority order updated in §5.2 |
+| Forum/Reddit threads | **Confirmed** — reddit cited in 7 of 10 questions, plus tradingqna | Valid: answer those exact threads with a disclosed official account (play D) — priority raised |
+| Brokers' own websites (docs/FAQ/support pages) | **Confirmed, and it's the STRONGEST source type** — Zerodha's support articles + kite.trade docs alone took 15 citations | Valid and upgraded to top priority: engines will cite Nubra's own pages directly, IF they are crawlable and titled as questions (plays A/B) |
+| The multibagg Nubra-vs-Zerodha article (the one page online that compares Nubra) | **Failed — it never appeared**, not even on Q10 where it's most relevant | Drop it: fixing/promoting that article was in the plan; it doesn't rank where engines look, so the effort moves elsewhere |
+
+**The two surprises (things no prediction covered):**
+
+| Surprise | What we saw | Why it matters |
+|---|---|---|
+| 1. Claude cites tiny, low-authority blogs | tradejini.com, blog.liquide.life, sahi.com, ashlarindia — small sites with no SEO reputation — kept winning Claude citations | Claude reads the Brave search index, which almost nobody optimizes for. Low competition = Nubra's fastest entry point ("beachhead" in §5.3) |
+| 2. Pocketful is already in the answers | A broker with a YOUNGER API than Nubra's appears in 5 of Claude's 10 answers | Existence proof that a new broker can break into the candidate set — the barrier is content and crawlability, not brand age or size |
 
 ## 5. Action deltas (changes to the standing plan, from this data)
 
