@@ -72,15 +72,17 @@ Ads workstream (2026-08-29, user request), split after feedback into:
   grounds), budget shape, measurement wiring, blockers (publish API
   pricing; SI-portal sync; DPDP consent wording; §5.7 legal read).
 
-Organic AI visibility MASTER PLAN (v2 2026-08-30): docs/
-nubra-organic-ai-visibility-2026-08-29.md — combines crawl audit +
-the user's 10-query experiment. Five citation patterns from actual
-winning URLs (SEBI-rules explainer = 16 citations across 3 small
-sites = top pattern; broker-own FAQ pages 15x; keyword listicles;
-dated pricing-news; reddit threads per query), per-engine reality
-(Claude/Brave = beachhead, Gemini = stale memory/slowest), 13
-sequenced steps (wks 1-2 site, 2-6 content magnets, 6-12 third-party,
-ongoing measurement), frozen panel for the ~6wk re-run.
+Organic AI visibility docs (user prefers them SEPARATE — restored
+2026-08-30 after a merge attempt was rejected):
+- docs/nubra-organic-ai-visibility-2026-08-29.md — ORIGINAL form
+  (crawl audit; fix list; sourced plays; the frozen 10-query panel).
+- docs/ai-citation-action-plan-2026-08-30.md — the experiment-derived
+  layer: 5 citation patterns from actual winning URLs (SEBI-rules
+  explainer 16x across 3 small sites = top; broker-own FAQ pages 15x;
+  keyword listicles; dated pricing-news; reddit threads per query),
+  per-engine win order (Claude/Brave beachhead, Gemini slowest), 13
+  sequenced steps.
+- docs/ai-search-experiment-results-2026-08-30.md — the raw extraction.
 
 AI-search experiment (2026-08-30, user ran the 10-query panel):
 docs/ai-search-experiment-results-2026-08-30.md — Nubra 0/40 answer
