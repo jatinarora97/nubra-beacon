@@ -77,8 +77,12 @@ def list_recommendations(
 ):
     try:
         where = [
+            # api_trading-lens briefs live on their own page — this list stays
+            # scoped to the general engine's latest run
+            "r.lens = 'general'",
             "r.run_id = (SELECT id FROM social_recommendation_runs "
-            "WHERE status='succeeded' ORDER BY created_at DESC LIMIT 1)"
+            "WHERE status='succeeded' AND prompt_version <> 'api-lens-copy-v1' "
+            "ORDER BY created_at DESC LIMIT 1)"
         ]
         params: dict = {"limit": limit}
         if segment:

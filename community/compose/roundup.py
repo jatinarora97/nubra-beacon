@@ -217,4 +217,11 @@ def run() -> dict:
         stats["weekly"] = True
     from community.store.repositories import advance_state
     advance_state("roundup", "", items=1)
+    # API-trading content queue rides the hourly compose: top_up() generates
+    # only the per-platform shortfall (most hours: nothing) and never raises
+    try:
+        from community.social_recommend import api_lens
+        stats["api_content_queue"] = api_lens.top_up()
+    except Exception as exc:  # noqa: BLE001 — isolated by design
+        stats["api_content_queue"] = {"status": "failed", "error": str(exc)[:200]}
     return stats

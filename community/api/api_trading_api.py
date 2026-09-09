@@ -170,6 +170,72 @@ def landscape_delete(feature_id: int):
         raise HTTPException(404, "no such feature")
 
 
+@router.get("/content")
+def content_queue(platform: str | None = None, status: str = "draft",
+                  limit: int = 60):
+    """The intern-facing content queue: api_trading-lens briefs.
+    status: draft (ready to post) | published (acted) | rejected (dismissed)."""
+    if status not in ("draft", "published", "rejected", "all"):
+        raise HTTPException(422, "status must be draft, published, rejected or all")
+    sql = ("SELECT r.id, r.day, r.platform, r.post_format, r.title, r.hook, "
+           "r.body, r.cta, r.exact_copy, r.hashtags, r.mapped_features, "
+           "r.source_evidence, r.rationale, r.recommended_timing, "
+           "r.priority_score, r.status, r.seed_url, r.created_at "
+           "FROM social_recommendations r WHERE r.lens = 'api_trading'")
+    p: dict = {"lim": max(1, min(limit, 200))}
+    if status != "all":
+        sql += " AND r.status = %(status)s"
+        p["status"] = status
+    if platform:
+        sql += " AND r.platform = %(platform)s"
+        p["platform"] = platform
+    return db.query(sql + " ORDER BY r.created_at DESC, r.priority_score DESC "
+                          "LIMIT %(lim)s", p)
+
+
+def _content_transition(brief_id: int, new_status: str, event: str,
+                        actor: str, note: str | None) -> dict:
+    row = db.one("SELECT id, status FROM social_recommendations "
+                 "WHERE id = %s AND lens = 'api_trading'", (brief_id,))
+    if not row:
+        raise HTTPException(404, "no such brief")
+    if row["status"] != "draft":
+        raise HTTPException(409, f"brief already {row['status']}")
+    db.execute("UPDATE social_recommendations SET status=%s, updated_at=now() "
+               "WHERE id=%s", (new_status, brief_id))
+    db.execute("INSERT INTO social_recommendation_events "
+               "(recommendation_id, event_type, actor, note) VALUES (%s,%s,%s,%s)",
+               (brief_id, event, actor, note))
+    return {"id": brief_id, "status": new_status, "actor": actor}
+
+
+@router.post("/content/{brief_id}/act")
+def content_act(brief_id: int, payload: dict = Body(default={}),
+                x_auth_request_email: str | None = Header(default=None),
+                x_forwarded_email: str | None = Header(default=None)):
+    """Intern posted it — mark published. Optional note: the live post URL."""
+    return _content_transition(brief_id, "published", "published",
+                               x_auth_request_email or x_forwarded_email or "dashboard",
+                               (payload.get("note") or "").strip() or None)
+
+
+@router.post("/content/{brief_id}/dismiss")
+def content_dismiss(brief_id: int, payload: dict = Body(default={}),
+                    x_auth_request_email: str | None = Header(default=None),
+                    x_forwarded_email: str | None = Header(default=None)):
+    """Not worth posting — permanently out of the queue."""
+    return _content_transition(brief_id, "rejected", "rejected",
+                               x_auth_request_email or x_forwarded_email or "dashboard",
+                               (payload.get("note") or "").strip() or None)
+
+
+@router.post("/content/top-up", status_code=202)
+def content_top_up():
+    """Manual refill (the hourly compose does this automatically)."""
+    from community.social_recommend import api_lens
+    return api_lens.top_up()
+
+
 @router.get("/items")
 def items(stage: str | None = None, kind: str | None = None,
           layer: str | None = None, theme: str | None = None,
