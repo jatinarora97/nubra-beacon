@@ -279,10 +279,10 @@ def _freshness() -> dict:
     reg_sources = settings_registry_sources()
     cadence_by_cfg = {k: str((reg_sources.get(k) or {}).get("cadence", "daily")).lower()
                       for k in ("youtube", "github", "broker_communities", "app_reviews",
-                                "instagram")}
+                                "instagram", "linkedin")}
     stored_to_cfg = {"youtube": "youtube", "github": "github",
                      "community_forum": "broker_communities", "app_review": "app_reviews",
-                     "instagram": "instagram"}
+                     "instagram": "instagram", "linkedin": "linkedin"}
     # reddit is cadence-gated since 2026-08-19 (metered residential proxy):
     # every fetch_every_hours, not hourly — the Overview must say so
     reddit_every = int((reg_sources.get("reddit") or {}).get("fetch_every_hours", 1))
@@ -1447,7 +1447,8 @@ def source_health(live: bool = False):
 # ── watch sources (UI-managed collection config) ──────────────────────────
 
 _KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query", "keyword",
-          "youtube_query", "github_query", "forum", "app", "instagram_account")
+          "youtube_query", "github_query", "forum", "app", "instagram_account",
+          "linkedin_query")
 
 
 @app.get(API + "/sources")
@@ -1476,7 +1477,8 @@ def add_source(payload: dict = Body(...),
         if not value.lower().startswith("http"):
             raise HTTPException(400, "forum value must be the base/sitemap URL (https://...)")
     # queries/keywords/app names may contain spaces; handles/hashtags/subs may not
-    elif (kind not in ("x_query", "keyword", "youtube_query", "github_query", "app")
+    elif (kind not in ("x_query", "keyword", "youtube_query", "github_query", "app",
+                       "linkedin_query")
           and (" " in value or len(value) > 60)):
         raise HTTPException(400, "value looks invalid for this kind")
     config = payload.get("config") if isinstance(payload.get("config"), dict) else {}

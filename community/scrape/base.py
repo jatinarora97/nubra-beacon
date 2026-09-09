@@ -29,6 +29,7 @@ class SocialItem(BaseModel):
         "community_forum",
         "app_review",
         "instagram",
+        "linkedin",
     ]
     source_type: Literal["post", "comment", "tweet", "reply", "message", "review", "issue",
                          "reel", "sidecar"]

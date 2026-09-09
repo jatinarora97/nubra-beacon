@@ -247,6 +247,7 @@ export function ExploreTable() {
           <option value="community_forum">broker communities</option>
           <option value="app_review">app reviews</option>
           <option value="instagram">instagram</option>
+          <option value="linkedin">linkedin</option>
         </select>
         <IntentSelect value={intents} onChange={setIntents} />
         <input

@@ -75,7 +75,8 @@ def run(daily: bool = False, **_) -> dict:
     sources = settings.registry.get("sources", {})
     out: dict[str, dict] = {}
 
-    from community.scrape import app_reviews, broker_communities, github_public, instagram, youtube
+    from community.scrape import (app_reviews, broker_communities, github_public,
+                                  instagram, linkedin, youtube)
 
     for out_key, cfg_key, fetcher in (
         ("youtube", "youtube", youtube.fetch),
@@ -83,6 +84,7 @@ def run(daily: bool = False, **_) -> dict:
         ("community_forum", "broker_communities", broker_communities.fetch),
         ("app_review", "app_reviews", app_reviews.fetch),
         ("instagram", "instagram", instagram.fetch),
+        ("linkedin", "linkedin", linkedin.fetch),
     ):
         cfg = sources.get(cfg_key, {}) or {}
         cadence = str(cfg.get("cadence", "daily")).lower()

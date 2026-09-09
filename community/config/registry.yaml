@@ -262,6 +262,18 @@ sources:
         broker: fyers
         apple_id:
         google_package: com.fyers.trader
+  linkedin:                     # public-post keyword search via Apify (no-cookie
+    enabled: true               # actor — no Nubra account/session involved).
+    cadence: daily              # ~USD 2/1k posts; daily + caps = pennies/day
+    max_posts_per_query: 25
+    posted_limit: week          # daily cadence, week window: overlap dedupes on insert
+    queries:                    # seed — DB rows (watch_sources kind=linkedin_query) win
+      - algo trading india
+      - trading api india
+      - kite connect api
+      - dhan api
+      - nubra trading
+      - algorithmic trading nse
   instagram:
     enabled: true
     cadence: daily              # LOCKED 2026-08-12: pinned posts bypass onlyPostsNewerThan

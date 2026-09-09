@@ -16,7 +16,8 @@ type Source = {
     | "instagram_account"
     | "github_query"
     | "forum"
-    | "app";
+    | "app"
+    | "linkedin_query";
   value: string;
   category: string | null;
   active: boolean;
@@ -36,6 +37,7 @@ const KIND_META: Record<Source["kind"], { label: string; prefix: string; hint: s
   github_query: { label: "GitHub search queries", prefix: "", hint: 'e.g. "broker API India"' },
   forum: { label: "Community forums", prefix: "", hint: "base URL, e.g. https://tradingqna.com" },
   app: { label: "App-store apps", prefix: "", hint: "app name, e.g. Zerodha Kite" },
+  linkedin_query: { label: "LinkedIn search queries", prefix: "", hint: "e.g. trading api india" },
 };
 
 // forum/app rows need structured config; shown as an optional JSON field
