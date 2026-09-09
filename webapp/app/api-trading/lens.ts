@@ -174,6 +174,53 @@ export const LAYERS = [
   "community_learning",
 ] as const;
 
+/* ── content queue (intern-facing briefs, social_recommendations lens rows) ── */
+
+export type ContentEvidence = {
+  url: string | null;
+  gist: string | null;
+  source?: string | null;
+  text?: string | null;
+  item_id?: number;
+};
+
+export type ContentFeature = { name: string; status?: string | null };
+
+export type ContentBrief = {
+  id: number;
+  day: string;
+  platform: string;
+  post_format: "seed_reply" | "text_post";
+  title: string;
+  hook: string | null;
+  body: string | null;
+  cta: string | null;
+  exact_copy: string;
+  hashtags: string[] | null;
+  mapped_features: ContentFeature[] | null;
+  source_evidence: ContentEvidence[] | null;
+  rationale: string | null;
+  recommended_timing: string | null;
+  priority_score: number | string | null;
+  status: "draft" | "published" | "rejected";
+  seed_url: string | null;
+  created_at: string | null;
+};
+
+export const CONTENT_PLATFORMS = [
+  "reddit",
+  "x",
+  "linkedin",
+  "youtube_community",
+] as const;
+
+export const CONTENT_PLATFORM_LABELS: Record<string, string> = {
+  reddit: "Reddit",
+  x: "X / Twitter",
+  linkedin: "LinkedIn",
+  youtube_community: "YouTube Community",
+};
+
 export const SOURCE_LABELS: Record<string, string> = {
   twitter: "X / Twitter",
   reddit: "Reddit",

@@ -17,6 +17,7 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/voices", label: "Voices", dot: "bg-voices", group: "Who matters" },
   { href: "/api-trading", label: "Overview", dot: "bg-trends", group: "API trading" },
   { href: "/api-trading/landscape", label: "Landscape", dot: "bg-warn" },
+  { href: "/api-trading/content", label: "Content", dot: "bg-content" },
   { href: "/api-trading/data", label: "Data", dot: "bg-muted" },
   { href: "/explore", label: "Explore data", dot: "bg-muted", group: "Verify" },
   { href: "/sources", label: "Sources", dot: "bg-muted", group: "Configure" },
