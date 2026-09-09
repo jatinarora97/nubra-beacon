@@ -99,7 +99,7 @@ function FeatureCatalog({
   );
 }
 
-export function LandscapeManager({ days }: { days: number }) {
+export function LandscapeManager({ windowQS }: { windowQS: string }) {
   const [data, setData] = useState<LandscapeResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
@@ -113,10 +113,10 @@ export function LandscapeManager({ days }: { days: number }) {
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    const d = await get<LandscapeResp | null>(`/api-trading/landscape?days=${days}`, null);
+    const d = await get<LandscapeResp | null>(`/api-trading/landscape?${windowQS}`, null);
     setData(d);
     setLoading(false);
-  }, [days]);
+  }, [windowQS]);
 
   useEffect(() => {
     setLoading(true);

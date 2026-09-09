@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { get } from "@/lib/api";
 import { Badge, EmptyState } from "@/components/ui";
+import { windowQuery } from "@/lib/window";
 import {
   type LensItem,
-  DAYS_PRESETS,
   FRICTION_THEME_LABELS,
   KIND_ORDER,
   LAYERS,
@@ -14,6 +14,7 @@ import {
   STAGE_META,
   STAGE_ORDER,
   WORKING_THEME_LABELS,
+  pickLensWindow,
   themeLabel,
 } from "../lens";
 
@@ -32,18 +33,22 @@ function fmtDate(iso?: string | null): string {
 }
 
 export function LensDataTable() {
-  // ?theme= / ?days= etc. deep-links (Overview theme rows and candidate chips
-  // land here prefiltered).
+  // ?theme= etc. deep-links (Overview theme rows and candidate chips land here
+  // prefiltered); window/from_ts/to_ts come from the TimeFilter above the table.
   const sp = useSearchParams();
+  const windowQS = windowQuery(
+    pickLensWindow({
+      window: sp.get("window") ?? undefined,
+      from_ts: sp.get("from_ts") ?? undefined,
+      to_ts: sp.get("to_ts") ?? undefined,
+    }),
+  );
   const [stage, setStage] = useState(sp.get("stage") ?? "");
   const [kind, setKind] = useState(sp.get("kind") ?? "");
   const [layer, setLayer] = useState(sp.get("layer") ?? "");
   const [theme, setTheme] = useState(sp.get("theme") ?? "");
   const [firstApiType, setFirstApiType] = useState(sp.get("first_api_type") ?? "");
-  const [days, setDays] = useState(() => {
-    const n = Number(sp.get("days"));
-    return Number.isInteger(n) && n >= 1 && n <= 365 ? n : 90;
-  });
+  const [sort, setSort] = useState<"recent" | "engagement">("recent");
   // free-text inputs are debounced: *Live is the keystroke state
   const [q, setQ] = useState(sp.get("q") ?? "");
   const [qLive, setQLive] = useState(sp.get("q") ?? "");
@@ -66,7 +71,9 @@ export function LensDataTable() {
     return () => clearTimeout(t);
   }, [toolLive]);
 
-  function pageUrl(off: number): string {
+  // Shared filter fragment: table pages and exports speak the same query
+  // language (lens facets, tool, q, window).
+  function filterParams(): URLSearchParams {
     const params = new URLSearchParams();
     if (stage) params.set("stage", stage);
     if (kind) params.set("kind", kind);
@@ -75,10 +82,23 @@ export function LensDataTable() {
     if (firstApiType) params.set("first_api_type", firstApiType);
     if (q) params.set("q", q);
     if (tool) params.set("tool", tool);
-    params.set("days", String(days));
+    return params;
+  }
+
+  function pageUrl(off: number): string {
+    const params = filterParams();
+    params.set("sort", sort);
     params.set("limit", String(PAGE));
     params.set("offset", String(off));
-    return `/api-trading/items?${params}`;
+    return `/api-trading/items?${params}&${windowQS}`;
+  }
+
+  // Server-side export honouring the active filters + window (full text).
+  function exportUrl(format: "csv" | "xlsx"): string {
+    const params = filterParams();
+    params.set("limit", "2000");
+    params.set("format", format);
+    return `/api/v1/api-trading/items/export?${params}&${windowQS}`;
   }
 
   // Monotonic id per filter-state: a Load-more response landing after the
@@ -98,7 +118,7 @@ export function LensDataTable() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, kind, layer, theme, firstApiType, q, tool, days]);
+  }, [stage, kind, layer, theme, firstApiType, q, tool, sort, windowQS]);
 
   async function loadMore() {
     if (loadingMore) return;
@@ -169,15 +189,13 @@ export function LensDataTable() {
           <option value="unclear">unclear</option>
         </select>
         <select
-          value={days}
-          onChange={(e) => setDays(Number(e.target.value))}
+          value={sort}
+          onChange={(e) => setSort(e.target.value as "recent" | "engagement")}
           className={selectCls}
+          aria-label="Sort order"
         >
-          {DAYS_PRESETS.map((p) => (
-            <option key={p.days} value={p.days}>
-              last {p.label}
-            </option>
-          ))}
+          <option value="recent">newest first</option>
+          <option value="engagement">top engagement</option>
         </select>
         <input
           value={toolLive}
@@ -191,6 +209,19 @@ export function LensDataTable() {
           placeholder="search text…"
           className={`${selectCls} min-w-48 flex-1 placeholder:text-muted/60`}
         />
+        <div className="ml-auto flex items-center gap-2">
+          {(["csv", "xlsx"] as const).map((fmt) => (
+            <a
+              key={fmt}
+              href={exportUrl(fmt)}
+              download
+              title={`Download the current filter result (up to 2,000 rows, full text) as ${fmt === "csv" ? "CSV" : "Excel"}`}
+              className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:border-muted hover:text-ink"
+            >
+              Export {fmt === "csv" ? "CSV" : "Excel"}
+            </a>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -198,7 +229,7 @@ export function LensDataTable() {
       ) : items.length === 0 ? (
         <EmptyState
           title="No lens items match"
-          body="Loosen the filters or widen the day window — or the classifier genuinely hasn't seen matching items yet."
+          body="Loosen the filters or widen the time window above — or the classifier genuinely hasn't seen matching items yet."
         />
       ) : (
         <div className="overflow-x-auto rounded-[10px] border border-line">

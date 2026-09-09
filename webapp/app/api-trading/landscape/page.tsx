@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/ui";
-import { DaysFilter } from "../days-filter";
-import { pickDays } from "../lens";
+import { TimeFilter } from "@/components/time-filter";
+import { windowQuery } from "@/lib/window";
+import { pickLensWindow } from "../lens";
 import { LandscapeManager } from "./landscape-manager";
 
 export default async function ApiTradingLandscapePage({
@@ -8,7 +9,7 @@ export default async function ApiTradingLandscapePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const days = pickDays(await searchParams);
+  const w = pickLensWindow(await searchParams);
   return (
     <div>
       <PageHeader
@@ -16,8 +17,8 @@ export default async function ApiTradingLandscapePage({
         accent="bg-warn"
         blurb="Who API traders talk about and what those players ship: live mention coverage per competitor over the window, plus a feature catalog kept fresh by a weekly monitor and manual adds."
       />
-      <DaysFilter days={days} />
-      <LandscapeManager days={days} />
+      <TimeFilter current={w} />
+      <LandscapeManager windowQS={windowQuery(w)} />
     </div>
   );
 }

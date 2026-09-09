@@ -2,13 +2,15 @@
  *  safe). The lens tracks traders who trade via code/APIs, not charts —
  *  taxonomy mirrors community/enrich/api_trader.py. */
 
+import { pickWindow, type WindowSearch } from "@/lib/window";
+
 export type FunnelStage = {
   stage: string;
   total: number;
   kinds: Record<string, number>;
 };
 export type FunnelResp = {
-  days: number;
+  days?: number;
   stages: FunnelStage[];
   first_api_split: Record<string, number>;
 };
@@ -23,7 +25,7 @@ export type ThemeItem = {
   eng: number;
 };
 export type ThemeRow = { theme: string; n: number; items: ThemeItem[] };
-export type ThemesResp = { days: number; kind: string; themes: ThemeRow[] };
+export type ThemesResp = { days?: number; kind: string; themes: ThemeRow[] };
 
 export type Candidate = {
   key: string;
@@ -54,7 +56,7 @@ export type LandscapePlayer = {
   features: LandscapeFeature[];
 };
 export type LandscapeResp = {
-  days: number;
+  days?: number;
   players: LandscapePlayer[];
   untracked_features: Record<string, LandscapeFeature[]>;
 };
@@ -77,22 +79,17 @@ export type LensItem = {
   engagement: number;
 };
 
-/* ── days window (these endpoints take ?days=N, not the window= contract) ── */
+/* ── time window (these endpoints speak the app-standard window= contract;
+      lens journeys move slowly, so the section defaults wider than 1h) ─── */
 
-export const DAYS_PRESETS = [
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 90, label: "90 days" },
-  { days: 180, label: "180 days" },
-] as const;
+export const LENS_DEFAULT_WINDOW = "30d";
 
-export function pickDays(
+/** pickWindow, but with the section's 90d default when the URL has none. */
+export function pickLensWindow(
   sp: Record<string, string | string[] | undefined>,
-  fallback = 90,
-): number {
-  const raw = Array.isArray(sp.days) ? sp.days[0] : sp.days;
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 1 && n <= 365 ? n : fallback;
+): WindowSearch {
+  const w = pickWindow(sp, true); // defaultAll: {} = nothing valid in the URL
+  return w.window || (w.from_ts && w.to_ts) ? w : { window: LENS_DEFAULT_WINDOW };
 }
 
 /* ── taxonomy display names ─────────────────────────────────────────────── */

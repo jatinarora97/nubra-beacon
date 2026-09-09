@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { get } from "@/lib/api";
 import { Badge, EmptyState, PageHeader, SectionCard } from "@/components/ui";
-import { DaysFilter } from "./days-filter";
+import { TimeFilter } from "@/components/time-filter";
+import { windowLabel, windowQuery, type WindowSearch } from "@/lib/window";
 import {
   type Candidate,
   type FunnelResp,
@@ -13,7 +14,7 @@ import {
   KIND_ORDER,
   SOURCE_LABELS,
   STAGE_META,
-  pickDays,
+  pickLensWindow,
   themeLabel,
 } from "./lens";
 
@@ -47,13 +48,13 @@ function ThemeBoard({
   title,
   blurb,
   themes,
-  days,
+  windowQS,
   tone,
 }: {
   title: string;
   blurb: string;
   themes: ThemeRow[];
-  days: number;
+  windowQS: string;
   tone: "danger" | "opps";
 }) {
   return (
@@ -77,7 +78,7 @@ function ThemeBoard({
             <div key={t.theme} className="rounded-[10px] border border-line bg-surface2/30 px-3.5 py-3">
               <div className="flex items-center justify-between gap-2">
                 <Link
-                  href={`/api-trading/data?theme=${t.theme}&days=${days}`}
+                  href={`/api-trading/data?theme=${t.theme}&${windowQS}`}
                   className="text-[13px] font-medium hover:underline"
                 >
                   {themeLabel(t.theme)}
@@ -85,7 +86,7 @@ function ThemeBoard({
                 <span className="flex items-center gap-2">
                   <span className="text-[12.5px] font-semibold tabular-nums">{t.n}</span>
                   <Link
-                    href={`/api-trading/data?theme=${t.theme}&days=${days}`}
+                    href={`/api-trading/data?theme=${t.theme}&${windowQS}`}
                     className="text-[11.5px] text-muted hover:text-ink hover:underline"
                   >
                     all items
@@ -122,34 +123,43 @@ function ThemeBoard({
   );
 }
 
+/** Candidate trends span the window PLUS the same span before it — cap preset
+ *  windows at 90d so the comparison never reaches past 180d retention.
+ *  Explicit from_ts/to_ts ranges pass through untouched. */
+function capForTrend(w: WindowSearch): WindowSearch {
+  const m = w.window?.match(/^(\d{1,4})([hd])$/);
+  if (!m) return w;
+  const hours = Number(m[1]) * (m[2] === "d" ? 24 : 1);
+  return hours > 90 * 24 ? { window: "90d" } : w;
+}
+
 export default async function ApiTradingOverviewPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const days = pickDays(await searchParams);
+  const w = pickLensWindow(await searchParams);
+  const qs = windowQuery(w);
   // Candidate trends compare the window vs the one before it — cap at 90d so
   // the previous window never reaches past the 180d retention horizon.
-  const candDays = Math.min(days, 90);
+  const candW = capForTrend(w);
+  const candQS = windowQuery(candW);
   const [funnel, friction, working, cands] = await Promise.all([
-    get<FunnelResp>(`/api-trading/funnel?days=${days}`, {
-      days,
+    get<FunnelResp>(`/api-trading/funnel?${qs}`, {
       stages: [],
       first_api_split: {},
     }),
-    get<ThemesResp>(`/api-trading/themes?kind=friction&days=${days}&per_theme=5`, {
-      days,
+    get<ThemesResp>(`/api-trading/themes?kind=friction&per_theme=5&${qs}`, {
       kind: "friction",
       themes: [],
     }),
-    get<ThemesResp>(`/api-trading/themes?kind=working&days=${days}&per_theme=5`, {
-      days,
+    get<ThemesResp>(`/api-trading/themes?kind=working&per_theme=5&${qs}`, {
       kind: "working",
       themes: [],
     }),
-    get<{ days: number; candidates: Candidate[] }>(
-      `/api-trading/candidates?days=${candDays}`,
-      { days: candDays, candidates: [] },
+    get<{ candidates: Candidate[] }>(
+      `/api-trading/candidates?${candQS}`,
+      { candidates: [] },
     ),
   ]);
 
@@ -164,7 +174,7 @@ export default async function ApiTradingOverviewPage({
         accent="bg-trends"
         blurb="A lens on traders who trade via code and APIs, not charts: where they are in the journey, what blocks them, what already works for them, and what that says Nubra should build."
       />
-      <DaysFilter days={days} />
+      <TimeFilter current={w} />
 
       {/* ── journey funnel ─────────────────────────────────────────────── */}
       <SectionCard className="mb-5">
@@ -259,14 +269,14 @@ export default async function ApiTradingOverviewPage({
           title="Friction board"
           blurb="What blocks API traders right now, ranked by volume. Top items by engagement under each theme."
           themes={friction.themes}
-          days={days}
+          windowQS={qs}
           tone="danger"
         />
         <ThemeBoard
           title="Working-well board"
           blurb="What the community is showing off — proof of what already works for them."
           themes={working.themes}
-          days={days}
+          windowQS={qs}
           tone="opps"
         />
       </div>
@@ -275,7 +285,7 @@ export default async function ApiTradingOverviewPage({
       <div className="mb-2 flex items-baseline justify-between">
         <div className="text-[13.5px] font-semibold">Build candidates</div>
         <span className="text-[11.5px] text-muted">
-          mentions: last {candDays}d vs the {candDays}d before
+          mentions: {windowLabel(candW)} vs the same span before
         </span>
       </div>
       {cands.candidates.length === 0 ? (
@@ -299,7 +309,7 @@ export default async function ApiTradingOverviewPage({
                 </div>
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {c.themes.map((t) => (
-                    <Link key={t} href={`/api-trading/data?theme=${t}&days=${days}`}>
+                    <Link key={t} href={`/api-trading/data?theme=${t}&${qs}`}>
                       <Badge tone="trends">{themeLabel(t)}</Badge>
                     </Link>
                   ))}
