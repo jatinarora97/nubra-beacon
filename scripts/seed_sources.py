@@ -55,8 +55,8 @@ def main() -> None:
             "VALUES ('github_query', %s, 'api', 'seed') ON CONFLICT (kind, value) DO NOTHING",
             (q,))
         rows.append(("github_query", q, "api"))
-    for q in (sources.get("linkedin") or {}).get("queries") or []:
-        db.execute(
+    for q in (reg.get("linkedin") or {}).get("queries") or []:
+        n += db.execute(
             "INSERT INTO watch_sources (kind, value, category, added_by) "
             "VALUES ('linkedin_query', %s, 'api', 'seed') ON CONFLICT (kind, value) DO NOTHING",
             (q,),
