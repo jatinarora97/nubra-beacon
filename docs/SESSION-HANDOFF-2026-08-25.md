@@ -37,7 +37,12 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    clean + SSR curl checks on all 3 pages + POST/DELETE round-trip clean.
    Notes: candidates window capped at 90d (previous-window comparison must
    stay inside 180d retention); unknown kinds render as "other" segment.
-6. **ON HOLD — user decision 2026-08-27: do NOT release the section yet.**
+6. **LAUNCHED ON PROD 2026-09-09** (user-verified: funnel serving, seed
+   4,729 + first 200 live-classified = 4,929 lens rows, 6 linkedin
+   queries seeded, migrate service auto-applied 0017-0019). The
+   API_TRADING_ENABLED kill switch remains available in prod .env
+   (off/false/0/no = dark). Original hold note kept below for history:
+   ORIGINALLY:
    The whole section sits behind one switch: `API_TRADING_ENABLED` env
    (overrides registry api_trading.enabled; off/false/0/no = dark). Dark =
    endpoints 404, sidebar group hides (client probe), classifier spends
