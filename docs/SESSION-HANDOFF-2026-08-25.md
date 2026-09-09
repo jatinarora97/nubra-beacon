@@ -50,6 +50,18 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    build. ~1k historical gated-irrelevant items classify naturally
    (~$0.40, bounded 200/run).
 
+Content queue (2026-09-09, user request — plan docs/
+api-content-queue-plan-2026-09-09.md): API-trading section gains a
+"Content" page — hourly-topped-up, grounded, compliance-checked briefs
+per platform (reddit/x/linkedin/youtube_community; seed replies target
+REAL lens threads) with Act/Dismiss for interns. Backend = migration
+0018 + community/social_recommend/api_lens.py (top_up rides compose
+hourly, gated by API_TRADING_ENABLED) + /api/v1/api-trading/content*
+endpoints (31d8c5d, live-tested: 8 briefs, act/dismiss/409/attribution
+green; general social page regression-checked). UI page delegated.
+Prod: ships dark behind the same gate; on enable, first compose run
+stocks the queue automatically.
+
 Market research (2026-08-27, user request): docs/
 api-trader-market-research-2026-08-27.md — competitor S/W vs Nubra
 (ground-up, docs-first), venue/targeting map, 3 segments (G1 explore /
