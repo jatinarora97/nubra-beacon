@@ -50,6 +50,15 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    build. ~1k historical gated-irrelevant items classify naturally
    (~$0.40, bounded 200/run).
 
+LinkedIn source (2026-09-09, user request): community/scrape/
+linkedin.py — Apify harvestapi/linkedin-post-search (NO-COOKIE actor: no
+Nubra LinkedIn account/session at risk), keyword search over public
+posts, ~\$2/1k (live run: 122 posts \$0.24). Daily cadence, week window;
+queries DB-managed (watch_sources kind=linkedin_query, seeded 6 from
+registry sources.linkedin). Migration 0019 widens social_items source +
+watch_sources kind CHECKs. Wired: extra_sources, Sources UI kind,
+Explore dropdown, freshness map. Est ~\$0.3/day at current caps.
+
 Content queue (2026-09-09, user request — plan docs/
 api-content-queue-plan-2026-09-09.md): API-trading section gains a
 "Content" page — hourly-topped-up, grounded, compliance-checked briefs
