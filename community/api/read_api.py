@@ -1118,6 +1118,58 @@ def items_intent_series(topic: str | None = None, broker: str | None = None,
             "points": rows}
 
 
+def _spreadsheet(format: str, name: str, header: list[str], rows: list[list]):
+    """Shared CSV/XLSX renderer for export endpoints (formula-injection-safe,
+    BOM'd CSV so Excel opens UTF-8, frozen header row in xlsx)."""
+    import csv
+    import io
+    import re as _re
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    from fastapi.responses import Response
+
+    ctrl = _re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+    def _cell(v):
+        if v is None:
+            return ""
+        if isinstance(v, (int, float)):
+            return v
+        sv = ctrl.sub(" ", str(v))
+        if sv[:1] in "=+-@":
+            sv = "'" + sv
+        return sv
+
+    flat = [[_cell(v) for v in row] for row in rows]
+    stamp = _dt.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%d-%H%M")
+    if format == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(header)
+        w.writerows(flat)
+        return Response(
+            buf.getvalue().encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition":
+                     f'attachment; filename="{name}-{stamp}.csv"'})
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = name[:31]
+    ws.append(header)
+    for row in flat:
+        ws.append(row)
+    ws.freeze_panes = "A2"
+    out = io.BytesIO()
+    wb.save(out)
+    return Response(
+        out.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{name}-{stamp}.xlsx"'})
+
+
 @app.get(API + "/items/export")
 def items_export(format: Literal["csv", "xlsx"] = "csv",
                  topic: str | None = None, broker: str | None = None,

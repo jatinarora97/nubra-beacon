@@ -38,13 +38,26 @@ def _win(days: int) -> datetime:
     return datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
 
 
+def _range(days: int, window: str | None, from_ts: str | None,
+           to_ts: str | None) -> tuple[datetime, datetime]:
+    """Standard Beacon window vocabulary (window=7d / from_ts+to_ts), with the
+    section's legacy days= as fallback — one filter semantic across the app."""
+    from community.api.read_api import _window  # lazy: read_api mounts this router
+    w = _window(from_ts, to_ts, window)
+    if w:
+        return w
+    return _win(days), datetime.now(timezone.utc)
+
+
 @router.get("/funnel")
-def funnel(days: int = 90):
+def funnel(days: int = 90, window: str | None = None,
+           from_ts: str | None = None, to_ts: str | None = None):
     """Stage funnel + kind mix + the first_api split, over items CREATED in
     the window."""
+    f, t = _range(days, window, from_ts, to_ts)
     rows = db.query(
         f"SELECT a.stage, a.kind, count(*)::int AS n {_BASE} "
-        "AND si.created_at >= %s GROUP BY 1, 2", (_win(days),))
+        "AND si.created_at >= %s AND si.created_at < %s GROUP BY 1, 2", (f, t))
     stages: dict[str, dict] = {}
     for r in rows:
         s = stages.setdefault(r["stage"], {"stage": r["stage"], "total": 0, "kinds": {}})
@@ -54,53 +67,59 @@ def funnel(days: int = 90):
     order = ["exploring", "first_api", "building", "scaling", "churning"]
     split = {r["first_api_type"] or "unclear": r["n"] for r in db.query(
         f"SELECT a.first_api_type, count(*)::int AS n {_BASE} "
-        "AND a.stage = 'first_api' AND si.created_at >= %s GROUP BY 1", (_win(days),))}
+        "AND a.stage = 'first_api' AND si.created_at >= %s AND si.created_at < %s "
+        "GROUP BY 1", (f, t))}
     return {"days": days,
             "stages": [stages.get(s, {"stage": s, "total": 0, "kinds": {}}) for s in order],
             "first_api_split": split}
 
 
 @router.get("/themes")
-def themes(kind: str = "friction", days: int = 90, per_theme: int = 5):
+def themes(kind: str = "friction", days: int = 90, per_theme: int = 5,
+           window: str | None = None,
+           from_ts: str | None = None, to_ts: str | None = None):
     """Theme board: counts + top items per theme (frictions or what-works)."""
     if kind not in ("friction", "working"):
         raise HTTPException(422, "kind must be friction or working")
+    f, t = _range(days, window, from_ts, to_ts)
     col = "friction_theme" if kind == "friction" else "working_theme"
     counts = db.query(
         f"SELECT a.{col} AS theme, count(*)::int AS n {_BASE} "
-        f"AND a.{col} IS NOT NULL AND si.created_at >= %s "
-        "GROUP BY 1 ORDER BY n DESC", (_win(days),))
+        f"AND a.{col} IS NOT NULL AND si.created_at >= %s AND si.created_at < %s "
+        "GROUP BY 1 ORDER BY n DESC", (f, t))
     out = []
     for c in counts:
         items = db.query(
             f"SELECT a.item_id, a.gist, a.stage, si.source, si.url, "
             f"       left(si.text, 200) AS text, "
             f"       coalesce((si.engagement->>'score')::float, 0) AS eng {_BASE} "
-            f"AND a.{col} = %s AND si.created_at >= %s "
+            f"AND a.{col} = %s AND si.created_at >= %s AND si.created_at < %s "
             "ORDER BY (si.engagement->>'score')::float DESC NULLS LAST LIMIT %s",
-            (c["theme"], _win(days), max(1, min(per_theme, 20))))
+            (c["theme"], f, t, max(1, min(per_theme, 20))))
         out.append({**c, "items": items})
     return {"days": days, "kind": kind, "themes": out}
 
 
 @router.get("/candidates")
-def candidates(days: int = 30):
+def candidates(days: int = 30, window: str | None = None,
+               from_ts: str | None = None, to_ts: str | None = None):
     """Build-candidate cards: live evidence counters + trend vs the previous
     window. Definitions live in registry api_trading.candidates."""
     defs = (settings.registry.get("api_trading", {}) or {}).get("candidates", [])
-    now = datetime.now(timezone.utc)
-    cur_from, prev_from = now - timedelta(days=days), now - timedelta(days=2 * days)
+    cur_from, now = _range(days, window, from_ts, to_ts)
+    prev_from = cur_from - (now - cur_from)
     out = []
     for c in defs:
         themes_list = list(c.get("themes") or [])
         row = db.one(
             f"""SELECT
-              count(*) FILTER (WHERE si.created_at >= %(cur)s)::int AS current,
+              count(*) FILTER (WHERE si.created_at >= %(cur)s
+                               AND si.created_at < %(now)s)::int AS current,
               count(*) FILTER (WHERE si.created_at >= %(prev)s
                                AND si.created_at < %(cur)s)::int AS previous
               {_BASE}
               AND (a.friction_theme = ANY(%(t)s) OR a.working_theme = ANY(%(t)s))""",
-            {"cur": cur_from, "prev": prev_from, "t": themes_list})
+            {"cur": cur_from, "prev": prev_from, "now": now, "t": themes_list})
         cur, prev = row["current"], row["previous"]
         out.append({"key": c["key"], "title": c["title"], "themes": themes_list,
                     "grounding": c.get("grounding") or [],
@@ -110,7 +129,8 @@ def candidates(days: int = 30):
 
 
 @router.get("/landscape")
-def landscape(days: int = 90):
+def landscape(days: int = 90, window: str | None = None,
+              from_ts: str | None = None, to_ts: str | None = None):
     """Competitor grounding (features) + live coverage strip per tracked
     player (corpus/relevant/friction mention counts)."""
     feats = db.query("SELECT id, competitor, feature, status, evidence_url, "
@@ -124,13 +144,14 @@ def landscape(days: int = 90):
         pat = p.get("patterns")
         if not pat:
             continue
+        f, t = _range(days, window, from_ts, to_ts)
         c = db.one("SELECT count(*)::int AS n FROM social_items "
-                   "WHERE duplicate_of IS NULL AND created_at >= %s AND text ~* %s",
-                   (_win(days), pat))["n"]
+                   "WHERE duplicate_of IS NULL AND created_at >= %s "
+                   "AND created_at < %s AND text ~* %s", (f, t, pat))["n"]
         r = db.one(f"SELECT count(*)::int AS rel, "
                    "count(*) FILTER (WHERE a.kind = 'friction')::int AS fr "
-                   f"{_BASE} AND si.created_at >= %s AND si.text ~* %s",
-                   (_win(days), pat))
+                   f"{_BASE} AND si.created_at >= %s AND si.created_at < %s "
+                   "AND si.text ~* %s", (f, t, pat))
         coverage.append({"name": p["name"], "corpus": c,
                          "relevant": r["rel"], "frictions": r["fr"],
                          "features": by_comp.get(p["name"], [])})
@@ -236,16 +257,12 @@ def content_top_up():
     return api_lens.top_up()
 
 
-@router.get("/items")
-def items(stage: str | None = None, kind: str | None = None,
-          layer: str | None = None, theme: str | None = None,
-          first_api_type: str | None = None, tool: str | None = None,
-          q: str | None = None, days: int = 90,
-          limit: int = 50, offset: int = 0):
-    """The Data page: classified items with raw + lens columns."""
-    sql = _BASE + " AND si.created_at >= %(since)s"
-    p: dict = {"since": _win(days), "lim": max(1, min(limit, 200)),
-               "off": max(offset, 0)}
+def _item_filters(stage, kind, layer, theme, first_api_type, tool, q,
+                  days, window, from_ts, to_ts) -> tuple[str, dict]:
+    """Shared FROM/WHERE for /items and /items/export — one filter semantic."""
+    f, t = _range(days, window, from_ts, to_ts)
+    sql = _BASE + " AND si.created_at >= %(since)s AND si.created_at < %(until)s"
+    p: dict = {"since": f, "until": t}
     for name, val, clause in (
             ("stage", stage, " AND a.stage = %(stage)s"),
             ("kind", kind, " AND a.kind = %(kind)s"),
@@ -263,10 +280,59 @@ def items(stage: str | None = None, kind: str | None = None,
     if q:
         sql += " AND si.text ILIKE %(q)s"
         p["q"] = f"%{q}%"
+    return sql, p
+
+
+@router.get("/items")
+def items(stage: str | None = None, kind: str | None = None,
+          layer: str | None = None, theme: str | None = None,
+          first_api_type: str | None = None, tool: str | None = None,
+          q: str | None = None, days: int = 90, window: str | None = None,
+          from_ts: str | None = None, to_ts: str | None = None,
+          sort: str = "recent", limit: int = 50, offset: int = 0):
+    """The Data page: classified items with raw + lens columns."""
+    sql, p = _item_filters(stage, kind, layer, theme, first_api_type, tool, q,
+                           days, window, from_ts, to_ts)
+    p.update({"lim": max(1, min(limit, 200)), "off": max(offset, 0)})
     return db.query(
         "SELECT a.item_id, a.stage, a.first_api_type, a.layer, a.kind, a.tools, "
         "       a.gist, a.friction_theme, a.working_theme, si.source, si.url, "
         "       left(si.text, 300) AS text, si.created_at, au.handle AS author, "
         "       coalesce((si.engagement->>'score')::float, 0) AS engagement "
-        + sql +
-        " ORDER BY si.created_at DESC LIMIT %(lim)s OFFSET %(off)s", p)
+        + sql + " ORDER BY " +
+        ("coalesce((si.engagement->>'score')::float,0) DESC, si.created_at DESC"
+         if sort == "engagement" else "si.created_at DESC") +
+        " LIMIT %(lim)s OFFSET %(off)s", p)
+
+
+@router.get("/items/export")
+def items_export(format: str = "csv", stage: str | None = None,
+                 kind: str | None = None, layer: str | None = None,
+                 theme: str | None = None, first_api_type: str | None = None,
+                 tool: str | None = None, q: str | None = None, days: int = 90,
+                 window: str | None = None, from_ts: str | None = None,
+                 to_ts: str | None = None, limit: int = 2000):
+    """Same filters as /items, full text, spreadsheet-shaped — mirrors
+    /items/export on the Explore page (same _spreadsheet renderer)."""
+    if format not in ("csv", "xlsx"):
+        raise HTTPException(422, "format must be csv or xlsx")
+    sql, p = _item_filters(stage, kind, layer, theme, first_api_type, tool, q,
+                           days, window, from_ts, to_ts)
+    p["lim"] = max(1, min(limit, 10000))
+    rows = db.query(
+        "SELECT si.source, a.stage, a.first_api_type, a.layer, a.kind, "
+        "       a.friction_theme, a.working_theme, a.tools, a.gist, si.text, "
+        "       si.url, au.handle AS author, si.created_at, "
+        "       coalesce((si.engagement->>'score')::float, 0) AS engagement "
+        + sql + " ORDER BY si.created_at DESC LIMIT %(lim)s", p)
+    from community.api.read_api import _spreadsheet
+    header = ["source", "stage", "first_api_type", "layer", "kind",
+              "friction_theme", "working_theme", "tools", "gist", "text",
+              "url", "author", "created_at", "engagement"]
+    return _spreadsheet(format, "api-trading-items", header, [
+        [r["source"], r["stage"], r["first_api_type"], r["layer"], r["kind"],
+         r["friction_theme"], r["working_theme"],
+         ", ".join(r["tools"] or []) if isinstance(r["tools"], list) else r["tools"],
+         r["gist"], r["text"], r["url"], r["author"],
+         r["created_at"].isoformat() if r["created_at"] else "",
+         r["engagement"]] for r in rows])
