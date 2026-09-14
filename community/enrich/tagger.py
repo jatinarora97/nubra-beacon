@@ -203,4 +203,12 @@ def run(sync: bool = False) -> dict:
         log.warning("api-trader lens failed; continuing (%s: %s)",
                     type(e).__name__, str(e)[:120])
         stats["api_trader"] = {"error": type(e).__name__}
+    # strategy detection (2026-09-14): same absence-based pattern, all sources
+    try:
+        from community.enrich import strategy_tagger
+        stats["strategy"] = strategy_tagger.classify_new()
+    except Exception as e:  # noqa: BLE001
+        log.warning("strategy tagger failed; continuing (%s: %s)",
+                    type(e).__name__, str(e)[:120])
+        stats["strategy"] = {"error": type(e).__name__}
     return stats

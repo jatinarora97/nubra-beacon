@@ -1016,16 +1016,21 @@ def _item_filters(topic: str | None, broker: str | None, intent: str | None,
                   audience: str | None, q: str | None, min_engagement: float,
                   source: str | None,
                   w: tuple[datetime, datetime] | None = None,
-                  q_mode: str = "or") -> tuple[str, dict]:
+                  q_mode: str = "or",
+                  strategy: bool | None = None) -> tuple[str, dict]:
     """Shared FROM/WHERE for /items and /items/export — one filter semantic."""
     sql = """
         FROM social_items si
         JOIN authors a ON a.author_id = si.author_id
         LEFT JOIN item_enrichment e ON e.item_id = si.item_id
+        LEFT JOIN item_strategy st ON st.item_id = si.item_id
         WHERE si.duplicate_of IS NULL AND COALESCE(e.is_noise, false) = false
           AND (si.engagement->>'score')::float >= %(mine)s
     """
     params: dict = {"mine": min_engagement}
+    if strategy is not None:
+        sql += " AND COALESCE(st.is_strategy, false) = %(strategy)s"
+        params["strategy"] = strategy
     if w is not None:
         sql += " AND si.created_at >= %(w_from)s AND si.created_at < %(w_to)s"
         params.update({"w_from": w[0], "w_to": w[1]})
@@ -1070,14 +1075,18 @@ def items(topic: str | None = None, broker: str | None = None,
           sort: Literal["engagement", "recent"] = "engagement",
           window: str | None = None,
           from_ts: str | None = None, to_ts: str | None = None,
+          strategy: bool | None = None,
           limit: int = 20, offset: int = 0):
     body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
-                                 source, _window(from_ts, to_ts, window), q_mode)
+                                 source, _window(from_ts, to_ts, window), q_mode,
+                                 strategy=strategy)
     params.update({"limit": _lim(limit), "offset": max(offset, 0)})
     sql = """
         SELECT si.source, si.external_id, si.thread_id, left(si.text, 300) AS text,
                si.url, si.created_at, si.ingested_at, si.engagement,
                a.handle AS author,
+               COALESCE(st.is_strategy, false) AS is_strategy,
+               st.strategy_raw, st.strategy_summary,
                e.topic_key, e.intent, e.audience, e.sentiment, e.entities,
                (SELECT count(*) FROM social_items d WHERE d.duplicate_of = si.item_id)::int
                  AS duplicate_count
@@ -1087,7 +1096,8 @@ def items(topic: str | None = None, broker: str | None = None,
 
 _EXPORT_COLUMNS = ["source", "external_id", "thread_id", "author", "text", "url",
                    "topic_key", "intent", "audience", "sentiment", "interactions",
-                   "engagement_score", "entities", "posted_at_ist", "fetched_at_ist",
+                   "engagement_score", "entities", "is_strategy", "strategy_raw",
+                   "strategy_summary", "posted_at_ist", "fetched_at_ist",
                    "duplicate_count"]
 
 
@@ -1179,6 +1189,7 @@ def items_export(format: Literal["csv", "xlsx"] = "csv",
                  sort: Literal["engagement", "recent"] = "engagement",
                  window: str | None = None,
                  from_ts: str | None = None, to_ts: str | None = None,
+                 strategy: bool | None = None,
                  limit: int = 2000):
     """Same filters as /items, but full text and spreadsheet-shaped rows."""
     import csv
@@ -1190,11 +1201,14 @@ def items_export(format: Literal["csv", "xlsx"] = "csv",
     from fastapi.responses import Response
 
     body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
-                                 source, _window(from_ts, to_ts, window), q_mode)
+                                 source, _window(from_ts, to_ts, window), q_mode,
+                                 strategy=strategy)
     params["limit"] = max(1, min(limit, 10000))
     rows = db.query("""
         SELECT si.source, si.external_id, si.thread_id, si.text, si.url,
                si.created_at, si.ingested_at, si.engagement, a.handle AS author,
+               COALESCE(st.is_strategy, false) AS is_strategy,
+               st.strategy_raw, st.strategy_summary,
                e.topic_key, e.intent, e.audience, e.sentiment, e.entities,
                (SELECT count(*) FROM social_items d WHERE d.duplicate_of = si.item_id)::int
                  AS duplicate_count
@@ -1222,6 +1236,8 @@ def items_export(format: Literal["csv", "xlsx"] = "csv",
             r["sentiment"] if r["sentiment"] is not None else "",
             int(inter), (r.get("engagement") or {}).get("score", ""),
             _json.dumps(r["entities"]) if r["entities"] else "",
+            "yes" if r["is_strategy"] else "no",
+            _cell(r["strategy_raw"], True), _cell(r["strategy_summary"], True),
             r["created_at"].astimezone(ist).strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
             r["ingested_at"].astimezone(ist).strftime("%Y-%m-%d %H:%M") if r["ingested_at"] else "",
             r["duplicate_count"],

@@ -257,12 +257,24 @@ def content_top_up():
     return api_lens.top_up()
 
 
+_BASE_ITEMS = """
+    FROM api_trader_items a
+    JOIN social_items si ON si.item_id = a.item_id
+    LEFT JOIN authors au ON au.author_id = si.author_id
+    LEFT JOIN item_strategy st ON st.item_id = si.item_id
+    WHERE a.stage <> 'irrelevant' AND si.duplicate_of IS NULL
+"""
+
+
 def _item_filters(stage, kind, layer, theme, first_api_type, tool, q,
-                  days, window, from_ts, to_ts) -> tuple[str, dict]:
+                  days, window, from_ts, to_ts, strategy=None) -> tuple[str, dict]:
     """Shared FROM/WHERE for /items and /items/export — one filter semantic."""
     f, t = _range(days, window, from_ts, to_ts)
-    sql = _BASE + " AND si.created_at >= %(since)s AND si.created_at < %(until)s"
+    sql = _BASE_ITEMS + " AND si.created_at >= %(since)s AND si.created_at < %(until)s"
     p: dict = {"since": f, "until": t}
+    if strategy is not None:
+        sql += " AND COALESCE(st.is_strategy, false) = %(strategy)s"
+        p["strategy"] = strategy
     for name, val, clause in (
             ("stage", stage, " AND a.stage = %(stage)s"),
             ("kind", kind, " AND a.kind = %(kind)s"),
@@ -289,15 +301,18 @@ def items(stage: str | None = None, kind: str | None = None,
           first_api_type: str | None = None, tool: str | None = None,
           q: str | None = None, days: int = 90, window: str | None = None,
           from_ts: str | None = None, to_ts: str | None = None,
+          strategy: bool | None = None,
           sort: str = "recent", limit: int = 50, offset: int = 0):
     """The Data page: classified items with raw + lens columns."""
     sql, p = _item_filters(stage, kind, layer, theme, first_api_type, tool, q,
-                           days, window, from_ts, to_ts)
+                           days, window, from_ts, to_ts, strategy)
     p.update({"lim": max(1, min(limit, 200)), "off": max(offset, 0)})
     return db.query(
         "SELECT a.item_id, a.stage, a.first_api_type, a.layer, a.kind, a.tools, "
         "       a.gist, a.friction_theme, a.working_theme, si.source, si.url, "
         "       left(si.text, 300) AS text, si.created_at, au.handle AS author, "
+        "       COALESCE(st.is_strategy, false) AS is_strategy, "
+        "       st.strategy_raw, st.strategy_summary, "
         "       coalesce((si.engagement->>'score')::float, 0) AS engagement "
         + sql + " ORDER BY " +
         ("coalesce((si.engagement->>'score')::float,0) DESC, si.created_at DESC"
@@ -311,28 +326,34 @@ def items_export(format: str = "csv", stage: str | None = None,
                  theme: str | None = None, first_api_type: str | None = None,
                  tool: str | None = None, q: str | None = None, days: int = 90,
                  window: str | None = None, from_ts: str | None = None,
-                 to_ts: str | None = None, limit: int = 2000):
+                 to_ts: str | None = None, strategy: bool | None = None,
+                 limit: int = 2000):
     """Same filters as /items, full text, spreadsheet-shaped — mirrors
     /items/export on the Explore page (same _spreadsheet renderer)."""
     if format not in ("csv", "xlsx"):
         raise HTTPException(422, "format must be csv or xlsx")
     sql, p = _item_filters(stage, kind, layer, theme, first_api_type, tool, q,
-                           days, window, from_ts, to_ts)
+                           days, window, from_ts, to_ts, strategy)
     p["lim"] = max(1, min(limit, 10000))
     rows = db.query(
         "SELECT si.source, a.stage, a.first_api_type, a.layer, a.kind, "
         "       a.friction_theme, a.working_theme, a.tools, a.gist, si.text, "
         "       si.url, au.handle AS author, si.created_at, "
+        "       COALESCE(st.is_strategy, false) AS is_strategy, "
+        "       st.strategy_raw, st.strategy_summary, "
         "       coalesce((si.engagement->>'score')::float, 0) AS engagement "
         + sql + " ORDER BY si.created_at DESC LIMIT %(lim)s", p)
     from community.api.read_api import _spreadsheet
     header = ["source", "stage", "first_api_type", "layer", "kind",
               "friction_theme", "working_theme", "tools", "gist", "text",
-              "url", "author", "created_at", "engagement"]
+              "url", "author", "is_strategy", "strategy_raw",
+              "strategy_summary", "created_at", "engagement"]
     return _spreadsheet(format, "api-trading-items", header, [
         [r["source"], r["stage"], r["first_api_type"], r["layer"], r["kind"],
          r["friction_theme"], r["working_theme"],
          ", ".join(r["tools"] or []) if isinstance(r["tools"], list) else r["tools"],
          r["gist"], r["text"], r["url"], r["author"],
+         "yes" if r["is_strategy"] else "no", r["strategy_raw"],
+         r["strategy_summary"],
          r["created_at"].isoformat() if r["created_at"] else "",
          r["engagement"]] for r in rows])
