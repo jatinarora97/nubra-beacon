@@ -135,6 +135,8 @@ export function ExploreTable() {
   const [qLive, setQLive] = useState(initialQ);
   // Multi-keyword search: q is comma-separated; q_mode picks any/all matching.
   const [qMode, setQMode] = useState<"or" | "and">("or");
+  // "strategies only" — wires strategy=true into pages, charts and exports.
+  const [strategyOnly, setStrategyOnly] = useState(sp.get("strategy") === "true");
   const [detail, setDetail] = useState<Item | null>(null);
   // the list endpoint truncates text at 300 chars — the drawer fetches the
   // full row (untruncated text incl. TRANSCRIPT/ON-SCREEN blocks + raw flags)
@@ -165,6 +167,7 @@ export function ExploreTable() {
       params.set("q", q);
       params.set("q_mode", qMode);
     }
+    if (strategyOnly) params.set("strategy", "true");
     return params;
   }
 
@@ -202,7 +205,7 @@ export function ExploreTable() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, intentKey, q, qMode, windowQS]);
+  }, [source, intentKey, q, qMode, strategyOnly, windowQS]);
 
   async function loadMore() {
     if (loadingMore) return;
@@ -276,6 +279,17 @@ export function ExploreTable() {
             </button>
           ))}
         </div>
+        <label
+          title="Only show items where a trading strategy was extracted"
+          className="flex cursor-pointer items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12.5px]"
+        >
+          <input
+            type="checkbox"
+            checked={strategyOnly}
+            onChange={(e) => setStrategyOnly(e.target.checked)}
+          />
+          strategies only
+        </label>
         <span className="text-[11.5px] text-muted">
           sorted by engagement · snapshot at fetch
         </span>
@@ -305,10 +319,10 @@ export function ExploreTable() {
         />
       ) : (
         <div className="overflow-x-auto rounded-[10px] border border-line">
-          <table className="w-full min-w-[1080px]">
+          <table className="w-full min-w-[1280px]">
             <thead className="bg-surface2/70">
               <tr className="text-left">
-                {["what was said", "our read", "source", "intent", "topic", "engagement", "posted", "fetched"].map((h) => (
+                {["what was said", "our read", "strategy", "strategy summary", "source", "intent", "topic", "engagement", "posted", "fetched"].map((h) => (
                   <th key={h} className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                     {h}
                   </th>
@@ -330,6 +344,21 @@ export function ExploreTable() {
                     title={it.entities?.summary ?? undefined}
                   >
                     {it.entities?.summary ?? "–"}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {it.is_strategy ? <Badge tone="warn">strategy</Badge> : null}
+                  </td>
+                  <td className="max-w-xs px-3 py-2.5 text-[12px]">
+                    {it.strategy_summary ? (
+                      <div
+                        className="line-clamp-2"
+                        title="click the row for the full strategy (normalized + as posted)"
+                      >
+                        {it.strategy_summary}
+                      </div>
+                    ) : (
+                      <span className="text-muted">–</span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5">
                     <Badge>{SOURCE_LABELS[it.source] ?? it.source}</Badge>
@@ -412,7 +441,25 @@ export function ExploreTable() {
               {(detail.duplicate_count ?? 0) > 0 && (
                 <Badge tone="warn">{detail.duplicate_count} duplicates linked</Badge>
               )}
+              {detail.is_strategy && <Badge tone="warn">strategy</Badge>}
             </div>
+            {detail.is_strategy && (detail.strategy_summary || detail.strategy_raw) && (
+              <div className="mt-4 space-y-2 rounded-[10px] border border-warn/40 bg-surface2/40 px-3 py-2.5 text-[12.5px]">
+                <div className="micro">strategy</div>
+                {detail.strategy_summary && (
+                  <div>
+                    <span className="font-semibold text-muted">Normalized: </span>
+                    {detail.strategy_summary}
+                  </div>
+                )}
+                {(fullDetail?.item?.strategy_raw ?? detail.strategy_raw) && (
+                  <div className="whitespace-pre-wrap">
+                    <span className="font-semibold text-muted">As posted: </span>
+                    {fullDetail?.item?.strategy_raw ?? detail.strategy_raw}
+                  </div>
+                )}
+              </div>
+            )}
             <p className="mt-4 whitespace-pre-wrap text-[13.5px] leading-relaxed">
               {fullDetail?.item?.text ?? detail.text}
               {!fullDetail && detail.text.length >= 300 && (

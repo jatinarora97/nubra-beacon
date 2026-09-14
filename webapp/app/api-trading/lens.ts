@@ -77,6 +77,10 @@ export type LensItem = {
   created_at: string | null;
   author: string | null;
   engagement: number;
+  // Trading-strategy extraction (nullable when the post carries no strategy).
+  is_strategy?: boolean;
+  strategy_raw?: string | null;
+  strategy_summary?: string | null;
 };
 
 /* ── time window (these endpoints speak the app-standard window= contract;

@@ -269,6 +269,10 @@ export type Item = {
     issue_type?: string | null;
     feature_phrase?: string | null;
   } | null;
+  // Trading-strategy extraction (nullable when the post carries no strategy).
+  is_strategy?: boolean;
+  strategy_raw?: string | null;
+  strategy_summary?: string | null;
 };
 
 // GET /items/{source}/{external_id} — full row incl. untruncated text + raw

@@ -54,6 +54,8 @@ export function LensDataTable() {
   const [qLive, setQLive] = useState(sp.get("q") ?? "");
   const [tool, setTool] = useState(sp.get("tool") ?? "");
   const [toolLive, setToolLive] = useState(sp.get("tool") ?? "");
+  // "strategies only" — wires strategy=true into pages and exports.
+  const [strategyOnly, setStrategyOnly] = useState(sp.get("strategy") === "true");
 
   const [items, setItems] = useState<LensItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +84,7 @@ export function LensDataTable() {
     if (firstApiType) params.set("first_api_type", firstApiType);
     if (q) params.set("q", q);
     if (tool) params.set("tool", tool);
+    if (strategyOnly) params.set("strategy", "true");
     return params;
   }
 
@@ -118,7 +121,7 @@ export function LensDataTable() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, kind, layer, theme, firstApiType, q, tool, sort, windowQS]);
+  }, [stage, kind, layer, theme, firstApiType, q, tool, strategyOnly, sort, windowQS]);
 
   async function loadMore() {
     if (loadingMore) return;
@@ -209,6 +212,17 @@ export function LensDataTable() {
           placeholder="search text…"
           className={`${selectCls} min-w-48 flex-1 placeholder:text-muted/60`}
         />
+        <label
+          title="Only show items where a trading strategy was extracted"
+          className="flex cursor-pointer items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12.5px]"
+        >
+          <input
+            type="checkbox"
+            checked={strategyOnly}
+            onChange={(e) => setStrategyOnly(e.target.checked)}
+          />
+          strategies only
+        </label>
         <div className="ml-auto flex items-center gap-2">
           {(["csv", "xlsx"] as const).map((fmt) => (
             <a
@@ -233,10 +247,10 @@ export function LensDataTable() {
         />
       ) : (
         <div className="overflow-x-auto rounded-[10px] border border-line">
-          <table className="w-full min-w-[1180px]">
+          <table className="w-full min-w-[1380px]">
             <thead className="bg-surface2/70">
               <tr className="text-left">
-                {["posted", "source", "stage", "kind", "layer", "theme", "tools", "gist", "eng", "link"].map((h) => (
+                {["posted", "source", "stage", "kind", "layer", "theme", "tools", "gist", "strategy", "strategy summary", "eng", "link"].map((h) => (
                   <th key={h} className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                     {h}
                   </th>
@@ -294,6 +308,29 @@ export function LensDataTable() {
                             <span className="mt-1 block text-[11px]">— {it.author}</span>
                           )}
                         </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {it.is_strategy ? <Badge tone="warn">strategy</Badge> : null}
+                    </td>
+                    <td className="max-w-xs px-3 py-2.5 text-[12px]">
+                      {it.strategy_summary ? (
+                        <>
+                          <div className={open ? "" : "line-clamp-2"}>
+                            {open && (
+                              <span className="font-semibold text-muted">Normalized: </span>
+                            )}
+                            {it.strategy_summary}
+                          </div>
+                          {open && it.strategy_raw && (
+                            <div className="mt-1.5 whitespace-pre-wrap text-[12px] leading-relaxed text-muted">
+                              <span className="font-semibold">As posted: </span>
+                              {it.strategy_raw}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-muted">–</span>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-[12px] tabular-nums text-muted">
