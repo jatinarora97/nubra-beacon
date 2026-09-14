@@ -55,6 +55,16 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    build. ~1k historical gated-irrelevant items classify naturally
    (~$0.40, bounded 200/run).
 
+Strategy detection (2026-09-14, user request): migration 0020
+item_strategy + community/enrich/strategy_tagger.py (two-tier gate ->
+Haiku; is_strategy + strategy_raw verbatim + strategy_summary LLM-written;
+false markers = no re-spend; rides hourly enrich). Explore + api-trading
+/items + exports carry the 3 columns + strategy= filter; both tables show
+badge + summary columns w/ raw reveal + strategies-only toggle (06f04c3,
+a1ef148). PROD after next release: docker compose exec -T api python
+scripts/backfill_strategies.py (local drain: 762 candidates -> 261
+strategies, <$1).
+
 LinkedIn source (2026-09-09, user request): community/scrape/
 linkedin.py — Apify harvestapi/linkedin-post-search (NO-COOKIE actor: no
 Nubra LinkedIn account/session at risk), keyword search over public
