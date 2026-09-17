@@ -29,6 +29,20 @@ function platformLabel(p: string): string {
   return CONTENT_PLATFORM_LABELS[p] ?? p.replace(/_/g, " ");
 }
 
+/** Format badge copy + tone. Visual formats (asset production needed before
+ *  posting) get the distinct `trends` tone so interns spot them instantly. */
+const FORMAT_META: Record<
+  string,
+  { label: string; tone: "warn" | "muted" | "trends"; visual?: boolean }
+> = {
+  seed_reply: { label: "seed reply", tone: "warn" },
+  text_post: { label: "text post", tone: "muted" },
+  thread: { label: "thread", tone: "muted" },
+  carousel: { label: "carousel", tone: "trends", visual: true },
+  short_video: { label: "short video", tone: "trends", visual: true },
+  image_post: { label: "image post", tone: "trends", visual: true },
+};
+
 function fmtDay(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -51,7 +65,10 @@ function BriefCard({
   const [mode, setMode] = useState<null | "act" | "dismiss">(null);
   const [note, setNote] = useState("");
 
-  const isSeed = brief.post_format === "seed_reply";
+  const format = FORMAT_META[brief.post_format] ?? {
+    label: brief.post_format.replace(/_/g, " "),
+    tone: "muted" as const,
+  };
   const seedEvidence =
     brief.source_evidence?.find((e) => e.url && e.url === brief.seed_url) ??
     brief.source_evidence?.[0];
@@ -60,9 +77,8 @@ function BriefCard({
     <SectionCard>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="content">{platformLabel(brief.platform)}</Badge>
-        <Badge tone={isSeed ? "warn" : "muted"}>
-          {isSeed ? "seed reply" : "standalone"}
-        </Badge>
+        <Badge tone={format.tone}>{format.label}</Badge>
+        {format.visual && <Badge tone="trends">needs asset</Badge>}
         <span className="text-[11.5px] tabular-nums text-muted">
           priority {Math.round(Number(brief.priority_score ?? 0))}
         </span>
@@ -84,6 +100,24 @@ function BriefCard({
       <pre className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-[10px] border border-content/25 bg-content/5 p-4 font-mono text-[12.5px] leading-relaxed">
         {brief.exact_copy}
       </pre>
+
+      {brief.ai_brief && (
+        <details
+          className="mt-3 rounded-[10px] border border-trends/30 bg-trends/5 p-3"
+          open={format.visual}
+        >
+          <summary className="cursor-pointer text-[12.5px] font-semibold text-trends">
+            AI production brief
+            {format.visual ? " — paste into an AI tool to produce the asset" : ""}
+          </summary>
+          <div className="mt-2 flex justify-end">
+            <CopyButton text={brief.ai_brief} label="Copy AI brief" />
+          </div>
+          <pre className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-[10px] border border-line bg-surface2/60 p-4 font-mono text-[12.5px] leading-relaxed">
+            {brief.ai_brief}
+          </pre>
+        </details>
+      )}
 
       {brief.seed_url && (
         <div className="mt-3 rounded-[10px] border border-warn/30 bg-warn/5 p-3">

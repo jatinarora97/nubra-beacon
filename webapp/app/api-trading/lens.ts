@@ -191,7 +191,13 @@ export type ContentBrief = {
   id: number;
   day: string;
   platform: string;
-  post_format: "seed_reply" | "text_post";
+  post_format:
+    | "seed_reply"
+    | "text_post"
+    | "thread"
+    | "image_post"
+    | "carousel"
+    | "short_video";
   title: string;
   hook: string | null;
   body: string | null;
@@ -206,20 +212,27 @@ export type ContentBrief = {
   status: "draft" | "published" | "rejected";
   seed_url: string | null;
   created_at: string | null;
+  /** Self-contained AI production prompt (paste into an image/video/text AI
+   *  tool to get the finished asset). Absent on v1 rows. */
+  ai_brief?: string | null;
 };
 
 export const CONTENT_PLATFORMS = [
   "reddit",
   "x",
   "linkedin",
+  "youtube",
   "youtube_community",
+  "instagram",
 ] as const;
 
 export const CONTENT_PLATFORM_LABELS: Record<string, string> = {
   reddit: "Reddit",
   x: "X / Twitter",
   linkedin: "LinkedIn",
+  youtube: "YouTube",
   youtube_community: "YouTube Community",
+  instagram: "Instagram",
 };
 
 export const SOURCE_LABELS: Record<string, string> = {
