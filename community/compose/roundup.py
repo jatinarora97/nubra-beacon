@@ -222,6 +222,7 @@ def run() -> dict:
     try:
         from community.social_recommend import api_lens
         stats["api_content_queue"] = api_lens.top_up()
+        stats["general_content_queue"] = api_lens.top_up(lens=api_lens.GENERAL_LENS)
     except Exception as exc:  # noqa: BLE001 — isolated by design
-        stats["api_content_queue"] = {"status": "failed", "error": str(exc)[:200]}
+        stats["content_queues"] = {"status": "failed", "error": str(exc)[:200]}
     return stats

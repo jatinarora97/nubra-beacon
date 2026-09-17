@@ -27,8 +27,21 @@ from community.store import db, repositories as repo
 
 log = get_logger("social_recommend.api_lens")
 
+# Two lenses share this engine (2026-09-17: /content gets the same treatment
+# as /api-trading/content): "api_trading" = API/algo audience, evidence from
+# the api_trader lens; "general" = retail trading audience, evidence from the
+# enriched corpus at large. Same platforms, same minimums, same ai_brief
+# contract, same compliance.
 LENS = "api_trading"
+GENERAL_LENS = "general_marketing"
 PROMPT_VERSION = "api-lens-copy-v2"
+
+_AUDIENCE = {
+    LENS: ("Nubra's API/algo-trading audience: Indian traders who trade via "
+           "code, APIs and automation"),
+    GENERAL_LENS: ("Nubra's retail trading audience: Indian stock/F&O traders "
+                   "and investors using the app"),
+}
 DEFAULT_PLATFORMS = ("reddit", "x", "linkedin", "youtube", "youtube_community",
                      "instagram", "github")
 # exception platforms need fewer ready drafts than the standard minimum
@@ -86,8 +99,7 @@ class ApiLensEnvelope(BaseModel):
     recommendations: list[ApiLensRec]
 
 
-_SYSTEM = """You create ready-to-post content for Nubra's API/algo-trading audience:
-Indian traders who trade via code, APIs and automation. The people posting are
+_SYSTEM = """You create ready-to-post content for {audience}. The people posting are
 interns — every piece must be finished, publishable copy with zero rewriting.
 
 Two content types:
@@ -160,38 +172,61 @@ Return ONLY one JSON object:
 }]}"""
 
 
-def _evidence(days: int = 21, limit: int = 40) -> list[dict]:
-    """Fresh lens items: seedable threads (friction/guidance with a url,
-    reddit/forums where a reply is possible) + inspiration (showcase asks)."""
-    rows = db.query(
-        """
-        SELECT a.item_id, si.source, si.url, a.stage, a.kind, a.gist,
-               a.friction_theme, a.working_theme, left(si.text, 500) AS text,
-               coalesce((si.engagement->>'score')::float, 0) AS engagement,
-               (a.kind IN ('friction','guidance_seeking')
-                AND si.url IS NOT NULL
-                AND si.source IN ('reddit','community_forum')) AS seedable
-        FROM api_trader_items a
-        JOIN social_items si ON si.item_id = a.item_id
-        WHERE a.stage NOT IN ('irrelevant') AND si.duplicate_of IS NULL
-          AND si.created_at >= now() - make_interval(days => %s)
-          AND si.text !~* '\\ynubra\\y'
-        ORDER BY seedable DESC, (si.engagement->>'score')::float DESC NULLS LAST
-        LIMIT %s
-        """,
-        (days, limit))
+def _evidence(days: int = 21, limit: int = 40, lens: str = LENS) -> list[dict]:
+    """Fresh evidence: seedable threads (question/complaint with a url on
+    reddit/forums where a reply is possible) + inspiration items."""
+    if lens == LENS:
+        rows = db.query(
+            """
+            SELECT a.item_id, si.source, si.url, a.stage, a.kind, a.gist,
+                   a.friction_theme, a.working_theme, left(si.text, 500) AS text,
+                   coalesce((si.engagement->>'score')::float, 0) AS engagement,
+                   (a.kind IN ('friction','guidance_seeking')
+                    AND si.url IS NOT NULL
+                    AND si.source IN ('reddit','community_forum')) AS seedable
+            FROM api_trader_items a
+            JOIN social_items si ON si.item_id = a.item_id
+            WHERE a.stage NOT IN ('irrelevant') AND si.duplicate_of IS NULL
+              AND si.created_at >= now() - make_interval(days => %s)
+              AND si.text !~* '\\ynubra\\y'
+            ORDER BY seedable DESC, (si.engagement->>'score')::float DESC NULLS LAST
+            LIMIT %s
+            """,
+            (days, limit))
+    else:
+        rows = db.query(
+            """
+            SELECT si.item_id, si.source, si.url, e.intent AS kind,
+                   e.topic_key AS gist, left(si.text, 500) AS text,
+                   coalesce((si.engagement->>'score')::float, 0) AS engagement,
+                   (e.intent IN ('question','complaint','feature_request')
+                    AND si.url IS NOT NULL
+                    AND si.source IN ('reddit','community_forum')) AS seedable
+            FROM social_items si
+            JOIN item_enrichment e ON e.item_id = si.item_id
+            LEFT JOIN api_trader_items a ON a.item_id = si.item_id
+            WHERE si.duplicate_of IS NULL AND NOT e.is_noise
+              AND a.item_id IS NULL  -- retail corpus: not already the API lens
+              AND e.intent IN ('question','complaint','feature_request','praise')
+              AND si.created_at >= now() - make_interval(days => %s)
+              AND si.text !~* '\\ynubra\\y'
+            ORDER BY seedable DESC, (si.engagement->>'score')::float DESC NULLS LAST
+            LIMIT %s
+            """,
+            (days, limit))
     return [dict(r) for r in rows]
 
 
-def _features() -> list[dict]:
+def _features(lens: str = LENS) -> list[dict]:
     ctx = product_context.load()
-    return [f.model_dump() for f in ctx.features if f.segment in ("api", "shared")]
+    segs = ("api", "shared") if lens == LENS else ("retail", "shared")
+    return [f.model_dump() for f in ctx.features if f.segment in segs]
 
 
-def _ready_counts() -> dict[str, int]:
+def _ready_counts(lens: str = LENS) -> dict[str, int]:
     rows = db.query(
         "SELECT platform, count(*)::int AS n FROM social_recommendations "
-        "WHERE lens = %s AND status = 'draft' GROUP BY platform", (LENS,))
+        "WHERE lens = %s AND status = 'draft' GROUP BY platform", (lens,))
     counts = {p: 0 for p in _platforms()}
     counts.update({r["platform"]: r["n"] for r in rows})
     return counts
@@ -206,15 +241,15 @@ def _stable_key(rec: ApiLensRec) -> str:
 
 
 def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
-           days: int = 21) -> dict[str, Any]:
+           days: int = 21, lens: str = LENS) -> dict[str, Any]:
     """Refill the queue to min_ready_per_platform drafts per platform.
     Isolated: returns a status dict, never raises into the pipeline."""
     from community.enrich.api_trader import lens_enabled
-    stats: dict[str, Any] = {"lens": LENS}
+    stats: dict[str, Any] = {"lens": lens}
     try:
-        if not lens_enabled():
+        if lens == LENS and not lens_enabled():
             return {**stats, "status": "disabled"}
-        counts = _ready_counts()
+        counts = _ready_counts(lens)
         need = {p: max(0, _min_for(p, min_ready_per_platform) - n)
                 for p, n in counts.items()}
         total_need = min(sum(need.values()), max_new)
@@ -224,15 +259,15 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
         if not settings.anthropic_api_key:
             return {**stats, "status": "skipped", "detail": "no ANTHROPIC_API_KEY"}
 
-        evidence = _evidence(days=days)
+        evidence = _evidence(days=days, lens=lens)
         if not evidence:
             # quiet stretch (source outage/holiday): widen rather than starve —
             # the queue must always hold postable ideas
-            evidence = _evidence(days=90)
+            evidence = _evidence(days=90, lens=lens)
             stats["evidence_window"] = "widened-90d"
         if not evidence:
             return {**stats, "status": "skipped", "detail": "no lens evidence at all"}
-        features = _features()
+        features = _features(lens)
         payload = {
             "needed_per_platform": {p: n for p, n in need.items() if n > 0},
             "max_items": total_need,
@@ -245,7 +280,7 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
             (settings.draft_model, PROMPT_VERSION,
              product_context.load().version, days))["id"]
         raw, usage = complete(
-            settings.draft_model, _SYSTEM,
+            settings.draft_model, _SYSTEM.replace("{audience}", _AUDIENCE[lens]),
             "Create at most max_items pieces, covering the platforms in "
             "needed_per_platform. Prefer seed_reply for items marked seedable. "
             "Evidence pack:\n" + json.dumps(payload, ensure_ascii=False, default=str),
@@ -295,10 +330,11 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
                     priority_score, compliance_status, model, prompt_version,
                     context_version, lens, seed_url, ai_brief
                 )
-                VALUES (%s, %s, %s, 'api', %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, 'passed', %s, %s, %s, %s, %s, %s)
                 """,
-                (run_id, today, rec.recommendation_key, rec.platform,
+                (run_id, today, rec.recommendation_key,
+                 "api" if lens == LENS else "retail", rec.platform,
                  "seed_reply" if rec.content_type == "seed_reply" else rec.format,
                  rec.title, rec.hook, rec.body, rec.cta, rec.exact_copy,
                  rec.hashtags,
@@ -306,7 +342,7 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
                  db.jsonb([ev_by_id[i] for i in rec.evidence_item_ids]),
                  rec.rationale, "text-only brief; no visual", rec.recommended_timing,
                  rec.priority_score, settings.draft_model, PROMPT_VERSION,
-                 product_context.load().version, LENS, rec.seed_url,
+                 product_context.load().version, lens, rec.seed_url,
                  rec.ai_brief[:4000]))
             stored += 1
         stats.update({"generated": len(envelope.recommendations),
@@ -314,14 +350,14 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
         db.execute("UPDATE social_recommendation_runs SET status='succeeded', "
                    "stats=%s, completed_at=now() WHERE id=%s",
                    (db.jsonb({k: v for k, v in stats.items() if k != 'usage'}), run_id))
-        repo.advance_state("social_recommend", "api_lens",
+        repo.advance_state("social_recommend", f"queue_{lens}",
                            watermark=datetime.now(timezone.utc), items=stored)
         log.info("api-lens top-up: %s", stats)
         return {**stats, "status": "succeeded"}
     except Exception as exc:  # noqa: BLE001 — never break the pipeline
         log.exception("api-lens top-up failed")
         try:
-            repo.advance_state("social_recommend", "api_lens",
+            repo.advance_state("social_recommend", f"queue_{lens}",
                                items=0, error=str(exc)[:500])
         except Exception:
             pass

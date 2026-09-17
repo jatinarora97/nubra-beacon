@@ -26,6 +26,8 @@ from community.api.beacon_api import router as beacon_router  # noqa: E402
 app.include_router(beacon_router)
 from community.api.api_trading_api import router as api_trading_router  # noqa: E402
 app.include_router(api_trading_router)
+from community.api.content_queue_api import router as content_queue_router  # noqa: E402
+app.include_router(content_queue_router)
 
 
 @app.middleware("http")

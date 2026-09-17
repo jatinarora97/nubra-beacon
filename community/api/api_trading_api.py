@@ -191,33 +191,39 @@ def landscape_delete(feature_id: int):
         raise HTTPException(404, "no such feature")
 
 
-@router.get("/content")
-def content_queue(platform: str | None = None, status: str = "draft",
-                  limit: int = 60):
-    """The intern-facing content queue: api_trading-lens briefs.
-    status: draft (ready to post) | published (acted) | rejected (dismissed)."""
+def queue_rows(lens: str, platform: str | None, status: str,
+               limit: int, window: str | None = None,
+               from_ts: str | None = None, to_ts: str | None = None):
+    """Shared queue reader for both content queues (/content and
+    /api-trading/content). Window = optional created_at date filter."""
     if status not in ("draft", "published", "rejected", "all"):
         raise HTTPException(422, "status must be draft, published, rejected or all")
     sql = ("SELECT r.id, r.day, r.platform, r.post_format, r.title, r.hook, "
            "r.body, r.cta, r.exact_copy, r.hashtags, r.mapped_features, "
            "r.source_evidence, r.rationale, r.recommended_timing, "
            "r.priority_score, r.status, r.seed_url, r.ai_brief, r.created_at "
-           "FROM social_recommendations r WHERE r.lens = 'api_trading'")
-    p: dict = {"lim": max(1, min(limit, 200))}
+           "FROM social_recommendations r WHERE r.lens = %(lens)s")
+    p: dict = {"lens": lens, "lim": max(1, min(limit, 200))}
     if status != "all":
         sql += " AND r.status = %(status)s"
         p["status"] = status
     if platform:
         sql += " AND r.platform = %(platform)s"
         p["platform"] = platform
+    if window or (from_ts and to_ts):
+        from community.api.read_api import _window
+        w = _window(from_ts, to_ts, window)
+        if w:
+            sql += " AND r.created_at >= %(w_from)s AND r.created_at < %(w_to)s"
+            p.update({"w_from": w[0], "w_to": w[1]})
     return db.query(sql + " ORDER BY r.created_at DESC, r.priority_score DESC "
                           "LIMIT %(lim)s", p)
 
 
-def _content_transition(brief_id: int, new_status: str, event: str,
-                        actor: str, note: str | None) -> dict:
+def queue_transition(lens: str, brief_id: int, new_status: str, event: str,
+                     actor: str, note: str | None) -> dict:
     row = db.one("SELECT id, status FROM social_recommendations "
-                 "WHERE id = %s AND lens = 'api_trading'", (brief_id,))
+                 "WHERE id = %s AND lens = %s", (brief_id, lens))
     if not row:
         raise HTTPException(404, "no such brief")
     if row["status"] != "draft":
@@ -228,6 +234,21 @@ def _content_transition(brief_id: int, new_status: str, event: str,
                "(recommendation_id, event_type, actor, note) VALUES (%s,%s,%s,%s)",
                (brief_id, event, actor, note))
     return {"id": brief_id, "status": new_status, "actor": actor}
+
+
+@router.get("/content")
+def content_queue(platform: str | None = None, status: str = "draft",
+                  limit: int = 60, window: str | None = None,
+                  from_ts: str | None = None, to_ts: str | None = None):
+    """The intern-facing content queue: api_trading-lens briefs.
+    status: draft (ready to post) | published (acted) | rejected (dismissed)."""
+    return queue_rows("api_trading", platform, status, limit,
+                      window, from_ts, to_ts)
+
+
+def _content_transition(brief_id: int, new_status: str, event: str,
+                        actor: str, note: str | None) -> dict:
+    return queue_transition("api_trading", brief_id, new_status, event, actor, note)
 
 
 @router.post("/content/{brief_id}/act")
