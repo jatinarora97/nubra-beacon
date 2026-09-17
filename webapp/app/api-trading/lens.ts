@@ -224,6 +224,7 @@ export const CONTENT_PLATFORMS = [
   "youtube",
   "youtube_community",
   "instagram",
+  "github",
 ] as const;
 
 export const CONTENT_PLATFORM_LABELS: Record<string, string> = {
@@ -233,6 +234,7 @@ export const CONTENT_PLATFORM_LABELS: Record<string, string> = {
   youtube: "YouTube",
   youtube_community: "YouTube Community",
   instagram: "Instagram",
+  github: "GitHub",
 };
 
 export const SOURCE_LABELS: Record<string, string> = {

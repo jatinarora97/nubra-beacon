@@ -30,7 +30,9 @@ log = get_logger("social_recommend.api_lens")
 LENS = "api_trading"
 PROMPT_VERSION = "api-lens-copy-v2"
 DEFAULT_PLATFORMS = ("reddit", "x", "linkedin", "youtube", "youtube_community",
-                     "instagram")
+                     "instagram", "github")
+# exception platforms need fewer ready drafts than the standard minimum
+DEFAULT_MIN_OVERRIDES = {"github": 1}
 
 
 def _platforms() -> tuple[str, ...]:
@@ -38,10 +40,16 @@ def _platforms() -> tuple[str, ...]:
     return tuple(reg.get("content_platforms") or DEFAULT_PLATFORMS)
 
 
+def _min_for(platform: str, base: int) -> int:
+    reg = settings.registry.get("api_trading", {}) or {}
+    overrides = reg.get("content_min_per_platform") or DEFAULT_MIN_OVERRIDES
+    return int(overrides.get(platform, base))
+
+
 class ApiLensRec(BaseModel):
     recommendation_key: str
     platform: Literal["reddit", "x", "linkedin", "youtube",
-                      "youtube_community", "instagram"]
+                      "youtube_community", "instagram", "github"]
     content_type: Literal["seed_reply", "standalone"]
     format: Literal["text_post", "thread", "carousel", "short_video",
                     "image_post", "seed_reply"]
@@ -101,6 +109,10 @@ Platform norms (format per platform):
 - youtube: format short_video — a 30-60s video idea (Shorts-friendly).
 - youtube_community: format text_post — short discussion-starter or poll text.
 - instagram: format image_post, carousel or short_video (reel).
+- github: format text_post — a markdown Discussion post or example-repo README
+  section: a complete, runnable code example (Python, nubra-sdk where honest)
+  answering a real question from the evidence; engineer-to-engineer tone,
+  disclosure in a byline, zero marketing language.
 
 ai_brief — REQUIRED on every item, the crucial field: a SELF-CONTAINED
 production prompt that a person can paste into an AI tool to produce the
@@ -130,7 +142,7 @@ Hard rules (violations get the piece rejected):
 Return ONLY one JSON object:
 {"recommendations":[{
   "recommendation_key":"short-stable-slug",
-  "platform":"reddit|x|linkedin|youtube|youtube_community|instagram",
+  "platform":"reddit|x|linkedin|youtube|youtube_community|instagram|github",
   "content_type":"seed_reply|standalone",
   "format":"text_post|thread|carousel|short_video|image_post|seed_reply",
   "ai_brief":"self-contained production prompt per the ai_brief contract",
@@ -203,7 +215,8 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
         if not lens_enabled():
             return {**stats, "status": "disabled"}
         counts = _ready_counts()
-        need = {p: max(0, min_ready_per_platform - n) for p, n in counts.items()}
+        need = {p: max(0, _min_for(p, min_ready_per_platform) - n)
+                for p, n in counts.items()}
         total_need = min(sum(need.values()), max_new)
         stats.update({"ready": counts, "need": total_need})
         if total_need == 0:

@@ -9,3 +9,11 @@ ALTER TABLE social_recommendations
     ADD CONSTRAINT social_recommendations_post_format_check CHECK (post_format = ANY
         (ARRAY['text_post','thread','carousel','short_video','product_demo',
                'seed_reply','image_post']));
+
+-- GitHub joins the posting platforms (dev-flywheel content: examples,
+-- discussions) — exception platform, min 1/day instead of 2.
+ALTER TABLE social_recommendations
+    DROP CONSTRAINT IF EXISTS social_recommendations_platform_check,
+    ADD CONSTRAINT social_recommendations_platform_check CHECK (platform = ANY
+        (ARRAY['linkedin','x','instagram','youtube','reddit','youtube_community',
+               'github']));
