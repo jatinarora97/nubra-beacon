@@ -175,67 +175,8 @@ export const LAYERS = [
   "community_learning",
 ] as const;
 
-/* ── content queue (intern-facing briefs, social_recommendations lens rows) ── */
-
-export type ContentEvidence = {
-  url: string | null;
-  gist: string | null;
-  source?: string | null;
-  text?: string | null;
-  item_id?: number;
-};
-
-export type ContentFeature = { name: string; status?: string | null };
-
-export type ContentBrief = {
-  id: number;
-  day: string;
-  platform: string;
-  post_format:
-    | "seed_reply"
-    | "text_post"
-    | "thread"
-    | "image_post"
-    | "carousel"
-    | "short_video";
-  title: string;
-  hook: string | null;
-  body: string | null;
-  cta: string | null;
-  exact_copy: string;
-  hashtags: string[] | null;
-  mapped_features: ContentFeature[] | null;
-  source_evidence: ContentEvidence[] | null;
-  rationale: string | null;
-  recommended_timing: string | null;
-  priority_score: number | string | null;
-  status: "draft" | "published" | "rejected";
-  seed_url: string | null;
-  created_at: string | null;
-  /** Self-contained AI production prompt (paste into an image/video/text AI
-   *  tool to get the finished asset). Absent on v1 rows. */
-  ai_brief?: string | null;
-};
-
-export const CONTENT_PLATFORMS = [
-  "reddit",
-  "x",
-  "linkedin",
-  "youtube",
-  "youtube_community",
-  "instagram",
-  "github",
-] as const;
-
-export const CONTENT_PLATFORM_LABELS: Record<string, string> = {
-  reddit: "Reddit",
-  x: "X / Twitter",
-  linkedin: "LinkedIn",
-  youtube: "YouTube",
-  youtube_community: "YouTube Community",
-  instagram: "Instagram",
-  github: "GitHub",
-};
+/* Content-queue vocabulary (ContentBrief, CONTENT_PLATFORMS, …) moved to
+   components/content-queue.tsx when the queue UI went shared with /content. */
 
 export const SOURCE_LABELS: Record<string, string> = {
   twitter: "X / Twitter",

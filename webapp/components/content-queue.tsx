@@ -1,14 +1,74 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiBase, get, post } from "@/lib/api";
 import { Badge, EmptyState, SectionCard, StatInline } from "@/components/ui";
 import { CopyButton } from "@/components/client";
-import {
-  CONTENT_PLATFORMS,
-  CONTENT_PLATFORM_LABELS,
-  type ContentBrief,
-} from "../lens";
+import { pickWindow, windowQuery } from "@/lib/window";
+
+/* ── content queue vocabulary (shared by the API-trading and general queues;
+      moved here from app/api-trading/lens.ts when the queue went shared) ── */
+
+export type ContentEvidence = {
+  url: string | null;
+  gist: string | null;
+  source?: string | null;
+  text?: string | null;
+  item_id?: number;
+};
+
+export type ContentFeature = { name: string; status?: string | null };
+
+export type ContentBrief = {
+  id: number;
+  day: string;
+  platform: string;
+  post_format:
+    | "seed_reply"
+    | "text_post"
+    | "thread"
+    | "image_post"
+    | "carousel"
+    | "short_video";
+  title: string;
+  hook: string | null;
+  body: string | null;
+  cta: string | null;
+  exact_copy: string;
+  hashtags: string[] | null;
+  mapped_features: ContentFeature[] | null;
+  source_evidence: ContentEvidence[] | null;
+  rationale: string | null;
+  recommended_timing: string | null;
+  priority_score: number | string | null;
+  status: "draft" | "published" | "rejected";
+  seed_url: string | null;
+  created_at: string | null;
+  /** Self-contained AI production prompt (paste into an image/video/text AI
+   *  tool to get the finished asset). Absent on v1 rows. */
+  ai_brief?: string | null;
+};
+
+export const CONTENT_PLATFORMS = [
+  "reddit",
+  "x",
+  "linkedin",
+  "youtube",
+  "youtube_community",
+  "instagram",
+  "github",
+] as const;
+
+export const CONTENT_PLATFORM_LABELS: Record<string, string> = {
+  reddit: "Reddit",
+  x: "X / Twitter",
+  linkedin: "LinkedIn",
+  youtube: "YouTube",
+  youtube_community: "YouTube Community",
+  instagram: "Instagram",
+  github: "GitHub",
+};
 
 type Tab = "draft" | "published" | "rejected";
 
@@ -201,7 +261,24 @@ function BriefCard({
   );
 }
 
-export function ContentQueue() {
+/** The queue UI, shared by /api-trading/content and /content.
+ *  `base` is the read-API prefix: GET `${base}`, POST `${base}/{id}/act|dismiss`
+ *  and `${base}/top-up`. The created_at window comes from the URL (TimeFilter
+ *  above the queue writes window/from_ts/to_ts); no params = all briefs. */
+export function ContentQueue({ base }: { base: string }) {
+  const sp = useSearchParams();
+  // defaultAll: no URL params means no window — the queue shows everything.
+  const windowQS = windowQuery(
+    pickWindow(
+      {
+        window: sp.get("window") ?? undefined,
+        from_ts: sp.get("from_ts") ?? undefined,
+        to_ts: sp.get("to_ts") ?? undefined,
+      },
+      true,
+    ),
+  );
+
   const [rows, setRows] = useState<ContentBrief[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("draft");
@@ -211,14 +288,15 @@ export function ContentQueue() {
 
   const refresh = useCallback(async () => {
     const d = await get<ContentBrief[] | null>(
-      "/api-trading/content?status=all&limit=200",
+      `${base}?status=all&limit=200${windowQS ? `&${windowQS}` : ""}`,
       null,
     );
     setRows(d);
     setLoading(false);
-  }, []);
+  }, [base, windowQS]);
 
   useEffect(() => {
+    setLoading(true);
     refresh();
   }, [refresh]);
 
@@ -240,7 +318,7 @@ export function ContentQueue() {
     );
     const trimmed = note.trim();
     const r = await post(
-      `/api-trading/content/${brief.id}/${action}`,
+      `${base}/${brief.id}/${action}`,
       trimmed ? { note: trimmed } : {},
     );
     if (!r.ok) {
@@ -255,7 +333,7 @@ export function ContentQueue() {
   async function topUp() {
     setTopping(true);
     try {
-      const res = await fetch(`${apiBase()}/api-trading/content/top-up`, {
+      const res = await fetch(`${apiBase()}${base}/top-up`, {
         method: "POST",
       });
       const j = await res.json().catch(() => null);
