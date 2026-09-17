@@ -28,14 +28,24 @@ from community.store import db, repositories as repo
 log = get_logger("social_recommend.api_lens")
 
 LENS = "api_trading"
-PROMPT_VERSION = "api-lens-copy-v1"
-PLATFORMS = ("reddit", "x", "linkedin", "youtube_community")
+PROMPT_VERSION = "api-lens-copy-v2"
+DEFAULT_PLATFORMS = ("reddit", "x", "linkedin", "youtube", "youtube_community",
+                     "instagram")
+
+
+def _platforms() -> tuple[str, ...]:
+    reg = settings.registry.get("api_trading", {}) or {}
+    return tuple(reg.get("content_platforms") or DEFAULT_PLATFORMS)
 
 
 class ApiLensRec(BaseModel):
     recommendation_key: str
-    platform: Literal["reddit", "x", "linkedin", "youtube_community"]
+    platform: Literal["reddit", "x", "linkedin", "youtube",
+                      "youtube_community", "instagram"]
     content_type: Literal["seed_reply", "standalone"]
+    format: Literal["text_post", "thread", "carousel", "short_video",
+                    "image_post", "seed_reply"]
+    ai_brief: str
     title: str
     hook: str
     body: str
@@ -48,7 +58,7 @@ class ApiLensRec(BaseModel):
     recommended_timing: str = ""
     priority_score: float = Field(ge=0, le=100)
 
-    @field_validator("title", "hook", "body", "rationale")
+    @field_validator("title", "hook", "body", "rationale", "ai_brief")
     @classmethod
     def non_empty(cls, value: str) -> str:
         value = value.strip()
@@ -81,13 +91,30 @@ Two content types:
 - "standalone": an original post for the platform (educational or product-fact
   led), grounded in what the evidence shows people struggle with.
 
-Platform norms:
-- reddit: plain text, no hashtags, no marketing tone, disclosure mandatory,
-  markdown ok. Being useful IS the content.
-- x: <= 260 chars per post or a 2-4 tweet thread (separate tweets with a line
-  containing only "---"). At most 2 hashtags.
-- linkedin: 80-180 words, professional but concrete, max 3 hashtags.
-- youtube_community: short discussion-starter or poll-style text, no hashtags.
+Platform norms (format per platform):
+- reddit: format seed_reply or text_post. Plain text, no hashtags, no marketing
+  tone, disclosure mandatory, markdown ok. Being useful IS the content.
+- x: format text_post or thread. <= 260 chars per post (thread: separate tweets
+  with a line containing only "---"). At most 2 hashtags.
+- linkedin: format text_post, image_post or carousel. 80-180 words,
+  professional but concrete, max 3 hashtags.
+- youtube: format short_video — a 30-60s video idea (Shorts-friendly).
+- youtube_community: format text_post — short discussion-starter or poll text.
+- instagram: format image_post, carousel or short_video (reel).
+
+ai_brief — REQUIRED on every item, the crucial field: a SELF-CONTAINED
+production prompt that a person can paste into an AI tool to produce the
+finished asset with zero extra context. It must state: the asset type and
+platform; exact dimensions/duration norms; the full creative direction
+(scene/layout/slides/scenes with on-screen text verbatim, or the writing
+instructions with the final copy embedded); Nubra's visual tone (clean,
+professional, no stock-photo clichés, no fake UI screenshots of real apps);
+and the compliance constraints baked in (no returns/performance claims, no
+"best"/"#1", no celebrity likenesses; VIDEO briefs must include a >= 5 second
+end-frame with the verbatim warning "investments in securities market are
+subject to market risks, read all the related documents carefully before
+investing." in visuals AND voice-over). For text formats the ai_brief is the
+generation prompt whose output would be the exact_copy fields refined.
 
 Hard rules (violations get the piece rejected):
 - NEVER reference past performance, returns, win rates, or expected profits of
@@ -103,8 +130,10 @@ Hard rules (violations get the piece rejected):
 Return ONLY one JSON object:
 {"recommendations":[{
   "recommendation_key":"short-stable-slug",
-  "platform":"reddit|x|linkedin|youtube_community",
+  "platform":"reddit|x|linkedin|youtube|youtube_community|instagram",
   "content_type":"seed_reply|standalone",
+  "format":"text_post|thread|carousel|short_video|image_post|seed_reply",
+  "ai_brief":"self-contained production prompt per the ai_brief contract",
   "title":"internal editorial title",
   "hook":"exact public opening line",
   "body":"exact public body — continues AFTER the hook; never repeat the hook",
@@ -151,7 +180,7 @@ def _ready_counts() -> dict[str, int]:
     rows = db.query(
         "SELECT platform, count(*)::int AS n FROM social_recommendations "
         "WHERE lens = %s AND status = 'draft' GROUP BY platform", (LENS,))
-    counts = {p: 0 for p in PLATFORMS}
+    counts = {p: 0 for p in _platforms()}
     counts.update({r["platform"]: r["n"] for r in rows})
     return counts
 
@@ -184,7 +213,12 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
 
         evidence = _evidence(days=days)
         if not evidence:
-            return {**stats, "status": "skipped", "detail": "no fresh lens evidence"}
+            # quiet stretch (source outage/holiday): widen rather than starve —
+            # the queue must always hold postable ideas
+            evidence = _evidence(days=90)
+            stats["evidence_window"] = "widened-90d"
+        if not evidence:
+            return {**stats, "status": "skipped", "detail": "no lens evidence at all"}
         features = _features()
         payload = {
             "needed_per_platform": {p: n for p, n in need.items() if n > 0},
@@ -202,7 +236,8 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
             "Create at most max_items pieces, covering the platforms in "
             "needed_per_platform. Prefer seed_reply for items marked seedable. "
             "Evidence pack:\n" + json.dumps(payload, ensure_ascii=False, default=str),
-            max_tokens=6000)
+            # ai_brief made items ~3x longer (v2) — budget for max_items of them
+            max_tokens=20000)
         envelope = ApiLensEnvelope.model_validate(_json_object(raw))
 
         ev_by_id = {e["item_id"]: e for e in evidence}
@@ -214,6 +249,9 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
                 rejected += 1
                 continue
             if any(f not in feat_by_id for f in rec.feature_ids):
+                rejected += 1
+                continue
+            if rec.content_type == "seed_reply" and rec.platform not in ("reddit",):
                 rejected += 1
                 continue
             if rec.content_type == "seed_reply":
@@ -242,20 +280,21 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
                     title, hook, body, cta, exact_copy, hashtags, mapped_features,
                     source_evidence, rationale, visual_brief, recommended_timing,
                     priority_score, compliance_status, model, prompt_version,
-                    context_version, lens, seed_url
+                    context_version, lens, seed_url, ai_brief
                 )
                 VALUES (%s, %s, %s, 'api', %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, 'passed', %s, %s, %s, %s, %s)
+                        %s, %s, %s, %s, %s, 'passed', %s, %s, %s, %s, %s, %s)
                 """,
                 (run_id, today, rec.recommendation_key, rec.platform,
-                 "seed_reply" if rec.content_type == "seed_reply" else "text_post",
+                 "seed_reply" if rec.content_type == "seed_reply" else rec.format,
                  rec.title, rec.hook, rec.body, rec.cta, rec.exact_copy,
                  rec.hashtags,
                  db.jsonb([feat_by_id[f] for f in rec.feature_ids]),
                  db.jsonb([ev_by_id[i] for i in rec.evidence_item_ids]),
                  rec.rationale, "text-only brief; no visual", rec.recommended_timing,
                  rec.priority_score, settings.draft_model, PROMPT_VERSION,
-                 product_context.load().version, LENS, rec.seed_url))
+                 product_context.load().version, LENS, rec.seed_url,
+                 rec.ai_brief[:4000]))
             stored += 1
         stats.update({"generated": len(envelope.recommendations),
                       "stored": stored, "rejected": rejected, "usage": usage})

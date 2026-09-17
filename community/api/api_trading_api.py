@@ -201,7 +201,7 @@ def content_queue(platform: str | None = None, status: str = "draft",
     sql = ("SELECT r.id, r.day, r.platform, r.post_format, r.title, r.hook, "
            "r.body, r.cta, r.exact_copy, r.hashtags, r.mapped_features, "
            "r.source_evidence, r.rationale, r.recommended_timing, "
-           "r.priority_score, r.status, r.seed_url, r.created_at "
+           "r.priority_score, r.status, r.seed_url, r.ai_brief, r.created_at "
            "FROM social_recommendations r WHERE r.lens = 'api_trading'")
     p: dict = {"lim": max(1, min(limit, 200))}
     if status != "all":
