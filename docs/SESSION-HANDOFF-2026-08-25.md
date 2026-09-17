@@ -55,6 +55,16 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    build. ~1k historical gated-irrelevant items classify naturally
    (~$0.40, bounded 200/run).
 
+Content queue v2 (2026-09-17, user request): every plugged posting
+platform gets >=2 ready drafts (reddit/x/linkedin/youtube/
+youtube_community/instagram; registry api_trading.content_platforms
+overrides), and every brief carries ai_brief — a self-contained AI
+production prompt (dimensions/scenes/verbatim text/compliance incl. the
+5s video warning baked in). Migration 0021; format field (image_post
+etc.); evidence window widens 21d->90d instead of starving; token budget
+20k (v2 briefs ~3x longer). UI: format badges + needs-asset marker +
+Copy-AI-brief block. No backfill by design (581e71d, UI commit after).
+
 Strategy detection (2026-09-14, user request): migration 0020
 item_strategy + community/enrich/strategy_tagger.py (two-tier gate ->
 Haiku; is_strategy + strategy_raw verbatim + strategy_summary LLM-written;
