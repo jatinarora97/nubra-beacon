@@ -55,6 +55,15 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    build. ~1k historical gated-irrelevant items classify naturally
    (~$0.40, bounded 200/run).
 
+Post-deploy fixes (2026-09-17 eve, ee86b02): social-recommendations
+page had gone EMPTY on prod — my latest-run subquery excluded only
+api-lens v1, so v2 queue runs hijacked 'latest run'; now scoped to the
+newest run WITH lens='general' rows (data-scoped, version-proof). Plus:
+empty queue auto-triggers one top-up on load (cold start), and /content
+gained an 'Earlier briefs (archive)' section over the old
+content_proposals (read-only, day picker). LESSON: any new
+prompt_version/lens must never be able to hijack that subquery again.
+
 General content queue (2026-09-17, later same day): /content now runs
 the SAME queue as /api-trading/content via lens=general_marketing
 (retail-corpus evidence, retail|shared features, same 7 platforms/
