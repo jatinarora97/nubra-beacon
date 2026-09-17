@@ -55,6 +55,18 @@ Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
    build. ~1k historical gated-irrelevant items classify naturally
    (~$0.40, bounded 200/run).
 
+General content queue (2026-09-17, later same day): /content now runs
+the SAME queue as /api-trading/content via lens=general_marketing
+(retail-corpus evidence, retail|shared features, same 7 platforms/
+minimums/ai_brief/compliance; NOT behind API_TRADING_ENABLED). Shared
+engine (api_lens.top_up(lens=...), compose tops up both hourly), shared
+endpoints helpers, new /api/v1/content-queue routes, shared UI component
+(webapp/components/content-queue.tsx). Date filter (window/from_ts/to_ts
+on created_at) on BOTH queue GETs + TimeFilter w/ 'All briefs' default
+on both pages. Old /content proposals UI deleted (content-gen v1 relic;
+content_proposals table/endpoints remain but nothing calls them).
+(77133d1 + UI commit)
+
 Content queue v2 (2026-09-17, user request): every plugged posting
 platform gets >=2 ready drafts (reddit/x/linkedin/youtube/
 youtube_community/instagram; registry api_trading.content_platforms
