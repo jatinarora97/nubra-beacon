@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/ui";
 import { TimeFilter } from "@/components/time-filter";
 import { ContentQueue } from "@/components/content-queue";
 import { pickWindow } from "@/lib/window";
+import { ProposalArchive } from "./proposal-archive";
 
 export default async function ContentPage({
   searchParams,
@@ -23,6 +24,7 @@ export default async function ContentPage({
       <Suspense>
         <ContentQueue base="/content-queue" />
       </Suspense>
+      <ProposalArchive />
     </div>
   );
 }

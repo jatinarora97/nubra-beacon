@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiBase, get, post } from "@/lib/api";
 import { Badge, EmptyState, SectionCard, StatInline } from "@/components/ui";
@@ -299,6 +299,20 @@ export function ContentQueue({ base }: { base: string }) {
     setLoading(true);
     refresh();
   }, [refresh]);
+
+  // Cold start (fresh deploy / new lens): the queue is stocked hourly, but an
+  // entirely empty queue should not greet anyone — trigger one top-up
+  // automatically and show progress. Guarded to fire at most once per mount.
+  const autoToppedRef = useRef(false);
+  useEffect(() => {
+    if (loading || topping || autoToppedRef.current) return;
+    if (rows !== null && rows.length === 0 && !windowQS) {
+      autoToppedRef.current = true;
+      flash("Queue is empty — generating the first briefs (about a minute)…");
+      topUp();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, loading]);
 
   function flash(text: string) {
     setMsg(text);

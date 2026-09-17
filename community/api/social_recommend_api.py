@@ -77,12 +77,13 @@ def list_recommendations(
 ):
     try:
         where = [
-            # api_trading-lens briefs live on their own page — this list stays
-            # scoped to the general engine's latest run
+            # queue-lens briefs (api_trading/general_marketing) live on their
+            # own pages — this list stays scoped to the general engine's latest
+            # run. Bug 2026-09-17: version-matching broke when the queue moved
+            # to v2; scope by data instead (newest run WITH general rows).
             "r.lens = 'general'",
-            "r.run_id = (SELECT id FROM social_recommendation_runs "
-            "WHERE status='succeeded' AND prompt_version <> 'api-lens-copy-v1' "
-            "ORDER BY created_at DESC LIMIT 1)"
+            "r.run_id = (SELECT max(run_id) FROM social_recommendations "
+            "WHERE lens = 'general')"
         ]
         params: dict = {"limit": limit}
         if segment:
