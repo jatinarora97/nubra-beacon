@@ -16,6 +16,7 @@ export type ContentEvidence = {
   source?: string | null;
   text?: string | null;
   item_id?: number;
+  posted?: string | null;
 };
 
 export type ContentFeature = { name: string; status?: string | null };
@@ -58,6 +59,8 @@ export const CONTENT_PLATFORMS = [
   "youtube_community",
   "instagram",
   "github",
+  "forum",
+  "stackoverflow",
 ] as const;
 
 export const CONTENT_PLATFORM_LABELS: Record<string, string> = {
@@ -68,6 +71,8 @@ export const CONTENT_PLATFORM_LABELS: Record<string, string> = {
   youtube_community: "YouTube Community",
   instagram: "Instagram",
   github: "GitHub",
+  forum: "Broker forums",
+  stackoverflow: "Stack Overflow",
 };
 
 type Tab = "draft" | "published" | "rejected";
@@ -194,6 +199,32 @@ function BriefCard({
               {seedEvidence.gist}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Every card shows its evidence threads (intern feedback 2026-09-23:
+          "no seeding links visible") — for standalone briefs these are the
+          threads that INSPIRED the idea, not a place to post a reply. */}
+      {(brief.source_evidence?.length ?? 0) > 0 && (
+        <div className="mt-3">
+          <div className="micro mb-1">
+            {brief.seed_url ? "evidence" : "inspired by these threads"}
+          </div>
+          <div className="space-y-0.5">
+            {brief.source_evidence!.slice(0, 3).map((e, i) =>
+              e.url ? (
+                <div key={i} className="text-[12px] leading-snug">
+                  <a href={e.url} target="_blank" rel="noreferrer"
+                     className="text-trends hover:underline">
+                    {(e.gist || e.url).slice(0, 90)}
+                  </a>
+                  <span className="ml-1.5 whitespace-nowrap text-[11px] text-muted">
+                    {e.source}{e.posted ? ` · ${e.posted}` : ""}
+                  </span>
+                </div>
+              ) : null,
+            )}
+          </div>
         </div>
       )}
 
