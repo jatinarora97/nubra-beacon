@@ -25,6 +25,38 @@ sources:
       - value: algotest
         x: true
         reddit: true
+      # Content-curation expansion (intern feedback 2026-09-23: thin scrape ->
+      # thin What-to-make): retail + api phrases that produce curatable posts
+      - value: brokerage charges
+        x: true
+        reddit: true
+      - value: expiry day
+        x: true
+        reddit: true
+      - value: option selling
+        x: true
+        reddit: true
+      - value: paper trading
+        x: true
+        reddit: true
+      - value: backtesting
+        x: true
+        reddit: true
+      - value: trading api
+        x: true
+        reddit: true
+      - value: market data api
+        x: true
+        reddit: true
+      - value: algo trading sebi
+        x: true
+        reddit: true
+      - value: f&o tax
+        x: true
+        reddit: true
+      - value: margin penalty
+        x: true
+        reddit: true
       - value: tradetron
         x: true
         reddit: true
@@ -274,6 +306,10 @@ sources:
       - dhan api
       - nubra trading
       - algorithmic trading nse
+      - options backtesting
+      - trading api python
+      - sebi algo trading rules
+      - market data api nse
   instagram:
     enabled: true
     cadence: daily              # LOCKED 2026-08-12: pinned posts bypass onlyPostsNewerThan
