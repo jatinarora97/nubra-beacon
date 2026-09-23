@@ -168,7 +168,21 @@ broker/any/unclear; seed rows = 'unclear', live classification fills it.
 
 ## In flight on prod (check before anything else)
 
-1. **Reddit backfill**: the user was running scripts/backfill_reddit.py
+0. **REDDIT TRANSPORT DEAD since 2026-08-30 — diagnosed 2026-09-23,
+   user decision: PARKED, do not fix for now.** Root cause: Reddit now
+   serves the redesigned shell (theme-beta) on old.reddit URLs even to
+   healthy US-residential proxy exits — the legacy HTML the vendored
+   zanshash scraper parses no longer exists. Probes (all via prod proxy,
+   which works — exit verified, Apify budget fine at $1.5/29): legacy
+   markers absent; 0 shreddit-post tags in static HTML (client-rendered);
+   public .json listings 403. Every hourly run records success/0 items
+   (preflight skip). Remaining options when re-opened: (a) patch the
+   vendored Playwright scraper's selectors for the JS-rendered new-shell
+   DOM (needs live repro); (b) official Reddit OAuth API (new creds;
+   re-opens the 'zanshash-only transport' locked decision). Meanwhile
+   reddit data is frozen at Aug-30; all other sources flow.
+
+1. **Reddit backfill (historical)**: the user was running scripts/backfill_reddit.py
    detached (`docker compose exec -dT api sh -c "... > /tmp/backfill_reddit.log"`).
    Check: tail that log + count reddit rows ingested recently. The DEPLOYED
    image may still have the fragile all-at-end script; the branch has the
