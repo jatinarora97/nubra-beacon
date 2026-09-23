@@ -43,14 +43,18 @@ _AUDIENCE = {
                    "and investors using the app"),
 }
 DEFAULT_PLATFORMS = ("reddit", "x", "linkedin", "youtube", "youtube_community",
-                     "instagram", "github")
-# exception platforms need fewer ready drafts than the standard minimum
-DEFAULT_MIN_OVERRIDES = {"github": 1}
+                     "instagram", "github", "forum")
+API_EXTRA_PLATFORMS = ("stackoverflow",)  # dev venue — api lens only
+# exception platforms: different minimums than the standard 2 (intern
+# feedback 2026-09-23: linkedin wants more supply; seed venues need 1)
+DEFAULT_MIN_OVERRIDES = {"github": 1, "forum": 1, "stackoverflow": 1,
+                         "linkedin": 4}
 
 
-def _platforms() -> tuple[str, ...]:
+def _platforms(lens: str = LENS) -> tuple[str, ...]:
     reg = settings.registry.get("api_trading", {}) or {}
-    return tuple(reg.get("content_platforms") or DEFAULT_PLATFORMS)
+    base = tuple(reg.get("content_platforms") or DEFAULT_PLATFORMS)
+    return base + API_EXTRA_PLATFORMS if lens == LENS else base
 
 
 def _min_for(platform: str, base: int) -> int:
@@ -62,7 +66,8 @@ def _min_for(platform: str, base: int) -> int:
 class ApiLensRec(BaseModel):
     recommendation_key: str
     platform: Literal["reddit", "x", "linkedin", "youtube",
-                      "youtube_community", "instagram", "github"]
+                      "youtube_community", "instagram", "github", "forum",
+                      "stackoverflow"]
     content_type: Literal["seed_reply", "standalone"]
     format: Literal["text_post", "thread", "carousel", "short_video",
                     "image_post", "seed_reply"]
@@ -121,6 +126,13 @@ Platform norms (format per platform):
 - youtube: format short_video — a 30-60s video idea (Shorts-friendly).
 - youtube_community: format text_post — short discussion-starter or poll text.
 - instagram: format image_post, carousel or short_video (reel).
+- forum: format seed_reply ONLY — a reply into the given broker-community
+  thread (seed_url on tradingqna/community forums), same rules as reddit
+  seed replies (answer first, disclose, one soft Nubra mention max).
+- stackoverflow: format seed_reply ONLY — a technically complete ANSWER to
+  the given Stack Overflow question (seed_url): working code first, sources
+  cited, disclosure in one closing line. SO is intolerant of marketing —
+  the answer must stand alone as the best answer to the question.
 - github: format text_post — a markdown Discussion post or example-repo README
   section: a complete, runnable code example (Python, nubra-sdk where honest)
   answering a real question from the evidence; engineer-to-engineer tone,
@@ -154,7 +166,7 @@ Hard rules (violations get the piece rejected):
 Return ONLY one JSON object:
 {"recommendations":[{
   "recommendation_key":"short-stable-slug",
-  "platform":"reddit|x|linkedin|youtube|youtube_community|instagram|github",
+  "platform":"reddit|x|linkedin|youtube|youtube_community|instagram|github|forum|stackoverflow",
   "content_type":"seed_reply|standalone",
   "format":"text_post|thread|carousel|short_video|image_post|seed_reply",
   "ai_brief":"self-contained production prompt per the ai_brief contract",
@@ -179,6 +191,7 @@ def _evidence(days: int = 21, limit: int = 40, lens: str = LENS) -> list[dict]:
         rows = db.query(
             """
             SELECT a.item_id, si.source, si.url, a.stage, a.kind, a.gist,
+                   to_char(si.created_at, 'YYYY-MM-DD') AS posted,
                    a.friction_theme, a.working_theme, left(si.text, 500) AS text,
                    coalesce((si.engagement->>'score')::float, 0) AS engagement,
                    (a.kind IN ('friction','guidance_seeking')
@@ -197,6 +210,7 @@ def _evidence(days: int = 21, limit: int = 40, lens: str = LENS) -> list[dict]:
         rows = db.query(
             """
             SELECT si.item_id, si.source, si.url, e.intent AS kind,
+                   to_char(si.created_at, 'YYYY-MM-DD') AS posted,
                    e.topic_key AS gist, left(si.text, 500) AS text,
                    coalesce((si.engagement->>'score')::float, 0) AS engagement,
                    (e.intent IN ('question','complaint','feature_request')
@@ -217,6 +231,48 @@ def _evidence(days: int = 21, limit: int = 40, lens: str = LENS) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _stackoverflow_evidence(limit: int = 6) -> list[dict]:
+    """Recent Stack Overflow questions in our niche — seed-answer targets.
+    Stack Exchange API, keyless (300 req/day quota); failure returns []."""
+    import httpx
+    out: list[dict] = []
+    seen: set[int] = set()
+    # the q param is a plain text query (no OR syntax) — one call per term
+    terms = ("kite connect", "smartapi angel", "dhanhq", "upstox api",
+             "nse market data api", "zerodha")
+    try:
+        with httpx.Client(timeout=15) as c:
+            for term in terms:
+                if len(out) >= limit:
+                    break
+                r = c.get(
+                    "https://api.stackexchange.com/2.3/search/advanced",
+                    params={"order": "desc", "sort": "creation",
+                            "site": "stackoverflow", "pagesize": 5, "q": term})
+                for q in r.json().get("items") or []:
+                    qid = int(q.get("question_id", 0))
+                    title = q.get("title") or ""
+                    blob = (title + " " + " ".join(q.get("tags") or [])).lower()
+                    # q= matches loosely — keep only clearly on-niche questions
+                    if not q.get("link") or not title or qid in seen:
+                        continue
+                    if not re.search(r"zerodha|kiteconnect|kite.?connect|smartapi|"
+                                     r"dhan|upstox|fyers|\bnse\b|algo.?trading|"
+                                     r"trading.?api|broker.?api", blob):
+                        continue
+                    seen.add(qid)
+                    out.append({
+                        "item_id": -qid,  # negative = external evidence
+                        "source": "stackoverflow", "url": q["link"],
+                        "kind": "question", "gist": title,
+                        "text": title + " [tags: " + ", ".join(q.get("tags") or []) + "]",
+                        "engagement": float(q.get("score") or 0), "seedable": True,
+                    })
+    except Exception as e:  # noqa: BLE001 — SO evidence is best-effort
+        log.warning("stackoverflow evidence fetch failed (%s)", type(e).__name__)
+    return out[:limit]
+
+
 def _features(lens: str = LENS) -> list[dict]:
     ctx = product_context.load()
     segs = ("api", "shared") if lens == LENS else ("retail", "shared")
@@ -227,7 +283,7 @@ def _ready_counts(lens: str = LENS) -> dict[str, int]:
     rows = db.query(
         "SELECT platform, count(*)::int AS n FROM social_recommendations "
         "WHERE lens = %s AND status = 'draft' GROUP BY platform", (lens,))
-    counts = {p: 0 for p in _platforms()}
+    counts = {p: 0 for p in _platforms(lens)}
     counts.update({r["platform"]: r["n"] for r in rows})
     return counts
 
@@ -267,6 +323,8 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
             stats["evidence_window"] = "widened-90d"
         if not evidence:
             return {**stats, "status": "skipped", "detail": "no lens evidence at all"}
+        if lens == LENS and need.get("stackoverflow", 0) > 0:
+            evidence = evidence + _stackoverflow_evidence()
         features = _features(lens)
         payload = {
             "needed_per_platform": {p: n for p, n in need.items() if n > 0},
@@ -299,15 +357,22 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
             if any(f not in feat_by_id for f in rec.feature_ids):
                 rejected += 1
                 continue
-            if rec.content_type == "seed_reply" and rec.platform not in ("reddit",):
-                rejected += 1
-                continue
             if rec.content_type == "seed_reply":
-                # the seed target must be a real evidence thread, not invented
-                urls = {ev_by_id[i]["url"] for i in rec.evidence_item_ids}
-                if rec.seed_url not in urls:
+                # the seed target must be a real evidence thread, not invented —
+                # and the brief's platform must be the VENUE THE THREAD LIVES ON
+                # (intern bug 2026-09-23: forum threads were labeled reddit)
+                by_url = {ev_by_id[i]["url"]: ev_by_id[i]
+                          for i in rec.evidence_item_ids}
+                target = by_url.get(rec.seed_url)
+                if target is None:
                     rejected += 1
                     continue
+                venue = {"reddit": "reddit", "community_forum": "forum",
+                         "stackoverflow": "stackoverflow"}.get(target["source"])
+                if venue is None:
+                    rejected += 1
+                    continue
+                rec.platform = venue
             else:
                 rec.seed_url = None
             if _public_copy_issue(rec.exact_copy):
