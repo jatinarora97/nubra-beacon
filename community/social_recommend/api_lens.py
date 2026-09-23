@@ -1,6 +1,6 @@
 """API-trading content queue — the api_trading lens on the social engine.
 
-Keeps a small stock of ready-to-post, grounded briefs per platform for the
+Guarantees N fresh, grounded briefs PER PLATFORM PER DAY for the
 interns seeding API/algo content (plan: docs/api-content-queue-plan-2026-09-09.md).
 Evidence comes from the api_trader_items lens (real threads), features from
 the product context (api/shared only), compliance from the same guardrails
@@ -84,13 +84,15 @@ class ApiLensRec(BaseModel):
     recommended_timing: str = ""
     priority_score: float = Field(ge=0, le=100)
 
-    @field_validator("title", "hook", "body", "rationale", "ai_brief")
+    @field_validator("title", "hook", "rationale", "ai_brief")
     @classmethod
     def non_empty(cls, value: str) -> str:
         value = value.strip()
         if not value:
             raise ValueError("field cannot be empty")
         return value
+    # body may be empty when the hook carries the whole copy (short X posts,
+    # image briefs) — exact_copy still comes out non-empty via the hook
 
     @property
     def exact_copy(self) -> str:
@@ -279,13 +281,35 @@ def _features(lens: str = LENS) -> list[dict]:
     return [f.model_dump() for f in ctx.features if f.segment in segs]
 
 
-def _ready_counts(lens: str = LENS) -> dict[str, int]:
+def _created_today(lens: str) -> dict[str, int]:
+    """Briefs CREATED today (IST), any status — the daily-freshness counter.
+    (2026-09-23 semantics change: the guarantee is N NEW ideas per platform
+    per day, not N sitting in stock — a full queue no longer stops
+    generation.)"""
     rows = db.query(
         "SELECT platform, count(*)::int AS n FROM social_recommendations "
-        "WHERE lens = %s AND status = 'draft' GROUP BY platform", (lens,))
+        "WHERE lens = %s AND (created_at AT TIME ZONE 'Asia/Kolkata')::date = "
+        "(now() AT TIME ZONE 'Asia/Kolkata')::date GROUP BY platform", (lens,))
     counts = {p: 0 for p in _platforms(lens)}
-    counts.update({r["platform"]: r["n"] for r in rows})
+    counts.update({r["platform"]: r["n"] for r in rows if r["platform"] in counts})
     return counts
+
+
+def _expire_stale(lens: str, days: int = 14) -> int:
+    """Untouched drafts older than N days auto-dismiss so the queue stays
+    current (daily generation would otherwise grow it without bound)."""
+    rows = db.query(
+        "UPDATE social_recommendations SET status='rejected', updated_at=now() "
+        "WHERE lens = %s AND status='draft' "
+        "AND created_at < now() - make_interval(days => %s) RETURNING id",
+        (lens, days))
+    for r in rows:
+        db.execute(
+            "INSERT INTO social_recommendation_events "
+            "(recommendation_id, event_type, actor, note) "
+            "VALUES (%s, 'rejected', 'system', 'expired: untouched for 14 days')",
+            (r["id"],))
+    return len(rows)
 
 
 def _stable_key(rec: ApiLensRec) -> str:
@@ -305,11 +329,13 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
     try:
         if lens == LENS and not lens_enabled():
             return {**stats, "status": "disabled"}
-        counts = _ready_counts(lens)
+        expired = _expire_stale(lens)
+        counts = _created_today(lens)
         need = {p: max(0, _min_for(p, min_ready_per_platform) - n)
                 for p, n in counts.items()}
         total_need = min(sum(need.values()), max_new)
-        stats.update({"ready": counts, "need": total_need})
+        stats.update({"created_today": counts, "need": total_need,
+                      "expired": expired})
         if total_need == 0:
             return {**stats, "status": "stocked"}
         if not settings.anthropic_api_key:
@@ -344,7 +370,19 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
             "Evidence pack:\n" + json.dumps(payload, ensure_ascii=False, default=str),
             # ai_brief made items ~3x longer (v2) — budget for max_items of them
             max_tokens=20000)
-        envelope = ApiLensEnvelope.model_validate(_json_object(raw))
+        # validate items INDIVIDUALLY — one malformed item must not sink the
+        # batch (live failure 2026-09-23: an empty body voided 6 good briefs)
+        raw_obj = _json_object(raw)
+        recs: list[ApiLensRec] = []
+        invalid = 0
+        for item in raw_obj.get("recommendations") or []:
+            try:
+                recs.append(ApiLensRec.model_validate(item))
+            except Exception as ve:  # noqa: BLE001 — skip the bad one
+                invalid += 1
+                log.warning("api-lens item invalid, skipped: %s", str(ve)[:150])
+        stats["invalid"] = invalid
+        envelope = ApiLensEnvelope(recommendations=recs)
 
         ev_by_id = {e["item_id"]: e for e in evidence}
         feat_by_id = {f["id"]: f for f in features}
