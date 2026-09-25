@@ -2,6 +2,15 @@
 (old.reddit via Playwright; verified working incl. on networks that 403 the
 JSON API). The JSON-API fallback was removed by user decision 2026-07-05.
 
+old.reddit now forces a login wall on logged-out listing pages (verified on
+prod 2026-09-24: a fresh anonymous browser bounces to /login?reason=lor2 and
+never sees post content — distinct from a DOM/selector drift issue, the
+legacy markup the scraper parses is unchanged once authenticated).
+REDDIT_USERNAME/REDDIT_PASSWORD (.env) authenticate the scraper's browser
+context before crawling; the login patch lives in the vendored module (see
+scripts/sync_reddit_scraper.py) and caches the session across hourly runs at
+out/reddit_scraper/reddit_auth_state.json so we don't log in every run.
+
 Runtime config (subreddits by category, posts/sub, comments/post, sorts) is
 injected into the vendored module from registry.yaml — its config.py is
 defaults only. Nested replies (one level, ≤3 per top comment) come from the
@@ -41,18 +50,40 @@ def _comment_id(author: str, body: str) -> str:
     return hashlib.sha1(f"{author}|{body[:120]}".encode()).hexdigest()[:12]
 
 
-def _preflight() -> bool:
-    """One old.reddit listing page via httpx: True when it looks like a real
-    listing (post links present), False when blocked/challenged/unreachable."""
-    import httpx
-    try:
-        r = httpx.get("https://old.reddit.com/r/IndianStockMarket/new/",
-                      headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
-                               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"},
-                      timeout=15.0, follow_redirects=True)
-        return r.status_code == 200 and 'data-fullname="t3_' in r.text
-    except Exception:  # noqa: BLE001 — unreachable network = don't crawl
-        return False
+def _state_path() -> str:
+    import os
+    return os.path.join(str(settings.out_dir.parent / "reddit_scraper"),
+                        "reddit_auth_state.json")
+
+
+def session_valid() -> bool | None:
+    """Non-mutating check: does the CACHED login session (if any) still grant
+    listing access? Never attempts a fresh login (used by `./cm doctor`,
+    which must stay side-effect-free — repeated automated logins from a
+    health check risk getting flagged). None = no cached session to check."""
+    import asyncio
+    import os
+
+    path = _state_path()
+    if not os.path.exists(path):
+        return None
+
+    async def _check() -> bool:
+        from playwright.async_api import async_playwright
+
+        from community.lib.reddit_scraper import scraper as zs
+        reg = settings.registry.get("sources", {}).get("reddit", {})
+        subs = list(_sub_categories(reg)) or ["popular"]
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            ctx = await browser.new_context(storage_state=path)
+            page = await ctx.new_page()
+            try:
+                return await zs._has_listing_access(page, subs[0])
+            finally:
+                await browser.close()
+
+    return asyncio.run(_check())
 
 
 def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[str]]:
@@ -61,6 +92,11 @@ def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[s
     reg = settings.registry.get("sources", {}).get("reddit", {})
     cat_map = _sub_categories(reg)
     sorts = sorts or list(reg.get("sort_types_hourly", ["new"]))
+
+    if not (settings.reddit_username and settings.reddit_password):
+        return [], ["reddit REDDIT_USERNAME/REDDIT_PASSWORD not set in .env — "
+                    "old.reddit requires login for logged-out listing access "
+                    "(since ~2026-08-30) — crawl skipped"]
 
     from community.lib import reddit_scraper as pkg
     from community.lib.reddit_scraper import scraper as zs
@@ -73,21 +109,20 @@ def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[s
     zs.DOWNLOAD_IMAGES = False
     zs.HEADLESS = True
     zs.OUTPUT_DIR = str(settings.out_dir.parent / "reddit_scraper")
+    zs.REDDIT_USERNAME = settings.reddit_username
+    zs.REDDIT_PASSWORD = settings.reddit_password
     from community.store import db
     zs.SKIP_IDS = {r["external_id"] for r in db.query(
         "SELECT external_id FROM social_items WHERE source='reddit' AND source_type='post'")}
     pkg.config.OUTPUT_DIR = zs.OUTPUT_DIR
 
-    # Preflight (2026-07-09, prod incident): old.reddit serves block/challenge
-    # pages to some datacenter IPs — every selector-wait then burns its full
-    # timeout and a "fetch" grinds for hours before yielding nothing. One cheap
-    # page decides in seconds whether crawling is worth it at all.
-    if not _preflight():
-        return [], ["reddit BLOCKED from this network (preflight page had no posts) "
-                    "— crawl skipped; verify with: curl -sI -A Mozilla "
-                    "https://old.reddit.com/r/IndianStockMarket/new/"]
-
-    combined = asyncio.run(zs.run())
+    try:
+        combined = asyncio.run(zs.run())
+    except Exception as exc:  # noqa: BLE001 — login/crawl failure = a loud
+        # health note, never a crashed hourly run (same philosophy as the
+        # old preflight gate this replaces)
+        return [], [f"reddit login/crawl failed: {type(exc).__name__}: {exc} "
+                    "— check REDDIT_USERNAME/REDDIT_PASSWORD"]
 
     items: list[SocialItem] = []
     health: list[str] = []

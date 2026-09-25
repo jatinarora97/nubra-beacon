@@ -31,6 +31,8 @@ class Settings:
     )
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     twitterapi_key: str = os.getenv("TWITTERAPI_IO_KEY", "")
+    reddit_username: str = os.getenv("REDDIT_USERNAME", "")
+    reddit_password: str = os.getenv("REDDIT_PASSWORD", "")
     out_dir: pathlib.Path = ROOT / os.getenv("OUT_DIR", "out/messages")
     enrich_model: str = os.getenv("ENRICH_MODEL", "claude-haiku-4-5")
     draft_model: str = os.getenv("DRAFT_MODEL", "claude-sonnet-4-6")

@@ -44,13 +44,21 @@ def _migrations():
     return f"{rows[0]['n']} applied"
 
 
-@_check("reddit (old.reddit reachable + real listing)")
+@_check("reddit (credentials + cached session)")
 def _reddit():
-    from community.scrape.reddit import _preflight
-    if not _preflight():
-        raise RuntimeError("old.reddit is blocked or unreachable from this network "
-                           "— reddit collection will be skipped by preflight")
-    return "listing page served with posts"
+    from community.config.settings import settings
+    if not (settings.reddit_username and settings.reddit_password):
+        raise RuntimeError("REDDIT_USERNAME/REDDIT_PASSWORD not set — old.reddit "
+                           "requires login for logged-out listing access "
+                           "(since ~2026-08-30), reddit collection is dead")
+    from community.scrape.reddit import session_valid
+    valid = session_valid()  # never logs in itself — read-only check
+    if valid is None:
+        return "credentials set; no cached session yet — will log in on next crawl"
+    if not valid:
+        raise RuntimeError("credentials set but the cached session no longer grants "
+                           "listing access — next crawl will attempt a fresh login")
+    return "credentials set; cached session grants listing access"
 
 
 @_check("chromium (playwright headless launch)")

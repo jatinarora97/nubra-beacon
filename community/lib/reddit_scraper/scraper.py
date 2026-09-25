@@ -1,5 +1,5 @@
 # VENDORED from github.com/zanshash/reddit_scraper @ f926fc7
-# (+ nested-replies patch — see this script's docstring)
+# (+ nested-replies + login patches — see this script's docstring)
 # Do not edit here; update the source repo, then run scripts/sync_reddit_scraper.py
 import asyncio
 import json
@@ -30,6 +30,8 @@ from .models import Comment, Post
 
 BASE = "https://old.reddit.com"
 SKIP_IDS: set = set()  # PATCH: pre-known ids to skip (set by the caller)
+REDDIT_USERNAME: str = ""  # PATCH: auth — set by the caller
+REDDIT_PASSWORD: str = ""  # PATCH: auth — set by the caller
 log = logging.getLogger(__name__)
 
 # Posts from these accounts are always noise (megathreads, daily threads, promos)
@@ -103,6 +105,52 @@ async def _accept_over18(page: Page):
             await page.wait_for_load_state("domcontentloaded")
     except Exception:
         pass
+
+
+# ── login (auth) ─────────────────────────────────────────────────────────────
+# PATCH: real field names verified against the live login form (2026-09-24,
+# via prod): input[name="username"], input[name="password"], button "Log In".
+# old.reddit.com/login redirects to www.reddit.com/login — go there directly;
+# session cookies are shared across the reddit.com domain, so the same
+# context then browses old.reddit.com authenticated.
+
+async def _has_listing_access(page: Page, subreddit: str) -> bool:
+    """True when a listing page renders real posts, not the login bounce."""
+    try:
+        await page.goto(f"{BASE}/r/{subreddit}/new/",
+                        wait_until="domcontentloaded", timeout=20_000)
+        await page.wait_for_timeout(2_000)  # let any JS bounce-through settle
+        return await page.locator("div#siteTable > div.thing.link").count() > 0
+    except Exception:
+        return False
+
+
+async def _login(page: Page) -> None:
+    await page.goto("https://www.reddit.com/login/",
+                    wait_until="domcontentloaded", timeout=30_000)
+    user_field = page.locator('input[name="username"]')
+    await user_field.wait_for(timeout=15_000)
+    await user_field.fill(REDDIT_USERNAME)
+    await page.locator('input[name="password"]').fill(REDDIT_PASSWORD)
+    await page.locator('button:has-text("Log In")').first.click()
+    # success = the login form is gone (a failed login re-shows it with an error)
+    await page.locator('input[name="password"]').wait_for(
+        state="detached", timeout=20_000)
+
+
+async def _ensure_logged_in(ctx: BrowserContext, state_path: str) -> None:
+    probe = await ctx.new_page()
+    try:
+        sub = SUBREDDITS[0] if SUBREDDITS else "popular"
+        if await _has_listing_access(probe, sub):
+            return  # cached session (if any) already grants access
+        await _login(probe)
+        if not await _has_listing_access(probe, sub):
+            raise RuntimeError("logged in but listing still blocked afterward")
+        await ctx.storage_state(path=state_path)
+        log.info("reddit: logged in, session cached at %s", state_path)
+    finally:
+        await probe.close()
 
 
 # ── listing page ───────────────────────────────────────────────────────────────
@@ -434,16 +482,24 @@ async def run():
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=HEADLESS)
+        state_path = os.path.join(OUTPUT_DIR, "reddit_auth_state.json")
         ctx = await browser.new_context(
             user_agent=_UA,
             viewport={"width": 1280, "height": 900},
             locale="en-US",
+            storage_state=state_path if os.path.exists(state_path) else None,
         )
         # Block ad/tracker domains to speed things up
         await ctx.route(
             re.compile(r"(doubleclick\.net|googlesyndication|adnxs|amazon-adsystem)"),
             lambda route, _: route.abort(),
         )
+
+        # PATCH: auth — old.reddit forces a login wall for logged-out
+        # listing access; log in once (reusing a cached session when it
+        # still works) before the crawl instead of hitting the wall silently.
+        if REDDIT_USERNAME and REDDIT_PASSWORD:
+            await _ensure_logged_in(ctx, state_path)
 
         try:
             for sub in SUBREDDITS:

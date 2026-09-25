@@ -1,0 +1,5 @@
+# Force LF on checkout for everything text — this repo deploys to Linux
+# containers; a Windows checkout (core.autocrlf=true) silently rewrites
+# shell scripts to CRLF, which then break as `exec ./cm: no such file or
+# directory` once copied/built into a Linux image (prod incident 2026-09-24).
+* text=auto eol=lf
