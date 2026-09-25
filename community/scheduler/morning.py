@@ -64,6 +64,16 @@ def run_morning_build() -> dict:
     _echo("compose", all_stats["compose"])
     all_stats["dispatch"] = dispatch.run(all_stats)
     _echo("dispatch", all_stats["dispatch"])
+    # Health digest to Slack — once/day here, not on the hourly cadence
+    # (STAGE_MODULES/run-local deliberately excludes it). A failure here
+    # must never fail the morning build.
+    try:
+        from community.dispatch import health_alert
+        all_stats["health"] = health_alert.run(live=True)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("health-alert failed independently")
+        all_stats["health"] = {"status": "failed", "error": str(exc)[:300]}
+    _echo("health", all_stats["health"])
 
     log.info("morning build complete in %.0fs", time.time() - t0)
     return all_stats

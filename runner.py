@@ -113,6 +113,18 @@ def doctor() -> None:
     raise SystemExit(run_doctor())
 
 
+@app.command("health-alert")
+def health_alert(live: bool = True) -> None:
+    """Push the full-pipeline source-health digest to Slack (same data as the
+    /source-health API + webapp page). Wired into morning-build (once/day) —
+    NOT part of `stage`/`run-local`, so it never fires on the hourly cadence.
+    Runnable on demand for a manual check."""
+    from community.config.log import get_logger
+    from community.dispatch import health_alert as mod
+    stats = mod.run(live=live)
+    get_logger("runner").info("health-alert: %s", stats)
+
+
 @app.command("run-local")
 def run_local(skip_scrape: bool = False, skip_enrich: bool = False) -> None:
     """End-to-end run: scrape → clean → enrich → aggregate → score → draft →
