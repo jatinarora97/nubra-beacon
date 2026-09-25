@@ -21,8 +21,18 @@ class AuthorMeta(BaseModel):
 
 
 class SocialItem(BaseModel):
-    source: Literal["twitter", "reddit"]
-    source_type: Literal["post", "comment", "tweet", "reply", "message"]
+    source: Literal[
+        "twitter",
+        "reddit",
+        "youtube",
+        "github",
+        "community_forum",
+        "app_review",
+        "instagram",
+        "linkedin",
+    ]
+    source_type: Literal["post", "comment", "tweet", "reply", "message", "review", "issue",
+                         "reel", "sidecar"]
     external_id: str
     parent_id: str | None = None
     thread_id: str
@@ -38,7 +48,9 @@ class SocialItem(BaseModel):
 
 def unified_score(likes: int = 0, shares: int = 0, replies: int = 0) -> float:
     import math
-    return math.log1p(likes + 2 * shares + 3 * replies)
+    # platforms report -1 for hidden counts (e.g. Instagram hidden likes) —
+    # clamp: log1p is undefined below 0 (live crash 2026-08-13)
+    return math.log1p(max(0, likes) + 2 * max(0, shares) + 3 * max(0, replies))
 
 
 class SourceAdapter(ABC):

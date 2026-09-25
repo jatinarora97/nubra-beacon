@@ -94,23 +94,48 @@ export default async function Home({
       <TimeFilter current={w} resolved={ov.window} />
 
       {f && (
-        <section className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-[10px] border border-line bg-surface/50 px-4 py-2.5 text-[12px] text-muted">
-          <span className="micro">freshness</span>
-          {Object.entries(f.sources ?? {}).map(([src, ts]) => (
-            <span key={src}>
-              {src === "twitter" ? "X" : src} last item{" "}
-              <span className="text-ink">{fmtIst(ts)}</span>
-            </span>
-          ))}
+        <section className="space-y-1 rounded-[10px] border border-line bg-surface/50 px-4 py-2.5 text-[12px] text-muted">
+          {/* cadences are data-driven: reddit reports e.g. "every 3h" since the
+              metered-proxy gating — hourly first, then the gated ones, then daily */}
+          {Array.from(
+            new Set(Object.values(f.source_schedule ?? {}).map((v) => v.cadence)),
+          )
+            .sort(
+              (a, b) =>
+                (a === "hourly" ? 0 : a === "daily" ? 2 : 1) -
+                (b === "hourly" ? 0 : b === "daily" ? 2 : 1),
+            )
+            .map((cad) => {
+            const entries = Object.entries(f.source_schedule ?? {}).filter(
+              ([, v]) => v.cadence === cad,
+            );
+            if (!entries.length) return null;
+            const next = entries[0][1].next;
+            const label = (s: string) =>
+              ({ twitter: "X", community_forum: "forums", app_review: "app reviews" }[s] ?? s);
+            return (
+              <div key={cad} className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                <span className="micro w-24">{cad === "daily" ? "daily 06:00" : cad}</span>
+                {entries.map(([src, v]) => (
+                  <span key={src}>
+                    {label(src)}{" "}
+                    <span className="text-ink">{v.last ? fmtIst(v.last) : "no items yet"}</span>
+                  </span>
+                ))}
+                <span className="ml-auto">
+                  next <span className="text-ink">{fmtIst(next)}</span>
+                </span>
+              </div>
+            );
+          })}
           {f.enriched_up_to && (
-            <span>
-              analyzed up to <span className="text-ink">{fmtIst(f.enriched_up_to)}</span>
-            </span>
+            <div className="flex flex-wrap items-center gap-x-5">
+              <span className="micro w-24">analysis</span>
+              <span>
+                analyzed up to <span className="text-ink">{fmtIst(f.enriched_up_to)}</span>
+              </span>
+            </div>
           )}
-          <span className="ml-auto">
-            next update <span className="text-ink">{fmtIst(f.next_hourly_run)}</span> · morning
-            build <span className="text-ink">{fmtIst(f.next_morning_build)}</span>
-          </span>
         </section>
       )}
 

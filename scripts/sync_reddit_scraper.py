@@ -2,9 +2,9 @@
 
 Source of truth: github.com/zanshash/reddit_scraper (local checkout at
 .vendor/reddit_scraper, auto-cloned on first run — `git pull` there to update).
-Rewrites the two flat imports to package-relative, applies the NESTED-REPLIES
-and LOGIN patches (below), and stamps provenance. Re-run to refresh; --check
-for CI drift.
+Rewrites the two flat imports to package-relative, applies the NESTED-REPLIES,
+PROXY and LOGIN patches (below), and stamps provenance. Re-run to refresh;
+--check for CI drift.
 
 Nested-replies patch: upstream collects top-level comments only. We addition-
 ally walk ONE nested level per top comment (strict child chain
@@ -12,14 +12,24 @@ ally walk ONE nested level per top comment (strict child chain
 them as Comment.replies. Applied here — never hand-edit the vendored copy.
 If upstream refactors fetch_comments/models the anchors below fail loudly.
 
-Login patch (2026-09-24): old.reddit now forces a login wall on logged-out
-listing pages (verified on prod — a fresh anonymous browser bounces to
-/login?reason=lor2 and never sees post content; confirmed distinct from a
-DOM/selector drift issue — the legacy markup is unchanged once authenticated).
-Adds REDDIT_USERNAME/REDDIT_PASSWORD (set by the caller, like SKIP_IDS) and a
-login step that runs once per `run()`, reusing a cached session
-(out/reddit_scraper/reddit_auth_state.json) across hourly runs where it still
-grants access, so we don't log in from a script every single hour.
+Proxy patch (2026-08-19): Reddit serves the new-site shell to some
+datacenter/VM IPs (prod incident Aug 10-18) — REDDIT_PROXY_URL (e.g.
+http://groups-RESIDENTIAL:<pw>@proxy.apify.com:8000) routes the crawl through
+a clean IP. Residential bandwidth is metered per GB, so under a proxy we
+abort images/media/fonts/stylesheets — parsing needs only the server-rendered
+HTML. Rotating residential exits within one browser session trip Reddit's
+checks (0-posts, live 2026-08-25); a pinned `session-<id>` suffix keeps one
+exit for the whole crawl.
+
+Login patch (2026-09-24): even through the proxy, old.reddit's listing pages
+started forcing a login wall for logged-out clients (verified on prod — a
+fresh anonymous browser bounces to /login?reason=lor2 and never sees post
+content; distinct from a DOM/selector drift issue — the legacy markup is
+unchanged once authenticated). Adds REDDIT_USERNAME/REDDIT_PASSWORD (set by
+the caller, like SKIP_IDS) and a login step that runs once per `run()`,
+reusing a cached session (out/reddit_scraper/reddit_auth_state.json) across
+hourly runs where it still grants access, so we don't log in from a script
+every single hour.
 """
 from __future__ import annotations
 
@@ -105,9 +115,8 @@ _SCRAPER_GLOBAL_OLD = '''BASE = "https://old.reddit.com"'''
 _SCRAPER_GLOBAL_NEW = '''BASE = "https://old.reddit.com"
 SKIP_IDS: set = set()  # PATCH: pre-known ids to skip (set by the caller)'''
 
-# PATCH 3: login. old.reddit's listing pages force a login wall for
-# logged-out clients (since ~2026-08-30). Chains onto the SKIP_IDS global
-# patch's own output (applied after it in PATCHES["scraper.py"] below).
+# PATCH 3: auth globals. Chains onto the SKIP_IDS global patch's own output
+# (applied after it in PATCHES["scraper.py"] below).
 _SCRAPER_AUTH_GLOBAL_OLD = _SCRAPER_GLOBAL_NEW
 _SCRAPER_AUTH_GLOBAL_NEW = _SCRAPER_GLOBAL_NEW + '''
 REDDIT_USERNAME: str = ""  # PATCH: auth — set by the caller
@@ -172,6 +181,10 @@ async def _ensure_logged_in(ctx: BrowserContext, state_path: str) -> None:
     finally:
         await probe.close()'''
 
+# PATCH 4: browser launch — combines the egress-proxy option with the
+# session-cache-aware context and the login step, all in one rewrite of the
+# same block (both were independently patched here; kept as one anchor
+# rather than three overlapping ones so the result stays readable).
 _SCRAPER_RUN_CTX_OLD = """    async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=HEADLESS)
         ctx = await browser.new_context(
@@ -188,14 +201,41 @@ _SCRAPER_RUN_CTX_OLD = """    async with async_playwright() as pw:
         try:
             for sub in SUBREDDITS:"""
 _SCRAPER_RUN_CTX_NEW = """    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=HEADLESS)
         state_path = os.path.join(OUTPUT_DIR, "reddit_auth_state.json")
+        _proxy = None  # PATCH: optional egress proxy (REDDIT_PROXY_URL)
+        _proxy_url = os.getenv("REDDIT_PROXY_URL", "").strip()
+        if _proxy_url:
+            from urllib.parse import unquote, urlsplit
+            _pu = urlsplit(_proxy_url)
+            _proxy = {"server": f"{_pu.scheme}://{_pu.hostname}:{_pu.port}"}
+            if _pu.username:
+                _user = unquote(_pu.username)
+                # Rotating residential exits within ONE browser session trip
+                # Reddit's checks (0-posts, live 2026-08-25); session-<id>
+                # pins one exit for the whole crawl.
+                if "session-" not in _user and "apify.com" in (_pu.hostname or ""):
+                    import random
+                    import string
+                    _user += ",session-" + "".join(
+                        random.choices(string.ascii_lowercase + string.digits, k=10))
+                _proxy["username"] = _user
+                _proxy["password"] = unquote(_pu.password or "")
+            log.info("egress proxy active: %s", _proxy["server"])
+        browser = await pw.chromium.launch(headless=HEADLESS, proxy=_proxy)
         ctx = await browser.new_context(
             user_agent=_UA,
             viewport={"width": 1280, "height": 900},
             locale="en-US",
             storage_state=state_path if os.path.exists(state_path) else None,
         )
+        if _proxy:
+            # metered bandwidth: HTML only — drop page assets
+            await ctx.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in ("image", "media", "font", "stylesheet")
+                else route.fallback(),
+            )
         # Block ad/tracker domains to speed things up
         await ctx.route(
             re.compile(r"(doubleclick\\.net|googlesyndication|adnxs|amazon-adsystem)"),
@@ -240,7 +280,7 @@ def main(check: bool = False) -> None:
                     "upstream changed; re-derive the patch or drop it")
             body = body.replace(anchor, replacement)
         header = (f"# VENDORED from github.com/zanshash/reddit_scraper @ {commit}\n"
-                  "# (+ nested-replies + login patches — see this script's docstring)\n"
+                  "# (+ nested-replies + proxy + login patches — see this script's docstring)\n"
                   "# Do not edit here; update the source repo, then run "
                   "scripts/sync_reddit_scraper.py\n")
         outputs[DEST / name] = header + body
@@ -250,7 +290,10 @@ def main(check: bool = False) -> None:
             if not path.exists() or path.read_text(encoding="utf-8") != content:
                 drift.append(path.name)
         else:
-            path.write_text(content, encoding="utf-8")
+            # newline="\n": write_text() otherwise applies the platform's
+            # default translation (CRLF on Windows) — same bug class as the
+            # `cm` CRLF prod incident, avoided here regardless of OS.
+            path.write_text(content, encoding="utf-8", newline="\n")
             print(f"vendored: {path.name}")
     if check and drift:
         raise SystemExit(f"reddit_scraper drift: {drift} — run scripts/sync_reddit_scraper.py")

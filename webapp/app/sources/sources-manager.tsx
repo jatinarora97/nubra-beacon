@@ -6,13 +6,24 @@ import { apiBase } from "@/lib/api";
 
 type Source = {
   id: number;
-  kind: "subreddit" | "x_hashtag" | "x_handle" | "x_query" | "keyword";
+  kind:
+    | "subreddit"
+    | "x_hashtag"
+    | "x_handle"
+    | "x_query"
+    | "keyword"
+    | "youtube_query"
+    | "instagram_account"
+    | "github_query"
+    | "forum"
+    | "app"
+    | "linkedin_query";
   value: string;
   category: string | null;
   active: boolean;
   added_by: string;
   note: string | null;
-  config?: { x?: boolean; reddit?: boolean } | null;
+  config?: Record<string, unknown> | null;
 };
 
 const KIND_META: Record<Source["kind"], { label: string; prefix: string; hint: string }> = {
@@ -21,6 +32,18 @@ const KIND_META: Record<Source["kind"], { label: string; prefix: string; hint: s
   x_handle: { label: "X handles", prefix: "@", hint: "e.g. zerodhaonline" },
   x_query: { label: "X search queries", prefix: "", hint: "full advanced-search query" },
   keyword: { label: "Keywords", prefix: "", hint: "topic to watch, e.g. basket orders" },
+  youtube_query: { label: "YouTube search queries", prefix: "", hint: "e.g. Nubra option chain review" },
+  instagram_account: { label: "Instagram accounts", prefix: "", hint: "creator handle without @, e.g. stockswithmanveer" },
+  github_query: { label: "GitHub search queries", prefix: "", hint: 'e.g. "broker API India"' },
+  forum: { label: "Community forums", prefix: "", hint: "base URL, e.g. https://tradingqna.com" },
+  app: { label: "App-store apps", prefix: "", hint: "app name, e.g. Zerodha Kite" },
+  linkedin_query: { label: "LinkedIn search queries", prefix: "", hint: "e.g. trading api india" },
+};
+
+// forum/app rows need structured config; shown as an optional JSON field
+const CONFIG_PLACEHOLDER: Partial<Record<Source["kind"], string>> = {
+  forum: '{"platform":"discourse","broker":"zerodha","name":"Zerodha TradingQnA"}',
+  app: '{"broker":"nubra","apple_id":6746636699,"google_package":"com.zanskar.nubra"}',
 };
 
 export function SourcesManager() {
@@ -30,6 +53,7 @@ export function SourcesManager() {
   const [category, setCategory] = useState("custom");
   const [kwX, setKwX] = useState(true);
   const [kwReddit, setKwReddit] = useState(true);
+  const [configJson, setConfigJson] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -50,6 +74,15 @@ export function SourcesManager() {
     if (!value.trim()) return;
     const body: Record<string, unknown> = { kind, value, category };
     if (kind === "keyword") body.config = { x: kwX, reddit: kwReddit };
+    if ((kind === "forum" || kind === "app") && configJson.trim()) {
+      try {
+        body.config = JSON.parse(configJson);
+      } catch {
+        setMsg("Config is not valid JSON — fix it or leave it empty.");
+        setTimeout(() => setMsg(null), 4000);
+        return;
+      }
+    }
     const res = await fetch(`${apiBase()}/sources`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -57,6 +90,7 @@ export function SourcesManager() {
     });
     if (res.ok) {
       setValue("");
+      setConfigJson("");
       setMsg(`Added — picked up on the next scrape run.`);
       refresh();
     } else {
@@ -100,7 +134,7 @@ export function SourcesManager() {
           <select value={kind} onChange={(e) => setKind(e.target.value as Source["kind"])} className={inputCls}>
             {Object.entries(KIND_META).map(([k, m]) => (
               <option key={k} value={k}>
-                {m.label.replace(/s$/, "")}
+                {m.label}
               </option>
             ))}
           </select>
@@ -119,6 +153,16 @@ export function SourcesManager() {
               <option key={c}>{c}</option>
             ))}
           </select>
+          {(kind === "forum" || kind === "app") && (
+            <textarea
+              value={configJson}
+              onChange={(e) => setConfigJson(e.target.value)}
+              placeholder={`config (JSON, optional) — e.g. ${CONFIG_PLACEHOLDER[kind]}`}
+              rows={2}
+              className={`${inputCls} w-full resize-y font-mono text-[12px]`}
+              aria-label="Config JSON"
+            />
+          )}
           {kind === "keyword" && (
             <span className="flex items-center gap-3 text-[12.5px] text-muted">
               watch on:
@@ -163,8 +207,8 @@ export function SourcesManager() {
                         {s.value}
                       </span>
                       {s.category && <Badge>{s.category}</Badge>}
-                      {s.kind === "keyword" && s.config?.x && <Badge tone="trends">X search</Badge>}
-                      {s.kind === "keyword" && s.config?.reddit && <Badge tone="voices">Reddit lens</Badge>}
+                      {s.kind === "keyword" && Boolean(s.config?.x) && <Badge tone="trends">X search</Badge>}
+                      {s.kind === "keyword" && Boolean(s.config?.reddit) && <Badge tone="voices">Reddit lens</Badge>}
                       {s.kind === "keyword" && (
                         <a
                           href={`/explore?q=${encodeURIComponent(s.value)}`}

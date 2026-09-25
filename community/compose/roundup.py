@@ -38,6 +38,13 @@ def _daily_payload(today: date) -> dict:
         "AVG(sentiment_avg) AS sentiment_avg FROM issue_rollup "
         "WHERE day BETWEEN %s AND %s GROUP BY broker, issue_key "
         "ORDER BY SUM(count) DESC LIMIT 8", (since, today))
+    for i in broker_issues:  # thread links (user ask 2026-08-19)
+        i["example_urls"] = [r["url"] for r in db.query(
+            "SELECT DISTINCT si.url FROM issue_rollup ir, unnest(ir.sample_item_ids) AS sid "
+            "JOIN social_items si ON si.item_id = sid "
+            "WHERE ir.broker=%s AND ir.issue_key=%s AND ir.day BETWEEN %s AND %s "
+            "  AND si.url IS NOT NULL LIMIT 2",
+            (i["broker"], i["issue_key"], since, today))]
     feature_requests = db.query(
         "SELECT feature_key, MAX(canonical_label) AS label, SUM(count)::int AS count "
         "FROM feature_rollup WHERE day BETWEEN %s AND %s GROUP BY feature_key "
@@ -49,6 +56,10 @@ def _daily_payload(today: date) -> dict:
         "LEFT JOIN conversations c ON (c.source, c.thread_id) = (o.source, o.thread_id) "
         "LEFT JOIN social_items si ON si.item_id = c.root_item_id "
         "WHERE o.day = %s AND o.status='suggested' ORDER BY o.priority DESC LIMIT 10", (today,))
+    from community.compose.render import strip_feature_refs
+    for o in opportunities:
+        o["brand_reply"] = strip_feature_refs(o.get("brand_reply"))
+        o["rep_reply"] = strip_feature_refs(o.get("rep_reply"))
     content_proposals = db.query(
         "SELECT rank, format, format_family, platform, hook, outline, why, recommended_timing "
         "FROM content_proposals WHERE day=%s ORDER BY rank", (today,))
@@ -62,8 +73,12 @@ def _daily_payload(today: date) -> dict:
         "FROM author_stats s JOIN authors a ON a.author_id = s.author_id "
         "ORDER BY s.voice_score DESC LIMIT 5")
     for v in rising_voices:  # profile links, not bare names
-        v["profile_url"] = (f"https://x.com/{v['handle']}" if v["source"] == "twitter"
-                            else f"https://www.reddit.com/user/{v['handle']}")
+        profile_urls = {
+            "twitter": f"https://x.com/{v['handle']}",
+            "reddit": f"https://www.reddit.com/user/{v['handle']}",
+            "github": f"https://github.com/{v['handle']}",
+        }
+        v["profile_url"] = profile_urls.get(v["source"]) or v.get("profile_url")
     stats_row = {
         "items_today": (db.one(
             "SELECT count(*) AS n FROM social_items WHERE ingested_at::date = %s", (today,)) or {}).get("n", 0),
@@ -73,7 +88,11 @@ def _daily_payload(today: date) -> dict:
         "drafts_dropped_compliance": (db.one(
             "SELECT count(*) AS n FROM compliance_audit WHERE verdict='fail' AND ts::date = %s",
             (today,)) or {}).get("n", 0),
+        "llm_cost_today": float((db.one(
+            "SELECT round(coalesce(sum(cost_usd), 0)::numeric, 2) AS c FROM llm_usage "
+            "WHERE ts::date = %s", (today,)) or {}).get("c") or 0),
     }
+    stats_row.update(_apify_spend())
     return {
         "period": "daily", "date": str(today),
         "grounding": features.current_version() or "UNSEEDED",
@@ -83,6 +102,24 @@ def _daily_payload(today: date) -> dict:
         "rising_voices": rising_voices, "stats": stats_row,
         "trending_bar": trend_bar, "features_bar": feat_bar,
     }
+
+
+def _apify_spend() -> dict:
+    """Apify credits used vs plan this cycle (daily-digest ask 2026-08-19).
+    Best-effort: no token / API hiccup -> empty (template line self-hides)."""
+    import os
+
+    import httpx
+    tok = os.getenv("APIFY_TOKEN", "").strip()
+    if not tok:
+        return {}
+    try:
+        lim = httpx.get("https://api.apify.com/v2/users/me/limits",
+                        headers={"Authorization": f"Bearer {tok}"}, timeout=8).json()["data"]
+        return {"apify_used": float(lim["current"]["monthlyUsageUsd"]),
+                "apify_cap": float(lim["limits"]["maxMonthlyUsageUsd"])}
+    except Exception:  # noqa: BLE001 — spend line is nice-to-have
+        return {}
 
 
 def _headline(payload: dict) -> str:
@@ -180,4 +217,12 @@ def run() -> dict:
         stats["weekly"] = True
     from community.store.repositories import advance_state
     advance_state("roundup", "", items=1)
+    # API-trading content queue rides the hourly compose: top_up() generates
+    # only the per-platform shortfall (most hours: nothing) and never raises
+    try:
+        from community.social_recommend import api_lens
+        stats["api_content_queue"] = api_lens.top_up()
+        stats["general_content_queue"] = api_lens.top_up(lens=api_lens.GENERAL_LENS)
+    except Exception as exc:  # noqa: BLE001 — isolated by design
+        stats["content_queues"] = {"status": "failed", "error": str(exc)[:200]}
     return stats

@@ -3,19 +3,111 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { get } from "@/lib/api";
-import type { Item } from "@/lib/types";
+import type { Item, ItemDetail } from "@/lib/types";
 import { Badge, EmptyState } from "@/components/ui";
 import { pickWindow, windowQuery } from "@/lib/window";
+import { INTENT_COLOR, IntentCharts, SELECTABLE_INTENTS } from "./intent-charts";
 
 const PAGE = 50;
 
-const INTENTS = ["", "complaint", "feature_request", "question", "praise",
-  "comparison", "how_to", "news_opinion", "spam"];
+const SOURCE_LABELS: Record<string, string> = {
+  twitter: "X / Twitter",
+  reddit: "Reddit",
+  youtube: "YouTube",
+  github: "GitHub",
+  community_forum: "Broker community",
+  app_review: "App review",
+  instagram: "Instagram",
+};
 
 function interactions(it: Item): number {
   const n = it.engagement?.native ?? {};
   return (n.likes ?? 0) + (n.upvotes ?? 0) + (n.replies ?? 0) +
     (n.comments ?? 0) + (n.retweets ?? 0) + (n.quotes ?? 0);
+}
+
+/* ── Intent multi-select (button + checkbox popover) ─────────────────────
+   Drives the SAME `intents` array as the chart legend chips — one selection
+   state filters table, exports and charts alike. Empty = all intents. */
+function IntentSelect({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: React.Dispatch<React.SetStateAction<string[]>>;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const label =
+    value.length === 0
+      ? "all intents"
+      : value.length === 1
+        ? value[0].replace(/_/g, " ")
+        : `${value.length} intents`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12.5px]"
+      >
+        {label}
+        <span className="text-[9px] text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-48 rounded-md border border-line bg-surface py-1 shadow-lg">
+          {SELECTABLE_INTENTS.map((i) => (
+            <label
+              key={i}
+              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[12.5px] transition-colors hover:bg-surface2/50"
+            >
+              <input
+                type="checkbox"
+                checked={value.includes(i)}
+                onChange={() =>
+                  onChange((prev) =>
+                    prev.includes(i)
+                      ? prev.filter((x) => x !== i)
+                      : [...prev, i],
+                  )
+                }
+              />
+              <span
+                className="h-2 w-2 rounded-[2px]"
+                style={{ background: INTENT_COLOR[i] }}
+              />
+              {i.replace(/_/g, " ")}
+            </label>
+          ))}
+          <button
+            onClick={() => onChange([])}
+            disabled={value.length === 0}
+            className="mt-1 w-full border-t border-line px-3 py-1.5 text-left text-[12px] text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            clear — show all intents
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ExploreTable() {
@@ -36,31 +128,70 @@ export function ExploreTable() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [source, setSource] = useState("");
-  const [intent, setIntent] = useState("");
+  // Intent multi-select — ONE source of truth for dropdown AND legend chips.
+  // Empty array = all intents (no filter applied).
+  const [intents, setIntents] = useState<string[]>([]);
   const [q, setQ] = useState(initialQ);
   const [qLive, setQLive] = useState(initialQ);
+  // Multi-keyword search: q is comma-separated; q_mode picks any/all matching.
+  const [qMode, setQMode] = useState<"or" | "and">("or");
+  // "strategies only" — wires strategy=true into pages, charts and exports.
+  const [strategyOnly, setStrategyOnly] = useState(sp.get("strategy") === "true");
   const [detail, setDetail] = useState<Item | null>(null);
+  // the list endpoint truncates text at 300 chars — the drawer fetches the
+  // full row (untruncated text incl. TRANSCRIPT/ON-SCREEN blocks + raw flags)
+  const [fullDetail, setFullDetail] = useState<ItemDetail | null>(null);
+
+  useEffect(() => {
+    setFullDetail(null);
+    if (!detail?.external_id) return;
+    let live = true;
+    get<ItemDetail | null>(`/items/${detail.source}/${detail.external_id}`, null).then(
+      (d) => { if (live && d) setFullDetail(d); },
+    );
+    return () => { live = false; };
+  }, [detail]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(qLive), 350);
     return () => clearTimeout(t);
   }, [qLive]);
 
-  function pageUrl(off: number): string {
-    const params = new URLSearchParams({
-      sort: "engagement",
-      limit: String(PAGE),
-      offset: String(off),
-    });
+  // Shared filter fragment: charts, table pages and exports all speak the
+  // same query language (source, intent, q + q_mode, window).
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
     if (source) params.set("source", source);
-    if (intent) params.set("intent", intent);
-    if (q) params.set("q", q);
+    if (intents.length > 0) params.set("intent", intents.join(","));
+    if (q) {
+      params.set("q", q);
+      params.set("q_mode", qMode);
+    }
+    if (strategyOnly) params.set("strategy", "true");
+    return params;
+  }
+
+  function pageUrl(off: number): string {
+    const params = filterParams();
+    params.set("sort", "engagement");
+    params.set("limit", String(PAGE));
+    params.set("offset", String(off));
     return `/items?${params}&${windowQS}`;
   }
+
+  // Same filters, for the intent-series charts (debounced q — this string
+  // only changes on settled filter state, so charts never fetch per keystroke).
+  const seriesQuery = [filterParams().toString(), windowQS]
+    .filter(Boolean)
+    .join("&");
 
   // Monotonic id per filter-state: a Load-more response landing after the
   // filters changed is stale and must be dropped, not appended.
   const fetchGen = useRef(0);
+
+  // Stable dep for the intents array (a toggled-then-untoggled selection
+  // yields the same key and skips a redundant refetch).
+  const intentKey = intents.join(",");
 
   useEffect(() => {
     const gen = ++fetchGen.current;
@@ -74,7 +205,7 @@ export function ExploreTable() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, intent, q, windowQS]);
+  }, [source, intentKey, q, qMode, strategyOnly, windowQS]);
 
   async function loadMore() {
     if (loadingMore) return;
@@ -96,10 +227,10 @@ export function ExploreTable() {
 
   // Server-side export honouring the active filters + window (full text).
   function exportUrl(format: "csv" | "xlsx"): string {
-    const params = new URLSearchParams({ sort: "engagement", limit: "2000", format });
-    if (source) params.set("source", source);
-    if (intent) params.set("intent", intent);
-    if (q) params.set("q", q);
+    const params = filterParams();
+    params.set("sort", "engagement");
+    params.set("limit", "2000");
+    params.set("format", format);
     return `/api/v1/items/export?${params}&${windowQS}`;
   }
 
@@ -114,24 +245,51 @@ export function ExploreTable() {
           <option value="">all sources</option>
           <option value="twitter">twitter / X</option>
           <option value="reddit">reddit</option>
+          <option value="youtube">youtube</option>
+          <option value="github">github</option>
+          <option value="community_forum">broker communities</option>
+          <option value="app_review">app reviews</option>
+          <option value="instagram">instagram</option>
+          <option value="linkedin">linkedin</option>
         </select>
-        <select
-          value={intent}
-          onChange={(e) => setIntent(e.target.value)}
-          className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12.5px]"
-        >
-          {INTENTS.map((i) => (
-            <option key={i} value={i}>
-              {i === "" ? "all intents" : i.replace(/_/g, " ")}
-            </option>
-          ))}
-        </select>
+        <IntentSelect value={intents} onChange={setIntents} />
         <input
           value={qLive}
           onChange={(e) => setQLive(e.target.value)}
-          placeholder="search text…"
+          placeholder="search text… (comma-separates keywords: brokerage, zerodha)"
           className="min-w-56 flex-1 rounded-md border border-line bg-surface px-3 py-1.5 text-[12.5px] placeholder:text-muted/60"
         />
+        <div className="flex overflow-hidden rounded-md border border-line">
+          {(["or", "and"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setQMode(m)}
+              title={
+                m === "or"
+                  ? "match items containing any keyword"
+                  : "match items containing all keywords"
+              }
+              className={`px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                qMode === m
+                  ? "bg-surface2 text-ink"
+                  : "bg-surface text-muted hover:text-ink"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <label
+          title="Only show items where a trading strategy was extracted"
+          className="flex cursor-pointer items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12.5px]"
+        >
+          <input
+            type="checkbox"
+            checked={strategyOnly}
+            onChange={(e) => setStrategyOnly(e.target.checked)}
+          />
+          strategies only
+        </label>
         <span className="text-[11.5px] text-muted">
           sorted by engagement · snapshot at fetch
         </span>
@@ -150,6 +308,8 @@ export function ExploreTable() {
         </div>
       </div>
 
+      <IntentCharts query={seriesQuery} intents={intents} setIntents={setIntents} />
+
       {loading ? (
         <div className="py-16 text-center text-[13px] text-muted">loading…</div>
       ) : sorted.length === 0 ? (
@@ -158,11 +318,11 @@ export function ExploreTable() {
           body="Loosen the filters or widen the time window above — or Beacon genuinely hasn't seen matching items yet."
         />
       ) : (
-        <div className="overflow-hidden rounded-[10px] border border-line">
-          <table className="w-full">
+        <div className="overflow-x-auto rounded-[10px] border border-line">
+          <table className="w-full min-w-[1280px]">
             <thead className="bg-surface2/70">
               <tr className="text-left">
-                {["what was said", "source", "intent", "engagement", "fetched"].map((h) => (
+                {["what was said", "our read", "strategy", "strategy summary", "source", "intent", "topic", "engagement", "posted", "fetched"].map((h) => (
                   <th key={h} className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                     {h}
                   </th>
@@ -179,14 +339,52 @@ export function ExploreTable() {
                   <td className="max-w-md truncate px-3 py-2.5 text-[12.5px]">
                     {it.text}
                   </td>
+                  <td
+                    className="max-w-xs truncate px-3 py-2.5 text-[12px] text-muted"
+                    title={it.entities?.summary ?? undefined}
+                  >
+                    {it.entities?.summary ?? "–"}
+                  </td>
                   <td className="px-3 py-2.5">
-                    <Badge>{it.source}</Badge>
+                    {it.is_strategy ? <Badge tone="warn">strategy</Badge> : null}
+                  </td>
+                  <td className="max-w-xs px-3 py-2.5 text-[12px]">
+                    {it.strategy_summary ? (
+                      <div
+                        className="line-clamp-2"
+                        title="click the row for the full strategy (normalized + as posted)"
+                      >
+                        {it.strategy_summary}
+                      </div>
+                    ) : (
+                      <span className="text-muted">–</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <Badge>{SOURCE_LABELS[it.source] ?? it.source}</Badge>
                   </td>
                   <td className="px-3 py-2.5 text-[12px] text-muted">
                     {it.intent?.replace(/_/g, " ") ?? "–"}
                   </td>
+                  <td
+                    className="max-w-[10rem] truncate px-3 py-2.5 text-[12px] text-muted"
+                    title={it.topic_key ?? undefined}
+                  >
+                    {it.topic_key?.replace(/_/g, " ") ?? "–"}
+                  </td>
                   <td className="px-3 py-2.5 text-[12.5px] tabular-nums">
                     {interactions(it)}
+                  </td>
+                  <td className="px-3 py-2.5 text-[11.5px] tabular-nums text-muted">
+                    {it.created_at
+                      ? new Date(it.created_at).toLocaleString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZone: "Asia/Kolkata",
+                        })
+                      : "–"}
                   </td>
                   <td className="px-3 py-2.5 text-[11.5px] tabular-nums text-muted">
                     {it.ingested_at
@@ -243,10 +441,62 @@ export function ExploreTable() {
               {(detail.duplicate_count ?? 0) > 0 && (
                 <Badge tone="warn">{detail.duplicate_count} duplicates linked</Badge>
               )}
+              {detail.is_strategy && <Badge tone="warn">strategy</Badge>}
             </div>
+            {detail.is_strategy && (detail.strategy_summary || detail.strategy_raw) && (
+              <div className="mt-4 space-y-2 rounded-[10px] border border-warn/40 bg-surface2/40 px-3 py-2.5 text-[12.5px]">
+                <div className="micro">strategy</div>
+                {detail.strategy_summary && (
+                  <div>
+                    <span className="font-semibold text-muted">Normalized: </span>
+                    {detail.strategy_summary}
+                  </div>
+                )}
+                {(fullDetail?.item?.strategy_raw ?? detail.strategy_raw) && (
+                  <div className="whitespace-pre-wrap">
+                    <span className="font-semibold text-muted">As posted: </span>
+                    {fullDetail?.item?.strategy_raw ?? detail.strategy_raw}
+                  </div>
+                )}
+              </div>
+            )}
             <p className="mt-4 whitespace-pre-wrap text-[13.5px] leading-relaxed">
-              {detail.text}
+              {fullDetail?.item?.text ?? detail.text}
+              {!fullDetail && detail.text.length >= 300 && (
+                <span className="text-muted"> … (loading full text)</span>
+              )}
             </p>
+            {(detail.entities?.summary || detail.sentiment != null || detail.audience) && (
+              <div className="mt-4 space-y-1.5 rounded-[10px] border border-line bg-surface2/40 px-3 py-2.5 text-[12.5px]">
+                <div className="micro">Beacon&apos;s read</div>
+                {detail.entities?.summary && <div>{detail.entities.summary}</div>}
+                <div className="text-muted">
+                  {[
+                    detail.audience && `audience: ${detail.audience.replace(/_/g, " ")}`,
+                    detail.sentiment != null && `sentiment: ${detail.sentiment > 0 ? "+" : ""}${detail.sentiment}`,
+                    detail.entities?.broker && `broker: ${detail.entities.broker}`,
+                    detail.entities?.issue_type && `issue: ${detail.entities.issue_type.replace(/_/g, " ")}`,
+                  ].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+            )}
+            {detail.source === "instagram" && fullDetail?.item?.raw != null && (
+              <div className="mt-3 text-[12px] text-muted">
+                {(() => {
+                  const raw = fullDetail.item.raw as Record<string, unknown>;
+                  const ts = raw.transcript_state as Record<string, unknown> | undefined;
+                  return [
+                    ts?.done ? `transcribed (detected ${raw.transcript_language ?? "?"})`
+                      : ts?.empty ? "no speech found (music-only reel)"
+                      : ts?.attempts ? `transcription pending (attempt ${ts.attempts} of 3)`
+                      : null,
+                    raw.vision_done ? `slides read (${raw.vision_slides ?? "?"} images)` : null,
+                    raw.is_pinned ? "pinned post" : null,
+                    raw.likes_hidden ? "creator hides like counts" : null,
+                  ].filter(Boolean).join(" · ") || "no AV processing (below engagement gate or plain post)";
+                })()}
+              </div>
+            )}
             <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-[12.5px] text-muted">
               {detail.author && <div>author: {detail.author}</div>}
               <div>engagement (at fetch): {interactions(detail)} interactions</div>

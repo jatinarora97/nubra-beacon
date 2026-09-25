@@ -1,22 +1,31 @@
-# Nubra Beacon — backend image: read-API (uvicorn) + the pipeline (`./cm ...`
-# via `docker compose exec`). Playwright Chromium is installed at the pip
-# version so the Reddit transport (old.reddit) works headless in-container.
+# syntax=docker/dockerfile:1
+# Nubra Beacon backend image: read API plus the scheduled pipeline.
+# Playwright Chromium supports the existing old.reddit collector.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     HF_HOME=/hf-cache
 
 WORKDIR /app
 
-# CPU-only torch first (sentence-transformers dependency) — avoids the
-# multi-GB CUDA wheels the default index would pull.
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+# CPU-only torch avoids the multi-GB CUDA wheels from the default index.
+# BuildKit cache mounts are external to the image and let interrupted builds
+# reuse already downloaded wheels.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt \
  && playwright install --with-deps chromium
+
+# Whisper model is NOT baked here: compose mounts the hf_cache named volume
+# at /hf-cache, which SHADOWS image content (live finding 2026-08-13). The
+# volume is the persistence layer — the model downloads exactly once per box
+# on first tier-1 use and survives restarts AND releases, which is the actual
+# no-redownload requirement. Baking it would add 2.9GB of dead weight to
+# every image in ECR.
 
 COPY cm runner.py ./
 COPY community ./community

@@ -1,0 +1,241 @@
+# Session handoff — 2026-08-25 (read with ~/.claude/skills/nubra-beacon + docs/HANDOVER.md)
+
+Next session: read this, the nubra-beacon skill, and HANDOVER.md — then start
+WITHOUT asking the user for basics. Everything below is committed on
+`jatin/beacon-updates` (prod deploys from it).
+
+## The active workstream: API-trader segment → "API Trading" dashboard section
+
+Build progress vs docs/api-trading-section-plan-2026-08-25.md (steps 1-6):
+
+1. **DONE — migration 0017** (api_trader_items + landscape_features; NO FK
+   on item_id — social_items has a composite PK; stage CHECK includes
+   'irrelevant' marker rows so judged-irrelevant items are never re-spent).
+2. **DONE — pipeline lens**: community/enrich/api_trader.py (GATE_PG regex
+   gate → Haiku classify in 20s, irrelevant markers, first_api_type
+   broker/any/unclear, theme bucketers shared with the seed loader). Wired
+   into tagger.run() isolated. Live-tested on the local prod mirror.
+   Historical seed: data/api_trader_seed.json.gz + scripts/
+   load_api_trader_seed.py (4,733 rows loaded locally, $0). (86400c1)
+3. **DONE — endpoints**: community/api/api_trading_api.py, 7 routes under
+   /api/v1/api-trading/* (funnel w/ first_api_split, themes, candidates,
+   landscape GET/POST/DELETE, items). Registry api_trading block holds the
+   5 candidate defs + 10-player landscape roster. All tested green on real
+   data. (bbb1d03)
+4. **DONE — landscape weekly monitor**: community/enrich/
+   landscape_monitor.py — fetches roster urls, Haiku-extracts shipped/
+   upcoming features (existing names fed back = canonical dedupe), upserts
+   added_by='auto' (never clobbers manual rows' status), 6-day
+   pipeline_state gate, rides extra_sources.run(daily). Verified: 8/8
+   fetchable players, 89 features. AlgoTest + Angel One are JS/bot-gated →
+   urls: [] = manual-only by design. (c7ed566)
+5. **DONE — UI**: sidebar group "API trading" (Overview / Landscape /
+   Data) + webapp/app/api-trading/* (lens.ts vocabulary, days-filter,
+   funnel + theme boards + candidate cards; landscape coverage strip +
+   feature catalog + manual add/delete; filterable data explorer with
+   ?theme= deep links). lib/api.ts gained del(). Verified: npm run build
+   clean + SSR curl checks on all 3 pages + POST/DELETE round-trip clean.
+   Notes: candidates window capped at 90d (previous-window comparison must
+   stay inside 180d retention); unknown kinds render as "other" segment.
+6. **LAUNCHED ON PROD 2026-09-09** (user-verified: funnel serving, seed
+   4,729 + first 200 live-classified = 4,929 lens rows, 6 linkedin
+   queries seeded, migrate service auto-applied 0017-0019). The
+   API_TRADING_ENABLED kill switch remains available in prod .env
+   (off/false/0/no = dark). Original hold note kept below for history:
+   ORIGINALLY:
+   The whole section sits behind one switch: `API_TRADING_ENABLED` env
+   (overrides registry api_trading.enabled; off/false/0/no = dark). Dark =
+   endpoints 404, sidebar group hides (client probe), classifier spends
+   nothing, landscape monitor skips. Prod launch day: set
+   API_TRADING_ENABLED=on in prod .env (or just leave it unset — registry
+   default is on... so ON PROD SET API_TRADING_ENABLED=off BEFORE the next
+   release, since the branch ships the section), recreate api container,
+   `./cm migrate` (0017), `docker compose exec -T api python
+   scripts/load_api_trader_seed.py` ($0), landscape runs next morning
+   build. ~1k historical gated-irrelevant items classify naturally
+   (~$0.40, bounded 200/run).
+
+Post-deploy fixes (2026-09-17 eve, ee86b02): social-recommendations
+page had gone EMPTY on prod — my latest-run subquery excluded only
+api-lens v1, so v2 queue runs hijacked 'latest run'; now scoped to the
+newest run WITH lens='general' rows (data-scoped, version-proof). Plus:
+empty queue auto-triggers one top-up on load (cold start), and /content
+gained an 'Earlier briefs (archive)' section over the old
+content_proposals (read-only, day picker). LESSON: any new
+prompt_version/lens must never be able to hijack that subquery again.
+
+General content queue (2026-09-17, later same day): /content now runs
+the SAME queue as /api-trading/content via lens=general_marketing
+(retail-corpus evidence, retail|shared features, same 7 platforms/
+minimums/ai_brief/compliance; NOT behind API_TRADING_ENABLED). Shared
+engine (api_lens.top_up(lens=...), compose tops up both hourly), shared
+endpoints helpers, new /api/v1/content-queue routes, shared UI component
+(webapp/components/content-queue.tsx). Date filter (window/from_ts/to_ts
+on created_at) on BOTH queue GETs + TimeFilter w/ 'All briefs' default
+on both pages. Old /content proposals UI deleted (content-gen v1 relic;
+content_proposals table/endpoints remain but nothing calls them).
+(77133d1 + UI commit)
+
+Content queue v2 (2026-09-17, user request): every plugged posting
+platform gets >=2 ready drafts (reddit/x/linkedin/youtube/
+youtube_community/instagram; registry api_trading.content_platforms
+overrides), and every brief carries ai_brief — a self-contained AI
+production prompt (dimensions/scenes/verbatim text/compliance incl. the
+5s video warning baked in). Migration 0021; format field (image_post
+etc.); evidence window widens 21d->90d instead of starving; token budget
+20k (v2 briefs ~3x longer). UI: format badges + needs-asset marker +
+Copy-AI-brief block. No backfill by design (581e71d, UI commit after).
+
+Strategy detection (2026-09-14, user request): migration 0020
+item_strategy + community/enrich/strategy_tagger.py (two-tier gate ->
+Haiku; is_strategy + strategy_raw verbatim + strategy_summary LLM-written;
+false markers = no re-spend; rides hourly enrich). Explore + api-trading
+/items + exports carry the 3 columns + strategy= filter; both tables show
+badge + summary columns w/ raw reveal + strategies-only toggle (06f04c3,
+a1ef148). PROD after next release: docker compose exec -T api python
+scripts/backfill_strategies.py (local drain: 762 candidates -> 261
+strategies, <$1).
+
+LinkedIn source (2026-09-09, user request): community/scrape/
+linkedin.py — Apify harvestapi/linkedin-post-search (NO-COOKIE actor: no
+Nubra LinkedIn account/session at risk), keyword search over public
+posts, ~\$2/1k (live run: 122 posts \$0.24). Daily cadence, week window;
+queries DB-managed (watch_sources kind=linkedin_query, seeded 6 from
+registry sources.linkedin). Migration 0019 widens social_items source +
+watch_sources kind CHECKs. Wired: extra_sources, Sources UI kind,
+Explore dropdown, freshness map. Est ~\$0.3/day at current caps.
+
+Content queue (2026-09-09, user request — plan docs/
+api-content-queue-plan-2026-09-09.md): API-trading section gains a
+"Content" page — hourly-topped-up, grounded, compliance-checked briefs
+per platform (reddit/x/linkedin/youtube_community; seed replies target
+REAL lens threads) with Act/Dismiss for interns. Backend = migration
+0018 + community/social_recommend/api_lens.py (top_up rides compose
+hourly, gated by API_TRADING_ENABLED) + /api/v1/api-trading/content*
+endpoints (31d8c5d, live-tested: 8 briefs, act/dismiss/409/attribution
+green; general social page regression-checked). UI page delegated.
+Prod: ships dark behind the same gate; on enable, first compose run
+stocks the queue automatically.
+
+Market research (2026-08-27, user request): docs/
+api-trader-market-research-2026-08-27.md — competitor S/W vs Nubra
+(ground-up, docs-first), venue/targeting map, 3 segments (G1 explore /
+G2 first-API / G3 active) with plays. Built from the lens corpus + 4 web
+research agents; every claim URL'd. Flags found: Nubra API pricing
+undisclosed, AlgoTest/Tradetron listing discrepancy, NubraOSS not public
+(grounding doc says live — wording review), PyPI missing project URLs,
+r/algorading doesn't exist (source-list cleanup).
+
+Ads workstream (2026-08-29, user request), split after feedback into:
+- docs/api-trader-ads-strategy-2026-08-29.md — actionable playbook:
+  3 audiences (plain names, not G1/G2/G3), 5 evidence-backed hooks
+  (UAT/paper-trading 256 corpus items = validated top hook), Search
+  campaigns w/ per-keyword evidence tables, YouTube keywords + channel
+  placements backed by Beacon lens-channel counts, Meta 3-play table,
+  GEO priority table, cross-doc consistency table.
+- docs/api-trader-ads-compliance-ops-2026-08-29.md — verification
+  chains (G2RS/Meta SEBI), NSE ad code incl. §5.7
+  no-algo-past-performance, DPDP/email rules (scraping out on 5
+  grounds), budget shape, measurement wiring, blockers (publish API
+  pricing; SI-portal sync; DPDP consent wording; §5.7 legal read).
+
+Organic AI visibility docs (user prefers them SEPARATE — restored
+2026-08-30 after a merge attempt was rejected):
+- docs/nubra-organic-ai-visibility-2026-08-29.md — ORIGINAL form
+  (crawl audit; fix list; sourced plays; the frozen 10-query panel).
+- docs/ai-citation-action-plan-2026-08-30.md — the experiment-derived
+  layer: 5 citation patterns from actual winning URLs (SEBI-rules
+  explainer 16x across 3 small sites = top; broker-own FAQ pages 15x;
+  keyword listicles; dated pricing-news; reddit threads per query),
+  per-engine win order (Claude/Brave beachhead, Gemini slowest), 13
+  sequenced steps.
+- docs/ai-search-experiment-results-2026-08-30.md — the raw extraction.
+
+AI-search experiment (2026-08-30, user ran the 10-query panel):
+docs/ai-search-experiment-results-2026-08-30.md — Nubra 0/40 answer
+slots, 0/155 citations (baseline confirmed). Patterns: Zerodha's own
+support/docs pages = #1 cited source (15) -> validates numbers/FAQ-page
+play; Claude cites Brave-tail blogs (tradejini/liquide/sahi) = cheapest
+engine to win; Pocketful already in Claude's set = feasibility proof;
+Gemini memory-stale (quoted Kite Rs2000, actual Rs500); multibagg never
+appeared (demoted from outreach). Re-run panel ~6wk post site fixes.
+Raw capture: docs/experiment.rtfd (user file, don't commit).
+
+Analysis deliverables (done): docs/api-trader-insights-2026-08-25.md
+(senior-grade; observed/inferred/chosen wording fixed, 7210ff8) ·
+out/scan-v1-all.json (4,733 rows, local only). Taxonomy: first_api splits
+broker/any/unclear; seed rows = 'unclear', live classification fills it.
+
+## In flight on prod (check before anything else)
+
+0. **REDDIT TRANSPORT DEAD since 2026-08-30 — diagnosed 2026-09-23,
+   user decision: PARKED, do not fix for now.** Root cause: Reddit now
+   serves the redesigned shell (theme-beta) on old.reddit URLs even to
+   healthy US-residential proxy exits — the legacy HTML the vendored
+   zanshash scraper parses no longer exists. Probes (all via prod proxy,
+   which works — exit verified, Apify budget fine at $1.5/29): legacy
+   markers absent; 0 shreddit-post tags in static HTML (client-rendered);
+   public .json listings 403. Every hourly run records success/0 items
+   (preflight skip). Remaining options when re-opened: (a) patch the
+   vendored Playwright scraper's selectors for the JS-rendered new-shell
+   DOM (needs live repro); (b) official Reddit OAuth API (new creds;
+   re-opens the 'zanshash-only transport' locked decision). Meanwhile
+   reddit data is frozen at Aug-30; all other sources flow.
+
+1. **Reddit backfill (historical)**: the user was running scripts/backfill_reddit.py
+   detached (`docker compose exec -dT api sh -c "... > /tmp/backfill_reddit.log"`).
+   Check: tail that log + count reddit rows ingested recently. The DEPLOYED
+   image may still have the fragile all-at-end script; the branch has the
+   per-sub incremental version (31acf0e) + proxy session-pinning (19a1e69)
+   + hardened preflight (195c341) — a release ships all three.
+2. **Reddit outage history**: Aug 10-25 gap. Root causes solved in order:
+   VM IP decoyed → residential proxy; Reddit geo-gated INDIA (~Aug 20) →
+   proxy must be country-US; rotating exits within a session → session
+   pinning. REDDIT_PROXY_URL (country-US) is in prod .env.
+3. **Pending release**: whatever tag ships next carries: per-sub backfill,
+   session pinning, preflight retries, digests-actually-off (YAML fix
+   6f65448 — user still received digests until this deploys... may have
+   deployed 2026-08-25-Jatin already; verify with docker compose ps).
+
+## Shipped this session (all live on prod unless noted)
+
+SSO (Google via oauth2-proxy on VM port 3001; sso_allowlist DB authz; Slack
+Approve/Reject buttons; Access-requests page; 1h cookie expiry) · Team
+activity page (fed by authz pings) · Explore: intent charts (100% mix,
+multi-select popover+legend, bigger, label fix), AND/OR multi-keyword
+search, topic/posted columns · Beacon API /api/beacon/v1 (22 endpoints,
+keys via API-access page, validator script; consumer guide
+docs/beacon-api-consumer-guide-2026-08-19.md; host 172.28.0.69:8101) ·
+grounding fixed to v2 on prod · Instagram collector (earlier) · API-trader
+watch-source expansion (16 sources).
+
+## Parked / standing (do not re-ask; act when user raises)
+
+Content-gen v2 ON HOLD (Nano Banana + TTS bench; needs GEMINI_API_KEY) ·
+partitions + 180d purge BEFORE OCT 2026 (hard deadline) · key rotation
+(everything pasted in chat: apify tokens, google client secret, slack
+webhook+signing, beacon api keys, youtube/github) · S3 lifecycle rule on
+nubra_beacon/instagram/ · branch→main merge decision · Slack digests off by
+choice (delivery.slack_digests knob; source alerts silent — twice burned by
+silent reddit outages; consider an alerts-only mode) · MCP-team handover
+(fresh key + consumer guide) · Telegram/Discord + Marketcalls/AlgoTest/
+Tradetron community collectors (landscape blind spots, listed in insights
+doc §4).
+
+## Session gotchas (cost real time; do not relearn)
+
+1. docker compose exec DIES with the terminal — long prod jobs run
+   detached (-dT + log file); scripts must store incrementally.
+2. .env is read at container CREATION — edit then `make up S=<svc>`.
+3. Bare YAML off/on = booleans — quote them, normalize in code.
+4. Prod ports are remapped (api 8101, webapp 3001 behind oauth2-proxy);
+   prod Makefile/compose/env are USER-MANAGED — give diffs, never assume.
+5. VM→Mac file transfer = S3 presigned URL (docker cp into container,
+   upload via boto3 from api container).
+6. Local dev DB is a RESTORED PROD MIRROR as of 2026-08-27 (112.6k items
+   incl. reddit backfill; item_ids match prod — that's why the scan seed
+   works). Prod dumps are CUSTOM format (.dump) — pg_restore, not the
+   gunzip path in make restore-local; lens re-seeded + 1,090 new gate
+   matches classified locally (lens = 5,242).
+7. oauth2-proxy sends identity upstream as X-FORWARDED-EMAIL.
+8. Next 16: middleware.ts is proxy.ts.

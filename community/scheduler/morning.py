@@ -8,11 +8,11 @@ drafts → compose (daily; weekly on Saturdays, inside compose) → dispatch.
 from __future__ import annotations
 
 import json
+import time
 
 from community.config.log import get_logger
 
 log = get_logger("morning")
-import time
 
 
 def _echo(name: str, stats: dict) -> None:
@@ -50,6 +50,16 @@ def run_morning_build() -> dict:
     _echo("score", all_stats["score"])
     all_stats["draft"] = draft.run()
     _echo("draft", all_stats["draft"])
+    # Independent optional module: a missing Claude key, invalid model output,
+    # or context problem is recorded locally and must never block the roundup.
+    try:
+        from community.social_recommend import service as social_recommend
+
+        all_stats["social"] = social_recommend.run()
+    except Exception as exc:  # defensive boundary around even import-time faults
+        log.exception("social recommendations failed independently")
+        all_stats["social"] = {"status": "failed", "error": str(exc)[:300]}
+    _echo("social", all_stats["social"])
     all_stats["compose"] = roundup.run()  # daily; +weekly automatically on Saturdays
     _echo("compose", all_stats["compose"])
     all_stats["dispatch"] = dispatch.run(all_stats)

@@ -57,6 +57,13 @@ services:
       dockerfile: Dockerfile.api
     profiles: ["app"]
     env_file: .env
+    # explicit upstream resolvers: the prod box's DNS chain returns AAAA-only
+    # answers for Instagram CDN hosts (no A records → Errno 101/-9, live
+    # 2026-08-13) while the box has no IPv6 route. Docker's embedded DNS still
+    # resolves compose service names (postgres) before forwarding upstream.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       # inside the compose network the DB lives at the service name, not localhost
       DB_URL: postgresql://community:community@postgres:5432/nubra_community
@@ -106,6 +113,39 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # ── SSO front door — ON HOLD (2026-08-19, user decision) ─────────────────
+  # Behind its OWN profile ("sso", not "app") so no release or `--profile app
+  # up` can start it accidentally. Ships when the Slack-approval flow is built
+  # (design: docs/sso-runbook-2026-08-19.md). Start explicitly with:
+  #   docker compose --profile sso up -d oauth2-proxy
+  # The beacon API (:8101, key-authed) will NOT be behind this — machines keep keys.
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    profiles: ["sso"]
+    environment:
+      OAUTH2_PROXY_PROVIDER: google
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:-}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:-}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:-}
+      OAUTH2_PROXY_REDIRECT_URL: ${BEACON_SSO_REDIRECT_URL:-https://nubra-beacon.zanskar.xyz/oauth2/callback}
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_UPSTREAMS: http://webapp:3000
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"          # authz lives in Beacon sso_allowlist table
+      # Slack button callbacks are signature-authed, not cookie-authed:
+      OAUTH2_PROXY_SKIP_AUTH_ROUTES: 'POST=^/api/v1/slack/interactions$'
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_EXPIRE: 1h        # auto re-login hourly (user 2026-08-21)
+      OAUTH2_PROXY_REVERSE_PROXY: "true"       # TLS terminates at the company front
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"    # forwards X-Auth-Request-Email → action attribution
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_BANNER: "Nubra Beacon — sign in with your work Google account."
+      OAUTH2_PROXY_FOOTER: "No access yet? Post your email in the Beacon Slack group; an admin approves and you are in within a minute."
+    ports:
+      - "4180:4180"
+    depends_on:
+      - webapp
+    restart: unless-stopped
 
 volumes:
   nubra_community_pgdata:

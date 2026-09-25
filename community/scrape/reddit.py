@@ -86,11 +86,49 @@ def session_valid() -> bool | None:
     return asyncio.run(_check())
 
 
-def fetch_live(sorts: list[str] | None = None) -> tuple[list[SocialItem], list[str]]:
+def _preflight() -> bool:
+    """One old.reddit listing page via httpx (no session/login involved): True
+    when it looks like a real anonymous listing (post links present), False
+    when blocked/challenged/unreachable. Honors REDDIT_PROXY_URL (same egress
+    the crawl uses) — prod's VM IP got served the new-site shell without it
+    (incident 2026-08-10..18). Used only by the generic source-health live
+    probe (`_live_probe("reddit")` in diagnostics.py) — the authenticated
+    crawl path and `./cm doctor`'s dedicated reddit check use `session_valid`
+    instead, since login access and anonymous access are gated separately."""
+    import os
+    import time
+
+    import httpx
+    proxy = os.getenv("REDDIT_PROXY_URL") or None
+    # residential proxies rotate exits per request and an occasional exit gets
+    # Reddit's decoy page — one bad draw must not veto the crawl (live 2026-08-25)
+    attempts = 3 if proxy else 1
+    for i in range(attempts):
+        try:
+            r = httpx.get("https://old.reddit.com/r/IndianStockMarket/new/",
+                          headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
+                                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"},
+                          timeout=40.0 if proxy else 25.0, follow_redirects=True,
+                          proxy=proxy)
+            if r.status_code == 200 and 'data-fullname="t3_' in r.text:
+                return True
+        except Exception:  # noqa: BLE001 — unreachable network = keep trying
+            pass
+        if i < attempts - 1:
+            time.sleep(1)
+    return False
+
+
+def fetch_live(sorts: list[str] | None = None,
+               only_subs: list[str] | None = None) -> tuple[list[SocialItem], list[str]]:
     """Fetch posts + comments (+ one level of replies) for every registry sub.
-    Returns (items, health_notes) — a failing sub is a note, never an exception."""
+    Returns (items, health_notes) — a failing sub is a note, never an exception.
+    only_subs restricts the crawl to exactly those subs (backfill uses this —
+    mutating cfg does NOT restrict, because _sub_categories prefers the
+    watch_sources table over the passed registry; bug found 2026-08-26)."""
     reg = settings.registry.get("sources", {}).get("reddit", {})
-    cat_map = _sub_categories(reg)
+    cat_map = ({s: "backfill" for s in only_subs} if only_subs
+               else _sub_categories(reg))
     sorts = sorts or list(reg.get("sort_types_hourly", ["new"]))
 
     if not (settings.reddit_username and settings.reddit_password):

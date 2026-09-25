@@ -8,10 +8,11 @@ X-Auth-Request-Email; locally we fall back to "local-dev".
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import Body, FastAPI, Header, HTTPException, Query
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request
 from fastapi import Response as FastResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,6 +22,50 @@ from community.store import db
 app = FastAPI(title="Nubra Community Manager — read-API", version="2.0")
 from community.api.discover_api import router as discover_router  # noqa: E402
 app.include_router(discover_router)
+from community.api.beacon_api import router as beacon_router  # noqa: E402
+app.include_router(beacon_router)
+from community.api.api_trading_api import router as api_trading_router  # noqa: E402
+app.include_router(api_trading_router)
+from community.api.content_queue_api import router as content_queue_router  # noqa: E402
+app.include_router(content_queue_router)
+
+
+@app.middleware("http")
+async def _sso_identity_alias(request, call_next):
+    """oauth2-proxy forwards the verified login as X-Forwarded-Email; every
+    attribution site here reads X-Auth-Request-Email. Alias once, centrally."""
+    raw = request.scope.get("headers") or []
+    names = {k for k, _ in raw}
+    if b"x-auth-request-email" not in names:
+        fwd = next((v for k, v in raw if k == b"x-forwarded-email"), None)
+        if fwd:
+            request.scope["headers"] = [*raw, (b"x-auth-request-email", fwd)]
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def _beacon_api_audit(request, call_next):
+    """Log every /api/beacon/ call (who pulled what) — internal routes skip."""
+    response = await call_next(request)
+    if request.url.path.startswith("/api/beacon/"):
+        try:
+            db.execute(
+                "INSERT INTO beacon_api_log (key_id, route, params, status) "
+                "VALUES (%s, %s, %s, %s)",
+                (getattr(request.state, "beacon_key_id", None),
+                 request.url.path, db.jsonb(dict(request.query_params)),
+                 response.status_code))
+        except Exception:  # noqa: BLE001 — audit failure must not break reads
+            logging.getLogger("beacon.api").exception("beacon_api_log insert failed")
+    return response
+try:
+    from community.api.social_recommend_api import router as social_recommend_router  # noqa: E402
+
+    app.include_router(social_recommend_router)
+except Exception:  # optional module must never prevent the main API from starting
+    logging.getLogger("beacon.api").exception(
+        "social recommendation routes disabled; the core API will continue"
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -200,6 +245,11 @@ def health():
         return {"ok": True, "db": False}
 
 
+def settings_registry_sources() -> dict:
+    from community.config.settings import settings as _s
+    return _s.registry.get("sources", {})
+
+
 def _freshness() -> dict:
     """Last-updated per source + pipeline watermarks + the next scheduled runs
     (from the cron plan; flags when the schedule isn't actually installed)."""
@@ -226,8 +276,42 @@ def _freshness() -> dict:
     morning = (now.replace(hour=6, minute=0, second=0, microsecond=0)
                + timedelta(days=1 if now.hour >= 6 else 0))
     wm = watermarks.get("enrich") or watermarks.get("aggregate")
+    # per-source cadence: reddit/X are hourly; add-on sources follow their
+    # registry cadence (default daily = morning build)
+    reg_sources = settings_registry_sources()
+    cadence_by_cfg = {k: str((reg_sources.get(k) or {}).get("cadence", "daily")).lower()
+                      for k in ("youtube", "github", "broker_communities", "app_reviews",
+                                "instagram", "linkedin")}
+    stored_to_cfg = {"youtube": "youtube", "github": "github",
+                     "community_forum": "broker_communities", "app_review": "app_reviews",
+                     "instagram": "instagram", "linkedin": "linkedin"}
+    # reddit is cadence-gated since 2026-08-19 (metered residential proxy):
+    # every fetch_every_hours, not hourly — the Overview must say so
+    reddit_every = int((reg_sources.get("reddit") or {}).get("fetch_every_hours", 1))
+    reddit_next = nxt
+    if reddit_every > 1:
+        row = db.one("SELECT last_success_at FROM pipeline_state "
+                     "WHERE stage='ingest' AND source='reddit'")
+        due = ((row["last_success_at"] + timedelta(hours=reddit_every)).astimezone(ist)
+               if row and row["last_success_at"] else nxt)
+        reddit_next = max(nxt, due.replace(minute=0, second=0, microsecond=0))
+    schedule = {}
+    for src in set(per_source) | set(stored_to_cfg):
+        if src == "twitter":
+            cad = "hourly"
+        elif src == "reddit":
+            cad = "hourly" if reddit_every <= 1 else f"every {reddit_every}h"
+        else:
+            cad = cadence_by_cfg.get(stored_to_cfg.get(src, ""), "daily")
+        schedule[src] = {
+            "cadence": cad,
+            "last": per_source.get(src).isoformat() if per_source.get(src) else None,
+            "next": (reddit_next if src == "reddit" else
+                     nxt if cad == "hourly" else morning).isoformat(),
+        }
     return {
         "sources": {k: v.isoformat() for k, v in per_source.items() if v},
+        "source_schedule": schedule,
         "enriched_up_to": wm.isoformat() if wm else None,
         "schedule_installed": installed,
         "next_hourly_run": nxt.isoformat(),
@@ -728,14 +812,20 @@ def voices(limit: int = 20, min_score: float = 0):
                    left(text, 120) AS title, url
             FROM social_items
             WHERE author_id = ANY(%s) AND duplicate_of IS NULL
-              AND source_type IN ('post', 'tweet')
+              AND source_type IN ('post', 'tweet', 'issue', 'review')
             ORDER BY author_id, created_at DESC
             """, (ids,)):
             threads[t["author_id"]] = {"title": (t["title"] or "").replace("\n", " "),
                                        "url": t["url"]}
     for v in rows:
-        v["profile_url"] = (f"https://x.com/{v['handle']}" if v["source"] == "twitter"
-                            else f"https://www.reddit.com/user/{v['handle']}")
+        profile_urls = {
+            "twitter": f"https://x.com/{v['handle']}",
+            "reddit": f"https://www.reddit.com/user/{v['handle']}",
+            "github": f"https://github.com/{v['handle']}",
+        }
+        v["profile_url"] = profile_urls.get(v["source"]) or (
+            threads.get(v["author_id"]) or {}
+        ).get("url")
         v["niche_topics"] = niches.get(v["author_id"], [])[:3]
         v["recent_thread"] = threads.get(v["author_id"])
         niche = v["niche_topics"][0] if v["niche_topics"] else None
@@ -927,22 +1017,31 @@ def _week_stats(window: dict) -> dict:
 def _item_filters(topic: str | None, broker: str | None, intent: str | None,
                   audience: str | None, q: str | None, min_engagement: float,
                   source: str | None,
-                  w: tuple[datetime, datetime] | None = None) -> tuple[str, dict]:
+                  w: tuple[datetime, datetime] | None = None,
+                  q_mode: str = "or",
+                  strategy: bool | None = None) -> tuple[str, dict]:
     """Shared FROM/WHERE for /items and /items/export — one filter semantic."""
     sql = """
         FROM social_items si
         JOIN authors a ON a.author_id = si.author_id
         LEFT JOIN item_enrichment e ON e.item_id = si.item_id
+        LEFT JOIN item_strategy st ON st.item_id = si.item_id
         WHERE si.duplicate_of IS NULL AND COALESCE(e.is_noise, false) = false
           AND (si.engagement->>'score')::float >= %(mine)s
     """
     params: dict = {"mine": min_engagement}
+    if strategy is not None:
+        sql += " AND COALESCE(st.is_strategy, false) = %(strategy)s"
+        params["strategy"] = strategy
     if w is not None:
         sql += " AND si.created_at >= %(w_from)s AND si.created_at < %(w_to)s"
         params.update({"w_from": w[0], "w_to": w[1]})
+    if intent:
+        # comma list = multi-select (Explore ask 2026-08-21); single value unchanged
+        sql += " AND e.intent = ANY(%(intents)s)"
+        params["intents"] = [t.strip() for t in intent.split(",") if t.strip()]
     for name, val, clause in (
         ("topic", topic, " AND e.topic_key = %(topic)s"),
-        ("intent", intent, " AND e.intent = %(intent)s"),
         ("audience", audience, " AND e.audience = %(audience)s"),
         ("source", source, " AND si.source = %(source)s"),
     ):
@@ -953,8 +1052,15 @@ def _item_filters(topic: str | None, broker: str | None, intent: str | None,
         sql += " AND e.entities::text ILIKE %(broker)s"
         params["broker"] = f"%{broker}%"
     if q:
-        sql += " AND si.text ILIKE %(q)s"
-        params["q"] = f"%{q}%"
+        # comma-separated multi-keyword: "brokerage, zerodha" — q_mode=or|and
+        terms = [t.strip() for t in q.split(",") if t.strip()]
+        joiner = " AND " if q_mode == "and" else " OR "
+        clauses = []
+        for i, term in enumerate(terms):
+            clauses.append(f"si.text ILIKE %(q{i})s")
+            params[f"q{i}"] = f"%{term}%"
+        if clauses:
+            sql += " AND (" + joiner.join(clauses) + ")"
     return sql, params
 
 
@@ -966,19 +1072,23 @@ def _item_order(sort: str) -> str:
 @app.get(API + "/items")
 def items(topic: str | None = None, broker: str | None = None,
           intent: str | None = None, audience: str | None = None,
-          q: str | None = None, min_engagement: float = 0,
+          q: str | None = None, q_mode: str = "or", min_engagement: float = 0,
           source: str | None = None,
           sort: Literal["engagement", "recent"] = "engagement",
           window: str | None = None,
           from_ts: str | None = None, to_ts: str | None = None,
+          strategy: bool | None = None,
           limit: int = 20, offset: int = 0):
     body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
-                                 source, _window(from_ts, to_ts, window))
+                                 source, _window(from_ts, to_ts, window), q_mode,
+                                 strategy=strategy)
     params.update({"limit": _lim(limit), "offset": max(offset, 0)})
     sql = """
         SELECT si.source, si.external_id, si.thread_id, left(si.text, 300) AS text,
                si.url, si.created_at, si.ingested_at, si.engagement,
                a.handle AS author,
+               COALESCE(st.is_strategy, false) AS is_strategy,
+               st.strategy_raw, st.strategy_summary,
                e.topic_key, e.intent, e.audience, e.sentiment, e.entities,
                (SELECT count(*) FROM social_items d WHERE d.duplicate_of = si.item_id)::int
                  AS duplicate_count
@@ -988,19 +1098,100 @@ def items(topic: str | None = None, broker: str | None = None,
 
 _EXPORT_COLUMNS = ["source", "external_id", "thread_id", "author", "text", "url",
                    "topic_key", "intent", "audience", "sentiment", "interactions",
-                   "engagement_score", "entities", "posted_at_ist", "fetched_at_ist",
+                   "engagement_score", "entities", "is_strategy", "strategy_raw",
+                   "strategy_summary", "posted_at_ist", "fetched_at_ist",
                    "duplicate_count"]
+
+
+@app.get(API + "/items/intent-series")
+def items_intent_series(topic: str | None = None, broker: str | None = None,
+                        intent: str | None = None, audience: str | None = None,
+                        q: str | None = None, q_mode: str = "or",
+                        min_engagement: float = 0, source: str | None = None,
+                        window: str | None = None,
+                        from_ts: str | None = None, to_ts: str | None = None):
+    """Intent counts per time bucket, honoring the exact /items filters —
+    feeds the Explore line + stacked charts. Bucket auto-picks: hour for
+    windows <= 3 days, day otherwise."""
+    w = _window(from_ts, to_ts, window)
+    if w is None:
+        now = datetime.now(timezone.utc)
+        w = (now - timedelta(days=7), now)
+    span_h = (w[1] - w[0]).total_seconds() / 3600
+    bucket = "hour" if span_h <= 72 else "day"
+    body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
+                                 source, w, q_mode)
+    rows = db.query(
+        f"SELECT date_trunc('{bucket}', si.created_at) AS bucket, "
+        "       COALESCE(e.intent, 'unclassified') AS intent, count(*)::int AS n "
+        + body +
+        " GROUP BY 1, 2 ORDER BY 1, 2", params)
+    return {"bucket": bucket, "from": w[0].isoformat(), "to": w[1].isoformat(),
+            "points": rows}
+
+
+def _spreadsheet(format: str, name: str, header: list[str], rows: list[list]):
+    """Shared CSV/XLSX renderer for export endpoints (formula-injection-safe,
+    BOM'd CSV so Excel opens UTF-8, frozen header row in xlsx)."""
+    import csv
+    import io
+    import re as _re
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    from fastapi.responses import Response
+
+    ctrl = _re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+    def _cell(v):
+        if v is None:
+            return ""
+        if isinstance(v, (int, float)):
+            return v
+        sv = ctrl.sub(" ", str(v))
+        if sv[:1] in "=+-@":
+            sv = "'" + sv
+        return sv
+
+    flat = [[_cell(v) for v in row] for row in rows]
+    stamp = _dt.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%d-%H%M")
+    if format == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(header)
+        w.writerows(flat)
+        return Response(
+            buf.getvalue().encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition":
+                     f'attachment; filename="{name}-{stamp}.csv"'})
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = name[:31]
+    ws.append(header)
+    for row in flat:
+        ws.append(row)
+    ws.freeze_panes = "A2"
+    out = io.BytesIO()
+    wb.save(out)
+    return Response(
+        out.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{name}-{stamp}.xlsx"'})
 
 
 @app.get(API + "/items/export")
 def items_export(format: Literal["csv", "xlsx"] = "csv",
                  topic: str | None = None, broker: str | None = None,
                  intent: str | None = None, audience: str | None = None,
-                 q: str | None = None, min_engagement: float = 0,
+                 q: str | None = None, q_mode: str = "or", min_engagement: float = 0,
                  source: str | None = None,
                  sort: Literal["engagement", "recent"] = "engagement",
                  window: str | None = None,
                  from_ts: str | None = None, to_ts: str | None = None,
+                 strategy: bool | None = None,
                  limit: int = 2000):
     """Same filters as /items, but full text and spreadsheet-shaped rows."""
     import csv
@@ -1012,11 +1203,14 @@ def items_export(format: Literal["csv", "xlsx"] = "csv",
     from fastapi.responses import Response
 
     body, params = _item_filters(topic, broker, intent, audience, q, min_engagement,
-                                 source, _window(from_ts, to_ts, window))
+                                 source, _window(from_ts, to_ts, window), q_mode,
+                                 strategy=strategy)
     params["limit"] = max(1, min(limit, 10000))
     rows = db.query("""
         SELECT si.source, si.external_id, si.thread_id, si.text, si.url,
                si.created_at, si.ingested_at, si.engagement, a.handle AS author,
+               COALESCE(st.is_strategy, false) AS is_strategy,
+               st.strategy_raw, st.strategy_summary,
                e.topic_key, e.intent, e.audience, e.sentiment, e.entities,
                (SELECT count(*) FROM social_items d WHERE d.duplicate_of = si.item_id)::int
                  AS duplicate_count
@@ -1044,6 +1238,8 @@ def items_export(format: Literal["csv", "xlsx"] = "csv",
             r["sentiment"] if r["sentiment"] is not None else "",
             int(inter), (r.get("engagement") or {}).get("score", ""),
             _json.dumps(r["entities"]) if r["entities"] else "",
+            "yes" if r["is_strategy"] else "no",
+            _cell(r["strategy_raw"], True), _cell(r["strategy_summary"], True),
             r["created_at"].astimezone(ist).strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
             r["ingested_at"].astimezone(ist).strftime("%Y-%m-%d %H:%M") if r["ingested_at"] else "",
             r["duplicate_count"],
@@ -1219,9 +1415,110 @@ def publish_features_catalog(body: dict = Body(...),
             "published_by": _who(x_auth_request_email)}
 
 
+# ── collector health (read-only operational visibility) ──────────────────
+
+from community.diagnostics import _live_probe  # noqa: E402 — shared with ./cm doctor
+
+@app.get(API + "/source-health")
+def source_health(live: bool = False):
+    """Configured and runtime state for every collector; live=true adds a
+    real reachability/auth probe per source (~12s worst case, parallel-free
+    by design — this is an ops page, not a hot path).
+
+    This endpoint is read-only and deliberately soft: missing optional
+    credentials are reported as readiness states, not API failures.
+    """
+    import os
+
+    from community.config.settings import settings as runtime_settings
+
+    configured = runtime_settings.registry.get("sources", {})
+    specs = (
+        ("twitter", "twitter", "TWITTERAPI_IO_KEY", True),
+        ("reddit", "reddit", None, False),
+        ("youtube", "youtube", "YOUTUBE_API_KEY", True),
+        ("github", "github", "GITHUB_TOKEN", False),
+        ("broker_communities", "community_forum", None, False),
+        ("app_reviews", "app_review", None, False),
+        ("instagram", "instagram", "APIFY_TOKEN", True),
+    )
+    states = {
+        row["source"]: row
+        for row in db.query(
+            """
+            SELECT DISTINCT ON (source)
+                   source, watermark, last_success_at, last_error,
+                   last_error_at, items_last_run
+            FROM pipeline_state
+            WHERE stage='ingest'
+            ORDER BY source, COALESCE(last_success_at, last_error_at) DESC NULLS LAST
+            """
+        )
+    }
+    totals = {
+        row["source"]: row["count"]
+        for row in db.query(
+            "SELECT source, count(*)::int AS count FROM social_items GROUP BY source"
+        )
+    }
+
+    result = []
+    for config_name, stored_source, credential, credential_required in specs:
+        cfg = configured.get(config_name, {}) or {}
+        enabled = bool(cfg.get("enabled", True if config_name in ("twitter", "reddit") else False))
+        state = states.get(stored_source, {})
+        credential_present = bool(credential and os.getenv(credential))
+        if credential is None:
+            credential_status = "not_required"
+        elif credential_present:
+            credential_status = "configured"
+        elif credential_required:
+            credential_status = "missing"
+        else:
+            credential_status = "optional_missing"
+
+        if not enabled:
+            health = "disabled"
+        elif credential_required and not credential_present:
+            health = "needs_key"
+        elif state.get("last_error") and not state.get("last_success_at"):
+            health = "error"
+        elif state.get("last_error_at") and (
+            not state.get("last_success_at")
+            or state["last_error_at"] > state["last_success_at"]
+        ):
+            health = "error"
+        elif state.get("last_success_at"):
+            health = "working"
+        else:
+            health = "enabled_not_run"
+
+        result.append(
+            {
+                "name": config_name,
+                "stored_source": stored_source,
+                "enabled": enabled,
+                "health": health,
+                "credential": credential_status,
+                "required_key": credential if credential_required else None,
+                "optional_key": credential if credential and not credential_required else None,
+                "last_success_at": state.get("last_success_at"),
+                "last_error": state.get("last_error"),
+                "last_error_at": state.get("last_error_at"),
+                "watermark": state.get("watermark"),
+                "items_last_run": state.get("items_last_run"),
+                "stored_items": totals.get(stored_source, 0),
+                **(_live_probe(config_name) if live and enabled else {}),
+            }
+        )
+    return {"sources": result, "live_checked": live}
+
+
 # ── watch sources (UI-managed collection config) ──────────────────────────
 
-_KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query", "keyword")
+_KINDS = ("subreddit", "x_hashtag", "x_handle", "x_query", "keyword",
+          "youtube_query", "github_query", "forum", "app", "instagram_account",
+          "linkedin_query")
 
 
 @app.get(API + "/sources")
@@ -1243,9 +1540,16 @@ def add_source(payload: dict = Body(...),
                 "https://x.com/", "https://twitter.com/"):
         if value.lower().startswith(pre):
             value = value[len(pre):]
-    value = value.strip("/ ")
-    # keywords and full queries may contain spaces; handles/hashtags/subs may not
-    if not value or (kind not in ("x_query", "keyword") and (" " in value or len(value) > 60)):
+    value = value.strip("/ ") if kind != "forum" else value.strip()
+    if not value:
+        raise HTTPException(400, "value is required")
+    if kind == "forum":
+        if not value.lower().startswith("http"):
+            raise HTTPException(400, "forum value must be the base/sitemap URL (https://...)")
+    # queries/keywords/app names may contain spaces; handles/hashtags/subs may not
+    elif (kind not in ("x_query", "keyword", "youtube_query", "github_query", "app",
+                       "linkedin_query")
+          and (" " in value or len(value) > 60)):
         raise HTTPException(400, "value looks invalid for this kind")
     config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
     if kind == "keyword" and not config:
@@ -1335,3 +1639,237 @@ def toggle_source(source_id: int):
 def delete_source(source_id: int):
     if not db.execute("DELETE FROM watch_sources WHERE id=%s", (source_id,)):
         raise HTTPException(404, "no such source")
+
+
+# ── SSO authorization (docs/sso-decisions-2026-08-19.md) ───────────────────
+# Google (oauth2-proxy) authenticates; this table authorizes. Unknown-but-
+# authenticated emails become pending rows + ONE Slack ping per 24h with
+# Approve/Reject buttons; the buttons land on /slack/interactions below.
+
+def _sso_slack_ping(email: str) -> bool:
+    """Interactive access-request message to the Beacon channel. Uses the
+    incoming webhook (outbound only); button clicks come back via the Slack
+    app's interactivity URL. Returns True when actually sent."""
+    import os
+
+    import httpx
+
+    from community.config.settings import settings
+    url = os.getenv(settings.registry["delivery"].get("slack_webhook_env",
+                                                      "SLACK_WEBHOOK_URL"), "")
+    if not url or settings.mode != "prod":
+        return False
+    blocks = [
+        {"type": "section", "text": {"type": "mrkdwn",
+         "text": f"*Beacon access request*\n{email} signed in with Google and "
+                 "is waiting for approval."}},
+        {"type": "actions", "elements": [
+            {"type": "button", "action_id": "sso_approve", "value": email,
+             "style": "primary", "text": {"type": "plain_text", "text": "Approve"}},
+            {"type": "button", "action_id": "sso_reject", "value": email,
+             "style": "danger", "text": {"type": "plain_text", "text": "Reject"}},
+        ]},
+    ]
+    try:
+        r = httpx.post(url, json={"text": f"Beacon access request: {email}",
+                                  "blocks": blocks}, timeout=10)
+        return r.status_code == 200
+    except Exception:  # noqa: BLE001 — a ping failure must not block the page
+        logging.getLogger("beacon.api").exception("sso slack ping failed")
+        return False
+
+
+@app.get(API + "/sso/authz")
+def sso_authz(email: str):
+    """The webapp middleware's one call: current status for an authenticated
+    email; unknown emails become pending and trigger the Slack ping (deduped
+    to one per 24h)."""
+    email = email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(422, "email required")
+    row = db.one("SELECT status, last_pinged_at FROM sso_allowlist WHERE email=%s",
+                 (email,))
+    if row is not None and row["status"] == "approved":
+        # team-activity: the gate calls this ~1/min per active user; a fresh
+        # "visit" = activity gap > 30 min (sessions, not clicks)
+        db.execute(
+            """
+            INSERT INTO user_activity (email, day) VALUES (%s, current_date)
+            ON CONFLICT (email, day) DO UPDATE SET
+                visits = user_activity.visits
+                         + CASE WHEN user_activity.last_seen < now() - interval '30 minutes'
+                                THEN 1 ELSE 0 END,
+                last_seen = now()
+            """,
+            (email,))
+    if row is None:
+        db.execute("INSERT INTO sso_allowlist (email) VALUES (%s) "
+                   "ON CONFLICT (email) DO NOTHING", (email,))
+        if _sso_slack_ping(email):
+            db.execute("UPDATE sso_allowlist SET last_pinged_at=now() WHERE email=%s",
+                       (email,))
+        return {"email": email, "status": "pending"}
+    if row["status"] == "pending" and (
+            row["last_pinged_at"] is None
+            or (datetime.now(timezone.utc) - row["last_pinged_at"]).total_seconds() > 86400):
+        if _sso_slack_ping(email):
+            db.execute("UPDATE sso_allowlist SET last_pinged_at=now() WHERE email=%s",
+                       (email,))
+    return {"email": email, "status": row["status"]}
+
+
+@app.get(API + "/sso/requests")
+def sso_requests():
+    return db.query("SELECT email, status, requested_at, decided_by, decided_at "
+                    "FROM sso_allowlist ORDER BY status = 'pending' DESC, requested_at DESC")
+
+
+def _sso_decide(email: str, status: str, decided_by: str) -> dict:
+    if status not in ("approved", "rejected"):
+        raise HTTPException(422, "status must be approved or rejected")
+    n = db.execute("UPDATE sso_allowlist SET status=%s, decided_by=%s, decided_at=now() "
+                   "WHERE email=%s", (status, decided_by, email.strip().lower()))
+    if not n:
+        raise HTTPException(404, "no such request")
+    return {"email": email, "status": status, "decided_by": decided_by}
+
+
+@app.post(API + "/sso/requests/{email}/decide")
+def sso_decide(email: str, payload: dict = Body(...),
+               x_auth_request_email: str | None = Header(default=None)):
+    """Dashboard-side decision (the Access-requests card)."""
+    return _sso_decide(email, str(payload.get("status", "")),
+                       x_auth_request_email or "dashboard")
+
+
+@app.get(API + "/team-activity")
+def team_activity(days: int = 30):
+    """Per-person usage: visits + last seen (from the SSO gate's authz pings)
+    joined with attributed actions (sources added, access decisions, keys)."""
+    days = max(1, min(days, 180))
+    people = db.query(
+        """
+        SELECT email, sum(visits)::int AS visits, min(first_seen) AS first_seen,
+               max(last_seen) AS last_seen,
+               count(DISTINCT day)::int AS active_days
+        FROM user_activity WHERE day > current_date - %s
+        GROUP BY email ORDER BY max(last_seen) DESC
+        """, (days,))
+    actions = {r["by"]: r for r in db.query(
+        """
+        SELECT by, sum(sources_added)::int AS sources_added,
+               sum(decisions)::int AS access_decisions, sum(keys)::int AS keys_minted
+        FROM (
+            SELECT added_by AS by, count(*) AS sources_added, 0 AS decisions, 0 AS keys
+            FROM watch_sources WHERE added_by NOT IN ('seed', 'dashboard') GROUP BY added_by
+            UNION ALL
+            SELECT decided_by, 0, count(*), 0 FROM sso_allowlist
+            WHERE decided_by IS NOT NULL AND decided_by NOT IN ('seed') GROUP BY decided_by
+            UNION ALL
+            SELECT created_by, 0, 0, count(*) FROM api_keys
+            WHERE created_by IS NOT NULL AND created_by NOT IN ('cli', 'dashboard')
+            GROUP BY created_by
+        ) x GROUP BY by
+        """)}
+    for p in people:
+        a = actions.get(p["email"], {})
+        p["sources_added"] = a.get("sources_added", 0)
+        p["access_decisions"] = a.get("access_decisions", 0)
+        p["keys_minted"] = a.get("keys_minted", 0)
+    return {"days": days, "people": people}
+
+
+@app.delete(API + "/sso/requests/{email}", status_code=204)
+def sso_delete(email: str):
+    """Remove a row entirely (test accounts, offboarding). If the person
+    signs in again they simply re-enter the pending flow."""
+    if not db.execute("DELETE FROM sso_allowlist WHERE email=%s",
+                      (email.strip().lower(),)):
+        raise HTTPException(404, "no such entry")
+
+
+@app.post(API + "/slack/interactions")
+async def slack_interactions(request: Request):
+    """Slack button clicks (Approve/Reject). Auth = Slack signature (this path
+    is proxy-skip_auth and internet-reachable BY DESIGN — the HMAC with the
+    app signing secret is the credential). Replay window 5 min."""
+    import hashlib
+    import hmac
+    import json as _json
+    import os
+    import time as _time
+    from urllib.parse import parse_qs
+
+    import httpx
+
+    secret = os.getenv("SLACK_SIGNING_SECRET", "")
+    if not secret:
+        raise HTTPException(503, "SLACK_SIGNING_SECRET not configured")
+    body = await request.body()
+    ts = request.headers.get("x-slack-request-timestamp", "0")
+    if abs(_time.time() - float(ts or 0)) > 300:
+        raise HTTPException(401, "stale request")
+    base = f"v0:{ts}:".encode() + body
+    expected = "v0=" + hmac.new(secret.encode(), base, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, request.headers.get("x-slack-signature", "")):
+        raise HTTPException(401, "bad signature")
+
+    payload = _json.loads(parse_qs(body.decode()).get("payload", ["{}"])[0])
+    action = (payload.get("actions") or [{}])[0]
+    email = action.get("value", "")
+    verdict = {"sso_approve": "approved", "sso_reject": "rejected"}.get(
+        action.get("action_id", ""))
+    decider = (payload.get("user") or {}).get("username") \
+        or (payload.get("user") or {}).get("name") or "slack"
+    if not (email and verdict):
+        return {"ok": False}
+    _sso_decide(email, verdict, f"slack:{decider}")
+    # replace the buttons with the outcome so the channel sees who decided
+    response_url = payload.get("response_url")
+    if response_url:
+        try:
+            httpx.post(response_url, json={
+                "replace_original": True,
+                "text": f"Beacon access: {email} {verdict} by @{decider}."
+                        + (" They are in on their next page load."
+                           if verdict == "approved" else "")}, timeout=10)
+        except Exception:  # noqa: BLE001
+            logging.getLogger("beacon.api").exception("slack response_url failed")
+    return {"ok": True}
+
+
+# ── beacon-API key management (internal, UI-managed like watch sources) ────# ── beacon-API key management (internal, UI-managed like watch sources) ────
+
+@app.get(API + "/api-keys")
+def list_api_keys():
+    return db.query(
+        "SELECT key_id, label, created_by, created_at, last_used_at, revoked_at "
+        "FROM api_keys ORDER BY revoked_at NULLS FIRST, created_at DESC")
+
+
+@app.post(API + "/api-keys", status_code=201)
+def mint_api_key(payload: dict = Body(...),
+                 x_auth_request_email: str | None = Header(default=None)):
+    """Mint a per-consumer key. The SECRET IS RETURNED EXACTLY ONCE — only
+    its sha256 is stored. UI shows it once with a copy button."""
+    import hashlib
+    import secrets as pysecrets
+    label = str(payload.get("label") or "").strip()
+    if not label:
+        raise HTTPException(422, "label is required (who is this key for?)")
+    secret = "nbk_" + pysecrets.token_urlsafe(32)
+    row = db.one(
+        "INSERT INTO api_keys (key_hash, label, created_by) "
+        "VALUES (%s, %s, %s) RETURNING key_id, label, created_at",
+        (hashlib.sha256(secret.encode()).hexdigest(), label,
+         x_auth_request_email or "dashboard"))
+    return {**row, "secret": secret,
+            "note": "store this secret now — it is never shown again"}
+
+
+@app.post(API + "/api-keys/{key_id}/revoke")
+def revoke_api_key(key_id: int):
+    if not db.execute("UPDATE api_keys SET revoked_at = now() "
+                      "WHERE key_id = %s AND revoked_at IS NULL", (key_id,)):
+        raise HTTPException(404, "no such active key")
+    return {"key_id": key_id, "revoked": True}

@@ -33,6 +33,7 @@ STAGE_MODULES = {
     "aggregate": "community.aggregate.rollups",
     "score": "community.recommend.score",
     "draft": "community.recommend.draft",
+    "social": "community.social_recommend.service",
     "compose": "community.compose.roundup",
     "dispatch": "community.dispatch.local",
 }

@@ -15,6 +15,54 @@ sources:
       - value: nubra            # brand watch — powers Nubra mentions + Broker issues (2026-07-07)
         x: true
         reddit: true
+      # API-trader lens keywords (2026-08-22) — tool entities from the landscape
+      - value: kite connect
+        x: true
+        reddit: true
+      - value: openalgo
+        x: true
+        reddit: true
+      - value: algotest
+        x: true
+        reddit: true
+      # Content-curation expansion (intern feedback 2026-09-23: thin scrape ->
+      # thin What-to-make): retail + api phrases that produce curatable posts
+      - value: brokerage charges
+        x: true
+        reddit: true
+      - value: expiry day
+        x: true
+        reddit: true
+      - value: option selling
+        x: true
+        reddit: true
+      - value: paper trading
+        x: true
+        reddit: true
+      - value: backtesting
+        x: true
+        reddit: true
+      - value: trading api
+        x: true
+        reddit: true
+      - value: market data api
+        x: true
+        reddit: true
+      - value: algo trading sebi
+        x: true
+        reddit: true
+      - value: f&o tax
+        x: true
+        reddit: true
+      - value: margin penalty
+        x: true
+        reddit: true
+      - value: tradetron
+        x: true
+        reddit: true
+      - value: broker api
+        x: true
+        reddit: true
     # hashtag/handle seeds (researched 2026-07-05; were DB-only until the prod
     # fresh-start showed seeds must live here — 2026-07-09). category: value
     hashtags:
@@ -54,14 +102,244 @@ sources:
       fno_algo:                 # F&O traders + algo/API crowd
         - IndiaOptionsSelling
         - IndiaAlgoTrading
+        - algorading              # API-trader lens (2026-08-22): India algo-dev community
+        - algotrading             # global algo community — direction-setter chatter
     max_posts_per_sub: 10
     comments_per_post: 15
     refresh_max_threads: 20    # engagement re-poll of suggested-opportunity root posts per scrape run; 0 disables (B4, 2026-07-07)
     keyword_max_posts: 10      # old.reddit search results per watched keyword; 0 disables (2026-07-08)
-    sort_types_hourly: [new, hot, rising]   # every hourly scrape; scraper de-dups across sorts
-    sort_types_daily_extra: [top]           # 1×/day — old.reddit /top = past 24h (verified 2026-07-05)
+    fetch_every_hours: 3        # residential-proxy egress bills per GB — 3-hourly
+                                # + new-only ≈ $13/mo vs $85 hourly-all-feeds
+                                # (user decision 2026-08-19; morning build always runs)
+    sort_types_hourly: [new]                # cost-tuned 2026-08-19 (was new+hot+rising)
+    sort_types_daily_extra: [top, hot, rising]  # 1×/day in the morning build
     budget:
       max_items_per_run: 2000
+  youtube:
+    enabled: true
+    cadence: daily              # daily = morning build only; hourly = every run
+    max_queries_per_run: 20
+    max_videos_per_query: 5
+    max_comments_per_video: 20
+    comment_quality:
+      min_chars: 8
+      deny_terms: [telegram, whatsapp group, jackpot, sure shot, guaranteed profit]
+    queries:
+      retail:
+        - Nubra trading app
+        - Nubra option chain
+        - Nubra trading review
+        - option chain analysis India
+        - Nifty option chain analysis
+        - BankNifty option chain analysis
+        - option chain OI PCR max pain
+        - OI buildup option chain India
+        - option chain filters India
+        - option chain bid ask spread
+        - option buyer strategy India
+        - option seller strategy India
+        - options strategy builder India
+        - payoff graph options India
+        - option strategy payoff graph India
+        - scalping trading app India
+        - one click trading app India
+        - trading app watchlist India
+        - stock SIP trading app India
+        - best trading app for options India
+      api_algo:
+        - Nubra API
+        - Nubra websocket
+        - trading API India
+        - broker API India
+        - algo trading API India
+        - market data websocket India
+        - order placement API trading
+        - automated trading India
+        - backtesting trading strategy India
+        - paper trading API India
+        - trading API historical data India
+        # API-trader lens (2026-08-22)
+        - kite connect python tutorial
+        - openalgo setup
+        - algotest backtesting
+        - tradetron strategy builder
+        - dhan api python trading
+        - tradingview webhook broker india
+      competitors:
+        - Zerodha Kite option chain
+        - Dhan option chain
+        - Dhan options strategy builder
+        - Upstox trading app review
+        - Angel One SmartAPI
+        - Sensibull option chain
+        - Opstra strategy builder
+        - FYERS trading app review
+  github:
+    enabled: true
+    cadence: daily              # daily = morning build only; hourly = every run
+    max_queries_per_run: 20
+    max_items_per_query: 20
+    relevance:
+      min_score: 2
+      allow_terms:
+        - trading api
+        - broker api
+        - market data
+        - websocket
+        - order placement
+        - historical data
+        - algo trading
+        - automated trading
+        - paper trading
+        - kite connect
+        - smartapi
+        - upstox api
+        - dhanhq
+        - fyers api
+        - nse
+        - bse
+        - zerodha
+        - dhan
+        - upstox
+        - angel one
+        - fyers
+        - nubra
+      deny_terms:
+        - casino
+        - betting
+        - porn
+        - sex
+        - crypto airdrop
+        - nft
+        - spam
+        - wealth builder empire
+    queries:
+      - '"trading API India"'
+      - '"broker API India"'
+      - '"algo trading" "NSE"'
+      - '"market data websocket" trading'
+      - '"order placement API" trading'
+      - '"historical data API" trading'
+      - '"paper trading" "broker API"'
+      - '"backtesting" "broker API"'
+      - '"Zerodha Kite Connect"'
+      - '"DhanHQ API"'
+      - '"Upstox API"'
+      - '"Angel One SmartAPI"'
+      - '"FYERS API"'
+      - '"Nubra API"'
+      - '"Nubra websocket"'
+      - '"openalgo"'
+      - '"algotest"'
+      - '"tradingview webhook" trading'
+  broker_communities:
+    enabled: true
+    cadence: daily              # daily = morning build only; hourly = every run
+    max_topics_per_source: 20
+    max_replies_per_topic: 10
+    sources:
+      - name: Zerodha TradingQnA
+        broker: zerodha
+        platform: discourse
+        base_url: https://tradingqna.com
+      - name: Upstox Community
+        broker: upstox
+        platform: discourse
+        base_url: https://community.upstox.com
+      - name: Angel One SmartAPI Forum
+        broker: angel_one
+        platform: nodebb
+        base_url: https://smartapi.angelone.in/smartapi/forum
+      - name: FYERS Community
+        broker: fyers
+        platform: sitemap_html
+        sitemap_url: https://community.fyers.in/sitemap.xml
+      - name: Dhan Community
+        broker: dhan
+        platform: sitemap_html
+        sitemap_url: https://madefortrade.in/sitemap.xml
+  app_reviews:
+    enabled: true
+    cadence: daily              # daily = morning build only; hourly = every run
+    max_reviews_per_app: 100
+    country: in
+    apps:
+      # Fill app identifiers when available. Apple uses numeric app_id; Google
+      # Play uses package name. Missing identifiers are skipped safely.
+      - name: Nubra
+        broker: nubra
+        apple_id: 6746636699
+        google_package: com.zanskar.nubra
+      - name: Zerodha Kite
+        broker: zerodha
+        apple_id:
+        google_package: com.zerodha.kite3
+      - name: Dhan
+        broker: dhan
+        apple_id:
+        google_package: com.dhan.live
+      - name: Groww
+        broker: groww
+        apple_id:
+        google_package: com.nextbillion.groww
+      - name: Upstox
+        broker: upstox
+        apple_id:
+        google_package: in.upstox.app
+      - name: Angel One
+        broker: angel_one
+        apple_id:
+        google_package: com.msf.angelmobile
+      - name: FYERS
+        broker: fyers
+        apple_id:
+        google_package: com.fyers.trader
+  linkedin:                     # public-post keyword search via Apify (no-cookie
+    enabled: true               # actor — no Nubra account/session involved).
+    cadence: daily              # ~USD 2/1k posts; daily + caps = pennies/day
+    max_posts_per_query: 25
+    posted_limit: week          # daily cadence, week window: overlap dedupes on insert
+    queries:                    # seed — DB rows (watch_sources kind=linkedin_query) win
+      - algo trading india
+      - trading api india
+      - kite connect api
+      - dhan api
+      - nubra trading
+      - algorithmic trading nse
+      - options backtesting
+      - trading api python
+      - sebi algo trading rules
+      - market data api nse
+  instagram:
+    enabled: true
+    cadence: daily              # LOCKED 2026-08-12: pinned posts bypass onlyPostsNewerThan
+                                # and re-bill every poll — hourly measured ~$55/mo vs $29 pool
+    accounts:                   # seed; watch_sources (kind=instagram_account) is source of truth
+      - market.moves.matt
+      - eliteoptionstrader2
+      - deepthinksfinance
+      - stockswithmanveer
+      - orderflowschool
+      - stockburner_official
+      - trademovesofficial
+      - sjosephburns
+      - spudnick_trading
+      - tastyliveshow
+      - spidersoftware
+    results_limit_backfill: 20  # first fetch per account (user decision)
+    results_limit_daily: 10
+    tier_multiplier: 1.5        # gate: likes >= account trailing median x this
+    tier_min_likes: 25          # floor so quiet accounts don't gate-pass everything
+    whisper_model: large-v3     # POC-locked (translate task, no VAD); drop to
+                                # large-v3-turbo if prod CPU proves too slow
+    whisper_cpu_threads: 4      # cap CTranslate2 pool — prod VM has 8 cores,
+                                # transcription must not starve api/webapp (user 2026-08-13)
+    video_duration_cap_s: 360   # cap at ~6 min (user 2026-08-12); longer = truncated
+    max_slides: 10              # vision reads ALL slides (user decision, IG max)
+    comments_top_n: 10          # top-liked kept as child items (user decision)
+    comments_fetch_limit: 50
+    max_tier_items_per_run: 12  # bounds daily whisper CPU + actor spend
+    caption_deny_terms: [giveaway, discount code, use my code, promo code, link in bio to join]
 
 recommend:
   thresholds: {headsup: 60, secondary: 40}   # calibrated on real data 2026-07-04; re-tune in shadow run
@@ -80,7 +358,10 @@ delivery:
   headsup_on_empty: ops_summary    # ops_summary | skip
   nubra_watch_mention: ""          # empty = plain post (v1); set to e.g. "@community-support" later
   # channels are config-gated: missing creds -> channel skipped, archive always written
-  overview: hourly                 # overview Slack message: daily | hourly | off (hourly per user 2026-07-08)
+  overview: "off"                  # overview Slack message: daily | hourly | off (QUOTED — bare off is YAML False)
+                                   # (off per user 2026-08-20: Slack = access approvals only for now)
+  slack_digests: "off"             # heads-ups + roundups to Slack: on | off (off per user 2026-08-20;
+                                   # archives + DB rows still written, email unaffected, flip on to resume)
   dashboard_url: http://localhost:3000          # linked at the bottom of the overview message (set to the prod URL on deploy)
   slack_webhook_env: SLACK_WEBHOOK_URL          # .env key holding the incoming-webhook URL
   gmail_sender_env: GMAIL_SENDER                # .env key: from-address
@@ -109,3 +390,73 @@ aggregate:
   feature_sim_threshold: 0.86      # centroid match τ. NOTE: e5-small compresses cosines
                                    # (distinct asks ≈0.78–0.85, same ask ≥0.86 — measured on real
                                    # data 2026-07-05); LLD's 0.80 assumed a wider-range model
+
+beacon_api:                        # external read-only API (/api/beacon/v1)
+  enabled: true                    # kill switch — flip false, restart api, namespace 503s
+  rate_limit_per_min: 60           # per key
+  max_limit: 200                   # page-size ceiling (default 25)
+  statement_timeout_ms: 2000       # every beacon-API query self-cancels past this
+
+api_trading:                       # the API-trader segment (plan 2026-08-25)
+  enabled: true
+  max_classified_per_run: 200      # lens classifications per hourly run (Haiku, ~20/call)
+  # Build candidates shown on the Overview page — evidence counters compute
+  # live from api_trader_items themes; edit here without a code change.
+  candidates:
+    - key: ai_native
+      title: AI-native trading access (assistant / MCP)
+      themes: [ai_assisted]
+      grounding: [Developer platform, Trading and portfolio APIs with flexi orders]
+    - key: first_order
+      title: Zero-friction first order
+      themes: [onboarding_auth]
+      grounding: [Developer platform]
+    - key: risk_primitives
+      title: Risk primitives as API calls
+      themes: [order_primitives, risk_controls]
+      grounding: [Trading and portfolio APIs with flexi orders]
+    - key: proof_data
+      title: Data that feeds the proof culture
+      themes: [data_access, backtest_trust, data_quality, cost_pricing, backtest_proof, free_data_builds]
+      grounding: [Historical data APIs, Realtime market-data APIs]
+    - key: distribution
+      title: Presence in the layers they build in
+      themes: [no_code]
+      grounding: [Developer platform]
+  # Landscape monitor: tracked players. patterns = pg regex for coverage
+  # counts; urls = public pages the weekly job reads for shipped/upcoming
+  # features. Edit freely; the weekly job re-reads this list.
+  landscape:
+    - name: Dhan
+      patterns: '\y(dhan|dhanhq)\y'
+      urls: [https://dhanhq.co/docs/v2/, https://dhan.co/pricing/]
+    - name: Zerodha
+      patterns: '\y(zerodha|kite connect|streak|sensibull|varsity)\y'
+      urls: [https://kite.trade/docs/connect/v3/, https://zerodha.com/pricing/]
+    - name: Upstox
+      patterns: '\yupstox\y'
+      urls: [https://upstox.com/developer/api-documentation/open-api/]
+    # AlgoTest + Angel One pages are JS-rendered/bot-gated (checked 2026-08-25):
+    # no urls -> auto job skips them, features maintained via manual add on the
+    # Landscape page. Coverage strip still works (patterns only need chatter).
+    - name: AlgoTest
+      patterns: '\yalgotest\y'
+      urls: []
+    - name: Tradetron
+      patterns: '\ytradetron\y'
+      urls: [https://tradetron.tech/]
+    - name: OpenAlgo
+      patterns: '\yopenalgo\y'
+      urls: [https://docs.openalgo.in/]
+    - name: TradingView
+      patterns: '\y(tradingview|pine ?script)\y'
+      urls: [https://www.tradingview.com/support/solutions/43000614331/]
+    - name: Angel One
+      patterns: '\y(angel ?one|smartapi)\y'
+      urls: []
+    - name: Fyers
+      patterns: '\yfyers\y'
+      urls: [https://fyers.in/products/api/]
+    - name: Groww
+      patterns: '\ygroww\y'
+      urls: [https://groww.in/trade-api/docs/curl]

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { NubraMark } from "@/components/logo";
 
 const NAV: { href: string; label: string; dot: string; group?: string }[] = [
@@ -12,18 +13,36 @@ const NAV: { href: string; label: string; dot: string; group?: string }[] = [
   { href: "/nubra", label: "Nubra mentions", dot: "bg-opps" },
   { href: "/opportunities", label: "Opportunities", dot: "bg-opps", group: "What to do" },
   { href: "/content", label: "Content briefs", dot: "bg-content", group: "What to make" },
+  { href: "/social-recommendations", label: "Social recommendations", dot: "bg-content" },
   { href: "/voices", label: "Voices", dot: "bg-voices", group: "Who matters" },
+  { href: "/api-trading", label: "Overview", dot: "bg-trends", group: "API trading" },
+  { href: "/api-trading/landscape", label: "Landscape", dot: "bg-warn" },
+  { href: "/api-trading/content", label: "Content", dot: "bg-content" },
+  { href: "/api-trading/data", label: "Data", dot: "bg-muted" },
   { href: "/explore", label: "Explore data", dot: "bg-muted", group: "Verify" },
   { href: "/sources", label: "Sources", dot: "bg-muted", group: "Configure" },
+  { href: "/api-access", label: "API access", dot: "bg-muted" },
+  { href: "/access-requests", label: "Access requests", dot: "bg-muted" },
+  { href: "/team-activity", label: "Team activity", dot: "bg-muted" },
   { href: "/grounding", label: "Grounding (USPs)", dot: "bg-warn" },
   { href: "/weekly", label: "Weekly roundup", dot: "bg-trends", group: "Roundups" },
   { href: "/requests", label: "Beacon requests", dot: "bg-content", group: "Improve" },
   { href: "/llm", label: "AI usage", dot: "bg-voices", group: "System" },
   { href: "/how-it-works", label: "How Beacon works", dot: "bg-trends", group: "Learn" },
+  { href: "/source-health", label: "Source health", dot: "bg-opps", group: "Health" },
 ];
 
 export function Sidebar() {
   const path = usePathname();
+  // API-trading section is behind a launch hold (API_TRADING_ENABLED in the
+  // api's .env) — probe once and hide the group while the API 404s
+  const [apiTrading, setApiTrading] = useState(false);
+  useEffect(() => {
+    fetch("/api/v1/api-trading/funnel?days=7", { cache: "no-store" })
+      .then((r) => setApiTrading(r.ok))
+      .catch(() => setApiTrading(false));
+  }, []);
+  const nav = apiTrading ? NAV : NAV.filter((n) => !n.href.startsWith("/api-trading"));
   let lastGroup: string | undefined;
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface px-4 py-6 md:flex">
@@ -39,7 +58,7 @@ export function Sidebar() {
       {/* min-h-0 lets the nav scroll inside the h-screen column instead of
           pushing System/Learn (and the footer) off the page */}
       <nav className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1 pb-4">
-        {NAV.map((n) => {
+        {nav.map((n) => {
           const showGroup = n.group && n.group !== lastGroup;
           lastGroup = n.group ?? lastGroup;
           const active = path === n.href;

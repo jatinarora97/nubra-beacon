@@ -1,5 +1,5 @@
 # VENDORED from github.com/zanshash/reddit_scraper @ f926fc7
-# (+ nested-replies + login patches — see this script's docstring)
+# (+ nested-replies + proxy + login patches — see this script's docstring)
 # Do not edit here; update the source repo, then run scripts/sync_reddit_scraper.py
 import asyncio
 import json
@@ -481,14 +481,41 @@ async def run():
     combined: Dict[str, List[dict]] = {}
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=HEADLESS)
         state_path = os.path.join(OUTPUT_DIR, "reddit_auth_state.json")
+        _proxy = None  # PATCH: optional egress proxy (REDDIT_PROXY_URL)
+        _proxy_url = os.getenv("REDDIT_PROXY_URL", "").strip()
+        if _proxy_url:
+            from urllib.parse import unquote, urlsplit
+            _pu = urlsplit(_proxy_url)
+            _proxy = {"server": f"{_pu.scheme}://{_pu.hostname}:{_pu.port}"}
+            if _pu.username:
+                _user = unquote(_pu.username)
+                # Rotating residential exits within ONE browser session trip
+                # Reddit's checks (0-posts, live 2026-08-25); session-<id>
+                # pins one exit for the whole crawl.
+                if "session-" not in _user and "apify.com" in (_pu.hostname or ""):
+                    import random
+                    import string
+                    _user += ",session-" + "".join(
+                        random.choices(string.ascii_lowercase + string.digits, k=10))
+                _proxy["username"] = _user
+                _proxy["password"] = unquote(_pu.password or "")
+            log.info("egress proxy active: %s", _proxy["server"])
+        browser = await pw.chromium.launch(headless=HEADLESS, proxy=_proxy)
         ctx = await browser.new_context(
             user_agent=_UA,
             viewport={"width": 1280, "height": 900},
             locale="en-US",
             storage_state=state_path if os.path.exists(state_path) else None,
         )
+        if _proxy:
+            # metered bandwidth: HTML only — drop page assets
+            await ctx.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in ("image", "media", "font", "stylesheet")
+                else route.fallback(),
+            )
         # Block ad/tracker domains to speed things up
         await ctx.route(
             re.compile(r"(doubleclick\.net|googlesyndication|adnxs|amazon-adsystem)"),
