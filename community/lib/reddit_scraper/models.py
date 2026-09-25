@@ -1,5 +1,5 @@
 # VENDORED from github.com/zanshash/reddit_scraper @ f926fc7
-# (+ nested-replies + login patches — see this script's docstring)
+# (+ nested-replies + proxy + login patches — see this script's docstring)
 # Do not edit here; update the source repo, then run scripts/sync_reddit_scraper.py
 from dataclasses import dataclass, field
 from typing import List, Optional
