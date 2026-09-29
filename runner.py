@@ -192,5 +192,20 @@ def morning_build() -> None:
     _with_pipeline_lock("morning-build", run_morning_build)
 
 
+@app.command()
+def source(name: str) -> None:
+    """Run ONE add-on collector standalone (e.g. the 02:00 IST instagram+
+    whisper slot — cadence: nightly sources). Takes the pipeline lock so it
+    never overlaps a run-local/morning-build."""
+    from community.scrape import extra_sources
+
+    def _one() -> None:
+        out = extra_sources.run(daily=True, only=[name])
+        typer.echo(json.dumps(out.get(name, {"error": f"unknown source {name!r}"}),
+                              default=str))
+
+    _with_pipeline_lock(f"source-{name}", _one)
+
+
 if __name__ == "__main__":
     app()

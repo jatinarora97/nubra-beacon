@@ -312,7 +312,7 @@ sources:
       - market data api nse
   instagram:
     enabled: true
-    cadence: daily              # LOCKED 2026-08-12: pinned posts bypass onlyPostsNewerThan
+    cadence: nightly              # 02:00 IST own cron slot — whisper RAM isolated from the morning build (2026-09-29)              # LOCKED 2026-08-12: pinned posts bypass onlyPostsNewerThan
                                 # and re-bill every poll — hourly measured ~$55/mo vs $29 pool
     accounts:                   # seed; watch_sources (kind=instagram_account) is source of truth
       - market.moves.matt

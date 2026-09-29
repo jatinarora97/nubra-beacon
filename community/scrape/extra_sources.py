@@ -64,13 +64,17 @@ def _run_source(name: str, fetcher, reg: dict) -> dict:
     return counters
 
 
-def run(daily: bool = False, **_) -> dict:
+def run(daily: bool = False, only: list[str] | None = None, **_) -> dict:
     """Per-source cadence (2026-07-18): add-on sources default to DAILY —
     they run only in the morning build. Rationale: YouTube search costs 100
     quota units per query (20 queries x 18 hourly runs = 36k units/day vs the
     10k/day free quota — hourly would exhaust it mid-day), and reviews/forums/
     issues don't move hour to hour. Override per source in the registry with
-    cadence: hourly.
+    cadence: hourly, or cadence: nightly (2026-09-29: skipped by BOTH hourly
+    runs and the morning build — runs only via `./cm source <name>` on its
+    own cron slot; instagram+whisper moved to 02:00 IST to stop the morning
+    build's RAM peak). `only` runs exactly those sources regardless of
+    cadence — the standalone path.
     """
     sources = settings.registry.get("sources", {})
     out: dict[str, dict] = {}
@@ -88,7 +92,13 @@ def run(daily: bool = False, **_) -> dict:
     ):
         cfg = sources.get(cfg_key, {}) or {}
         cadence = str(cfg.get("cadence", "daily")).lower()
-        if cadence != "hourly" and not daily:
+        if only is not None:
+            if out_key not in only:
+                continue
+        elif cadence == "nightly":
+            out[out_key] = {"skipped": "cadence=nightly — runs on its own cron slot"}
+            continue
+        elif cadence != "hourly" and not daily:
             out[out_key] = {"skipped": f"cadence={cadence} — runs in the morning build"}
             continue
         out[out_key] = _run_source(out_key, fetcher, cfg)
@@ -103,7 +113,7 @@ def run(daily: bool = False, **_) -> dict:
                 out[out_key]["tiers"] = {"error": f"{type(exc).__name__}: {str(exc)[:180]}"}
     # landscape monitor rides the morning build (weekly self-gate inside) —
     # isolated like every source
-    if daily:
+    if daily and only is None:
         try:
             from community.enrich import landscape_monitor
             out["landscape"] = landscape_monitor.run_weekly()

@@ -6,6 +6,10 @@
 
 APP_DIR=/opt/nubra-beacon
 COMPOSE_PROFILES=app
+# NOTE (2026-09-29): Ubuntu's stock cron IGNORES CRON_TZ — these schedules
+# only run in IST if the SYSTEM timezone is IST:
+#   sudo timedatectl set-timezone Asia/Kolkata && sudo systemctl restart cron
+# (prod ran everything at UTC+0 for weeks: morning build at 11:30 IST.)
 CRON_TZ=Asia/Kolkata
 TZ=Asia/Kolkata
 PATH=/usr/local/bin:/usr/bin:/bin
@@ -14,11 +18,16 @@ PATH=/usr/local/bin:/usr/bin:/bin
 0 7-23 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm run-local >> out/cron.log 2>&1
 0 0 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm run-local >> out/cron.log 2>&1
 
-# 06:00 morning build (catch-up + daily top feed + sync enrich + roundup by 07:30)
+# 02:00 instagram + whisper transcription — its own slot (cadence: nightly in
+# the registry): the AV models are the RAM peak, isolated from everything else
+0 2 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm source instagram >> out/cron.log 2>&1
+
+# 06:00 morning build (catch-up + daily feeds MINUS instagram + sync enrich + roundup)
 0 6 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm morning-build >> out/cron.log 2>&1
 
 # Saturday 10:00 weekly roundup (compose regenerates the weekly row, dispatch sends once)
 0 10 * * 6 cd $APP_DIR && docker compose exec -T api ./cm stage compose >> out/cron.log 2>&1 && cd $APP_DIR && docker compose exec -T api ./cm stage dispatch >> out/cron.log 2>&1
 
-# 02:00 nightly DB backup (gzip pg_dump, keeps last 14 — deploy/backup.sh)
-0 2 * * * cd $APP_DIR && ./deploy/backup.sh >> out/cron.log 2>&1
+# 04:30 nightly DB backup (gzip pg_dump, keeps last 14 — deploy/backup.sh)
+# moved from 02:00 so pg_dump never overlaps the instagram/whisper slot
+30 4 * * * cd $APP_DIR && ./deploy/backup.sh >> out/cron.log 2>&1
