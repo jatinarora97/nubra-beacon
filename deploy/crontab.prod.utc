@@ -1,0 +1,29 @@
+# Nubra Beacon — prod crontab, UTC VARIANT (2026-09-29).
+# Use THIS file while the VM's system clock is UTC and sudo/timedatectl is
+# unavailable: Ubuntu cron ignores CRON_TZ, so IST schedules must be written
+# as UTC (IST = UTC+5:30). Once IT sets the system timezone to Asia/Kolkata,
+# switch back to deploy/crontab.prod (the readable IST version).
+# APP_DIR must match the deploy dir on the VM.
+
+APP_DIR=/home/zanskar/nubra-beacon
+COMPOSE_PROFILES=app
+TZ=Asia/Kolkata
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# hourly pipeline 07:00-23:00 IST = 01:30-17:30 UTC
+30 1-17 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm run-local >> out/cron.log 2>&1
+# 00:00 IST = 18:30 UTC
+30 18 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm run-local >> out/cron.log 2>&1
+
+# 02:00 IST instagram + whisper (own slot, RAM-isolated) = 20:30 UTC
+# (requires the release carrying `./cm source`)
+30 20 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm source instagram >> out/cron.log 2>&1
+
+# 04:30 IST nightly DB backup = 23:00 UTC
+0 23 * * * cd $APP_DIR && ./deploy/backup.sh >> out/cron.log 2>&1
+
+# 06:00 IST morning build = 00:30 UTC
+30 0 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm morning-build >> out/cron.log 2>&1
+
+# Saturday 10:00 IST weekly roundup = Saturday 04:30 UTC (still Saturday IST)
+30 4 * * 6 cd $APP_DIR && docker compose exec -T api ./cm stage compose >> out/cron.log 2>&1 && cd $APP_DIR && docker compose exec -T api ./cm stage dispatch >> out/cron.log 2>&1
