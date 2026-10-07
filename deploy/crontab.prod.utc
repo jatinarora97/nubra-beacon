@@ -20,10 +20,16 @@ PATH=/usr/local/bin:/usr/bin:/bin
 30 20 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm source instagram >> out/cron.log 2>&1
 
 # 04:30 IST nightly DB backup = 23:00 UTC
-0 23 * * * cd $APP_DIR && ./deploy/backup.sh >> out/cron.log 2>&1
+0 23 * * * cd $APP_DIR && ./deploy/backup.sh >> out/cron.log 2>&1 && touch out/.backup_ok
 
 # 06:00 IST morning build = 00:30 UTC
 30 0 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm morning-build >> out/cron.log 2>&1
 
 # Saturday 10:00 IST weekly roundup = Saturday 04:30 UTC (still Saturday IST)
 30 4 * * 6 cd $APP_DIR && docker compose exec -T api ./cm stage compose >> out/cron.log 2>&1 && cd $APP_DIR && docker compose exec -T api ./cm stage dispatch >> out/cron.log 2>&1
+
+# Health alerts (needs the release that carries ./cm watchdog / health-digest).
+# Read-only, deliberately NOT under flock.
+*/20 * * * * cd $APP_DIR && docker compose exec -T api ./cm watchdog >> out/cron.log 2>&1
+# 08:05 IST daily health status message = 02:35 UTC (after the 07:30 morning build + roundup)
+35 2 * * * cd $APP_DIR && docker compose exec -T api ./cm health-digest >> out/cron.log 2>&1

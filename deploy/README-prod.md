@@ -138,3 +138,25 @@ port is not internet-reachable; harden before any public exposure.
 - nginx/TLS reverse proxy — add when the dashboard gets a hostname + auth.
 - Shadow-run calibration — running in prod per user decision 2026-07-08;
   weights re-tune after 1–2 weeks of team feedback.
+
+## Health alerts (Slack)
+
+Design: `docs/superpowers/specs/2026-10-05-slack-health-alerts-design.md`. Everything
+ships in the image; the VM needs these one-time manual edits, in this order:
+
+1. `.env`: set the new `RELEASE_TAG` and add `SLACK_ALERTS_WEBHOOK_URL=<incoming webhook
+   for the alerts channel>` (NOT the SSO approvals webhook).
+2. `make pull-prod` (the `migrate` service creates `job_runs`, `health_state`,
+   `resource_samples` before `api` starts).
+3. AFTER step 2 (a cron line added earlier fails against the old image): add the
+   `*/20 ... ./cm watchdog` and `08:05 IST ... ./cm health-digest` lines from
+   `crontab.prod` / `crontab.prod.utc` (UTC box: digest is `35 2 * * *`), and append
+   `&& touch out/.backup_ok` to the backup line.
+4. Prove the webhook: `docker compose exec api ./cm watchdog --test-message`.
+5. Optional: copy the `health:` block from `community/config/registry.yaml` into the
+   VM's own `registry.yaml` to tune thresholds (defaults apply without it).
+
+Useful: `./cm watchdog --dry-run` / `./cm health-digest --dry-run` print what would be
+sent without posting or saving. The watchdog is silent when everything is healthy.
+If you roll back to an older `RELEASE_TAG`, comment out the two health cron lines: the
+old image has no `watchdog` command and the failure would only appear in `out/cron.log`.

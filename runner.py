@@ -73,13 +73,30 @@ def _acquire_pipeline_lock():
     return conn
 
 
-def _with_pipeline_lock(label: str, fn) -> None:
+def _with_pipeline_lock(label: str, fn, job: str | None = None) -> None:
+    """Run `fn` under the pipeline lock and record the outcome in job_runs
+    (community/health/ledger.py — every ledger call swallows its own errors, so
+    exit codes, locking and stage isolation are exactly as before)."""
+    from community.health import ledger
+    job = job or label
     lock = _acquire_pipeline_lock()
     if lock is None:
+        ledger.record_skipped(job)
         typer.echo(f"[{label}] another pipeline run is active — skipping this run")
         raise typer.Exit(0)
+    ledger.reap_pipeline_runs()  # we hold the lock: any 'running' row is a dead process
+    job_id = ledger.start_job(job)
+    t0 = time.time()
     try:
-        fn()
+        result = fn()
+    except BaseException as exc:
+        ledger.finish_job(job_id, "failed", seconds=round(time.time() - t0, 1),
+                          error=f"{type(exc).__name__}: {str(exc)[:300]}")
+        raise
+    else:
+        status, failed = ledger.summarize(result)
+        ledger.finish_job(job_id, status, failed_stages=failed,
+                          seconds=round(time.time() - t0, 1))
     finally:
         lock.close()  # releases the advisory lock
 
@@ -96,13 +113,20 @@ def stage(name: str) -> None:
     if name not in STAGE_MODULES:
         raise typer.BadParameter(f"unknown stage {name!r}; one of {list(STAGE_MODULES)}")
     from community.config.log import get_logger
+    from community.health import ledger
     log = get_logger("runner")
     log.info("stage %s starting (single-stage run)", name)
+    ledger.reap_stale_stage(f"stage:{name}")
+    job_id = ledger.start_job(f"stage:{name}")
+    t0 = time.time()
     try:
         _run_stage(name)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         log.exception("stage %s FAILED", name)
+        ledger.finish_job(job_id, "failed", seconds=round(time.time() - t0, 1),
+                          error=f"{type(exc).__name__}: {str(exc)[:300]}")
         raise SystemExit(1)
+    ledger.finish_job(job_id, "ok", seconds=round(time.time() - t0, 1))
 
 
 @app.command()
@@ -113,6 +137,42 @@ def doctor() -> None:
     raise SystemExit(run_doctor())
 
 
+@app.command()
+def watchdog(dry_run: bool = False, test_message: bool = False, verbose: bool = False) -> None:
+    """Critical health checks (cron every 20 min). Posts to the Slack alerts
+    channel only when a check turns critical, stays critical (reminder) or
+    recovers; silent otherwise. --dry-run prints instead of posting/saving;
+    --test-message sends one [TEST] line to prove the webhook works."""
+    from community.config.log import get_logger
+    from community.health.engine import run_watchdog
+
+    try:
+        summary = run_watchdog(dry_run=dry_run, test_message=test_message)
+    except Exception:  # noqa: BLE001
+        get_logger("runner").exception("watchdog FAILED")
+        raise SystemExit(1)
+    if verbose or dry_run or test_message or summary.get("posted") or summary.get("actions"):
+        typer.echo(json.dumps(summary, default=str))
+
+
+@app.command("health-digest")
+def health_digest(dry_run: bool = False, no_live: bool = False) -> None:
+    """Daily health status message for Slack (cron 08:05 IST): problems first,
+    then jobs, sources, LLM, resources. --dry-run prints the message instead of
+    posting; --no-live skips the per-source live reachability probes."""
+    from community.config.log import get_logger
+    from community.health.engine import run_digest
+
+    try:
+        summary = run_digest(dry_run=dry_run, live=not no_live)
+    except Exception:  # noqa: BLE001
+        get_logger("runner").exception("health-digest FAILED")
+        raise SystemExit(1)
+    if dry_run:
+        typer.echo(summary["text"])
+    typer.echo(json.dumps({k: v for k, v in summary.items() if k != "text"}, default=str))
+
+
 @app.command("run-local")
 def run_local(skip_scrape: bool = False, skip_enrich: bool = False) -> None:
     """End-to-end run: scrape → clean → enrich → aggregate → score → draft →
@@ -120,7 +180,7 @@ def run_local(skip_scrape: bool = False, skip_enrich: bool = False) -> None:
     _with_pipeline_lock("run-local", lambda: _run_local_inner(skip_scrape, skip_enrich))
 
 
-def _run_local_inner(skip_scrape: bool, skip_enrich: bool) -> None:
+def _run_local_inner(skip_scrape: bool, skip_enrich: bool) -> dict:
     import json as _json
     import time as _time
 
@@ -158,6 +218,7 @@ def _run_local_inner(skip_scrape: bool, skip_enrich: bool) -> None:
              f" (FAILED: {', '.join(errors)})" if errors else "")
     for p in (all_stats.get("dispatch") or {}).get("written", []):
         log.info("archived %s", p)
+    return all_stats
 
 
 @app.command()
@@ -199,12 +260,13 @@ def source(name: str) -> None:
     never overlaps a run-local/morning-build."""
     from community.scrape import extra_sources
 
-    def _one() -> None:
+    def _one() -> dict:
         out = extra_sources.run(daily=True, only=[name])
-        typer.echo(json.dumps(out.get(name, {"error": f"unknown source {name!r}"}),
-                              default=str))
+        stats = out.get(name, {"error": f"unknown source {name!r}"})
+        typer.echo(json.dumps(stats, default=str))
+        return {name: stats}
 
-    _with_pipeline_lock(f"source-{name}", _one)
+    _with_pipeline_lock(f"source-{name}", _one, job=f"source:{name}")
 
 
 if __name__ == "__main__":

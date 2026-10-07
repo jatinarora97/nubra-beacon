@@ -30,4 +30,11 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 # 04:30 nightly DB backup (gzip pg_dump, keeps last 14 — deploy/backup.sh)
 # moved from 02:00 so pg_dump never overlaps the instagram/whisper slot
-30 4 * * * cd $APP_DIR && ./deploy/backup.sh >> out/cron.log 2>&1
+30 4 * * * cd $APP_DIR && ./deploy/backup.sh >> out/cron.log 2>&1 && touch out/.backup_ok
+
+# Health alerts (needs the release that carries ./cm watchdog / health-digest).
+# Watchdog: critical checks only, silent unless a check changes state. Read-only,
+# so deliberately NOT under flock (it must never queue behind a pipeline run).
+*/20 * * * * cd $APP_DIR && docker compose exec -T api ./cm watchdog >> out/cron.log 2>&1
+# 08:05 daily health status message to Slack (after the 07:30 morning build + roundup)
+5 8 * * * cd $APP_DIR && docker compose exec -T api ./cm health-digest >> out/cron.log 2>&1

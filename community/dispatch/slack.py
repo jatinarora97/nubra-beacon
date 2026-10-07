@@ -47,12 +47,22 @@ def _chunks(text: str) -> list[str]:
     return parts
 
 
-def send(markdown: str, subject: str) -> str:
-    """Returns 'sent' | 'skipped (no creds)' | 'skipped (local mode)' | 'error: …'."""
+def _scrub(message: str) -> str:
+    """httpx puts the full request URL (here: the webhook secret) in its error text, and
+    callers print this status into out/cron.log: never let a URL through."""
+    return re.sub(r"https?://\S+", "<url>", message)
+
+
+def send(markdown: str, subject: str, webhook_env: str | None = None) -> str:
+    """Returns 'sent' | 'skipped (no creds)' | 'skipped (local mode)' | 'error: …'.
+
+    webhook_env: name of an env var holding an alternate incoming-webhook URL
+    (health alerts use their own channel). Unset/None = the delivery webhook.
+    An alternate that is not set skips — it never falls back to the default."""
     from community.config.settings import settings
     if settings.mode != "prod":  # dump-restored laptops must never message the team
         return "skipped (local mode — archive only)"
-    url = _webhook()
+    url = (os.getenv(webhook_env) or None) if webhook_env else _webhook()
     if not url:
         return "skipped (no creds)"
     try:
@@ -63,4 +73,4 @@ def send(markdown: str, subject: str) -> str:
             r.raise_for_status()
         return "sent"
     except Exception as e:  # noqa: BLE001 — a channel failure never kills dispatch
-        return f"error: {type(e).__name__}: {str(e)[:120]}"
+        return f"error: {type(e).__name__}: {_scrub(str(e))[:120]}"

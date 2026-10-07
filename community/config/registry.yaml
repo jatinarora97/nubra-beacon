@@ -460,3 +460,19 @@ api_trading:                       # the API-trader segment (plan 2026-08-25)
     - name: Groww
       patterns: '\ygroww\y'
       urls: [https://groww.in/trade-api/docs/curl]
+
+health:                            # Slack health alerts: docs/superpowers/specs/2026-10-05-slack-health-alerts-design.md
+  # Every key here has an in-code default (community/health/config.py). The prod
+  # VM bind-mounts ITS OWN copy of this file over the image's, so a release
+  # cannot assume this block exists there; edit it only to tune.
+  muted: [reddit]                  # known broken (parked, commit 9f3134e): digest line only, never alerts
+  remind_hours: 6                  # re-post a still-critical alert this often
+  fallback_to_default_webhook: false   # true = also use SLACK_WEBHOOK_URL (SSO approvals channel) if SLACK_ALERTS_WEBHOOK_URL is unset
+  enrichment_backlog_warn: 200     # items waiting >2h for enrichment (uncalibrated 2026-10-05)
+  resources:
+    disk_warn_pct: 80
+    disk_crit_pct: 90
+    disk_eta_crit_days: 7
+    mem_crit_pct: 10
+    cron_log_warn_mb: 500
+    backup_crit_hours: 30
