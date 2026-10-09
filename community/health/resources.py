@@ -55,6 +55,31 @@ def parse_proc_start_epoch(stat_line: str, btime: float, hz: int) -> float | Non
         return None
 
 
+def parse_vmstat_swap(text: str) -> float | None:
+    """Cumulative pages swapped in + out since boot (pswpin + pswpout), or None."""
+    counters: dict[str, float] = {}
+    for line in text.splitlines():
+        name, _, value = line.partition(" ")
+        if name in ("pswpin", "pswpout"):
+            try:
+                counters[name] = float(value)
+            except ValueError:
+                return None
+    return sum(counters.values()) if len(counters) == 2 else None
+
+
+def swap_rate_pages_per_min(hist: list[tuple[datetime, float]]) -> float | None:
+    """Pages swapped per minute between the first and last sample, or None when there is
+    too little history (< 10 min) or the counter went backwards (reboot)."""
+    if len(hist) < 2:
+        return None
+    (t0, v0), (t1, v1) = hist[0], hist[-1]
+    minutes = (t1 - t0).total_seconds() / 60
+    if minutes < 10 or v1 < v0:
+        return None
+    return (v1 - v0) / minutes
+
+
 def collect_host(out_dir: Path = OUT_DIR, proc: str = "/proc") -> dict[str, float]:
     m: dict[str, float] = {}
     try:
@@ -68,6 +93,12 @@ def collect_host(out_dir: Path = OUT_DIR, proc: str = "/proc") -> dict[str, floa
     try:
         m.update(parse_meminfo(_read(f"{proc}/meminfo")))
     except (OSError, ValueError):
+        pass
+    try:
+        pages = parse_vmstat_swap(_read(f"{proc}/vmstat"))
+        if pages is not None:
+            m["swap_io_pages"] = pages
+    except OSError:
         pass
     try:
         load1 = float(_read(f"{proc}/loadavg").split()[0])
@@ -178,9 +209,23 @@ def eval_load(r: dict, values: list[float]) -> Result:
     return Result("load", OK, f"load {values[-1]:.1f} per core")
 
 
-def eval_swap(r: dict, pct: float) -> Result:
-    level = WARN if pct > r["swap_warn_pct"] else OK
-    return Result("swap", level, f"{pct:.0f}% of swap in use")
+def eval_swap(r: dict, pct: float, rate: float | None = None) -> Result:
+    """Swap use is only a problem when pages are actually moving: Linux parks cold pages in
+    swap, so a box can sit at 69% forever. Critical needs both very high use AND activity."""
+    active = rate is not None and rate > r["swap_active_pages_per_min"]
+    if rate is None:
+        activity = "swap activity unknown yet"
+    elif active:
+        activity = f"{rate:.0f} pages/min swapped in or out"
+    else:
+        activity = "no swapping activity"
+    detail = f"{pct:.0f}% of swap in use, {activity}"
+    hint = "something is short of RAM: check docker stats and the heavy jobs (whisper, enrich)"
+    if pct >= r["swap_crit_pct"] and active:
+        return Result("swap", CRIT, detail, hint)
+    if pct >= r["swap_idle_warn_pct"] or (pct >= r["swap_active_warn_pct"] and active):
+        return Result("swap", WARN, detail, hint)
+    return Result("swap", OK, detail)
 
 
 def eval_cron_log(r: dict, mb: float) -> Result:
@@ -206,10 +251,12 @@ def eval_restarts(name: str, hist: list[tuple[datetime, float]], now: datetime, 
 def eval_backup(age_h: float | None, r: dict) -> Result:
     if age_h is None:
         return Result("backup", WARN, "no backup heartbeat file found (out/.backup_ok)",
-                      "append '&& touch out/.backup_ok' to the backup cron line")
+                      "append '&& docker compose exec -T api touch out/.backup_ok' to the backup cron line")
+    hint = "run deploy/backup.sh by hand and check the cron log for the failure"
     if age_h > r["backup_crit_hours"]:
-        return Result("backup", CRIT, f"last good backup was {age_h:.0f} h ago",
-                      "run deploy/backup.sh by hand and check out/cron.log for the failure")
+        return Result("backup", CRIT, f"last good backup was {age_h:.0f} h ago (two nights missed)", hint)
+    if age_h > r["backup_warn_hours"]:
+        return Result("backup", WARN, f"last good backup was {age_h:.0f} h ago (a night was missed)", hint)
     return Result("backup", OK, f"last good backup {age_h:.0f} h ago")
 
 
@@ -228,7 +275,7 @@ def check_resources(cfg: dict, now: datetime) -> list[Result]:
         results.append(eval_load(r, [v for _, v in load]))
     swap = history("swap_used_pct", 2)
     if swap:
-        results.append(eval_swap(r, swap[-1][1]))
+        results.append(eval_swap(r, swap[-1][1], swap_rate_pages_per_min(history("swap_io_pages", 1))))
     cron = history("cron_log_mb", 2)
     if cron:
         results.append(eval_cron_log(r, cron[-1][1]))

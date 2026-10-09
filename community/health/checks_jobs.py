@@ -109,3 +109,26 @@ def check_watchdog_heartbeat(cfg: dict, now: datetime) -> list[Result]:
         return [Result("watchdog_heartbeat", WARN, f"the watchdog last ran {age_h:.0f} h ago",
                        "check crontab -l and out/cron.log")]
     return [Result("watchdog_heartbeat", OK, "watchdog is running")]
+
+
+@owns("digest_stale")
+def check_digest_stale(cfg: dict, now: datetime) -> list[Result]:
+    """The watchdog watches the daily digest: a silently dead 08:05 cron would otherwise
+    only be noticed by a person missing the message. digest_heartbeat is written by every
+    successful `./cm health-digest` run."""
+    limit = cfg["digest_stale_hours"]
+    hint = "check the health-digest cron line (crontab -l) and the cron log for errors"
+    row = cfg.get("_prev", {}).get("digest_heartbeat")
+    if row is None or row.last_seen is None:
+        epoch = state.get_epoch(now, create=not cfg.get("_dry_run"))
+        waited_h = (now - epoch).total_seconds() / 3600
+        if waited_h > limit:
+            return [Result("digest_stale", CRIT,
+                           f"the daily health digest has never run (monitoring started {waited_h:.0f} h ago)",
+                           hint)]
+        return [Result("digest_stale", OK, "waiting for the first daily digest")]
+    age_h = (now - row.last_seen).total_seconds() / 3600
+    if age_h > limit:
+        return [Result("digest_stale", CRIT,
+                       f"the daily health digest last ran {age_h:.0f} h ago (expected every 24 h)", hint)]
+    return [Result("digest_stale", OK, f"last digest {age_h:.0f} h ago")]

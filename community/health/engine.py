@@ -10,6 +10,7 @@ Queries run with a 20 s statement timeout (PGOPTIONS, process-local).
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from datetime import datetime, timezone
 
 from community.config.log import IST, get_logger
 from community.config.settings import settings
-from community.health import (checks_data, checks_jobs, checks_llm, config, digest,
+from community.health import (checks_data, checks_jobs, checks_llm, config, digest, icons,
                               notify, resources, state)
 from community.health.model import CRIT, OK, WARN, Result
 from community.health.state import Decision, Row
@@ -26,7 +27,7 @@ log = get_logger("health.engine")
 
 CRITICAL_CHECKS = [checks_jobs.check_jobs, checks_data.check_partitions,
                    checks_llm.check_anthropic_key, checks_llm.check_credits,
-                   resources.check_resources]
+                   resources.check_resources, checks_jobs.check_digest_stale]
 DIGEST_ONLY_CHECKS = [checks_data.check_sources, checks_data.check_freshness,
                       checks_llm.check_llm_usage, checks_jobs.check_recent_stage_failures,
                       checks_jobs.check_watchdog_heartbeat]
@@ -96,7 +97,7 @@ def _db_down(cfg: dict, now: datetime, dry_run: bool) -> dict:
     status = None
     if due:
         status = notify.post(
-            "[CRITICAL] db_unreachable: the watchdog cannot connect to Postgres.\n"
+            f"{icons.CRITICAL} [CRITICAL] db_unreachable: the watchdog cannot connect to Postgres.\n"
             "    What to check: docker compose ps; docker compose logs postgres --tail 100",
             _ALERT_SUBJECT, cfg, dry_run)
         if not dry_run and not str(status).startswith("error"):
@@ -109,7 +110,8 @@ def _db_recovered(cfg: dict, dry_run: bool) -> bool:
     if not DB_DOWN_FLAG.exists():
         return False
     if not dry_run:
-        notify.post("[RESOLVED] db_unreachable (Postgres is reachable again)", _ALERT_SUBJECT, cfg)
+        notify.post(f"{icons.OK} [RESOLVED] db_unreachable (Postgres is reachable again)",
+                    _ALERT_SUBJECT, cfg)
         DB_DOWN_FLAG.unlink(missing_ok=True)
     return True
 
@@ -120,7 +122,7 @@ def run_watchdog(*, dry_run: bool = False, test_message: bool = False,
     cfg = config.load()
     os.environ.setdefault("PGOPTIONS", "-c statement_timeout=20000")
     if test_message:
-        status = notify.post("[TEST] Beacon watchdog test message. If you can read this, "
+        status = notify.post(f"{icons.TEST} [TEST] Beacon watchdog test message. If you can read this, "
                              "critical alerts reach this channel.", "Beacon alert test", cfg, dry_run)
         return {"test_message": status}
     if not _db_up():
@@ -162,22 +164,34 @@ def run_digest(*, dry_run: bool = False, live: bool = True,
     cfg = config.load()
     os.environ.setdefault("PGOPTIONS", "-c statement_timeout=20000")
     if not _db_up():
-        status = notify.post("[CRITICAL] health digest could not run: Postgres is unreachable.",
+        status = notify.post(f"{icons.CRITICAL} [CRITICAL] health digest could not run: Postgres is unreachable.",
                              "Beacon health", cfg, dry_run)
         return {"db_unreachable": True, "posted": status}
     prev = state.load_states()
     cfg.update({"_prev": prev, "_force": True, "_dry_run": dry_run})
     results, _failed = run_checks(CRITICAL_CHECKS + DIGEST_ONLY_CHECKS, cfg, now)
-    ctx = digest.collect_context(cfg, now, live=live)
+    ctx = dict(digest.collect_context(cfg, now, live=live))  # copy: never mutate the caller's dict
     results = results + digest.live_results(ctx)
+    snap_row = prev.get("digest_snapshot")
+    ctx["changes"] = digest.diff_snapshot(
+        digest.parse_snapshot(snap_row.detail) if snap_row else None, results)
+    last = prev.get("digest_heartbeat")
+    ctx["prev_digest"] = {"last_seen": last.last_seen, "detail": last.detail} if last else None
     text = digest.render(results, ctx, cfg, now)
-    status = notify.post(text, f"Beacon health - {now.astimezone(IST):%d %b %Y}", cfg, dry_run)
+    status = notify.post(text, f"{icons.DIGEST} Beacon health - {now.astimezone(IST):%d %b %Y}",
+                         cfg, dry_run)
+    crit = [r.key for r in results if r.level == CRIT]
+    warn = [r.key for r in results if r.level == WARN]
     if not dry_run:
-        state.save(Row("digest_heartbeat", OK, "", now, now, None, 0))
+        state.save(Row("digest_heartbeat", OK,
+                       f"posted={status}; critical={len(crit)}; warnings={len(warn)}",
+                       now, now, None, 0))
+        state.save(Row("digest_snapshot", OK, json.dumps(digest.snapshot(results), sort_keys=True),
+                       now, now, None, 0))
     return {
         "checks": len(results),
-        "critical": [r.key for r in results if r.level == CRIT],
-        "warnings": [r.key for r in results if r.level == WARN],
+        "critical": crit,
+        "warnings": warn,
         "posted": status,
         "text": text if dry_run else None,
     }

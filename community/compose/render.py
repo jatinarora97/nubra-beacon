@@ -147,7 +147,7 @@ def _ops_block(all_stats: dict) -> dict:
     extra = ing.get("extra_sources") or {}
     for key, label in (("youtube", "youtube"), ("github", "github"),
                        ("community_forum", "forums"), ("app_review", "app reviews"),
-                       ("instagram", "instagram")):
+                       ("instagram", "instagram"), ("reddit_apify", "reddit (apify)")):
         st = extra.get(key) or {}
         if st.get("skipped"):
             continue                      # daily-cadence source outside its slot

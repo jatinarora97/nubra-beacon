@@ -20,6 +20,7 @@ DEFAULTS: dict = {
     "lock_exempt_minutes": 180,             # a lock holder younger than this excuses a skipped slot
     "job_failing_runs": 2,
     "stage_failing_runs": 3,
+    "digest_stale_hours": 26,               # daily digest not seen for this long => critical
     # Mirrors deploy/crontab.prod (IST). weekdays: Mon=0 .. Sun=6 (Saturday=5).
     # start_window_min: how late after the slot a run may START and still count
     #   (cron fires on the minute; keep it far below the slot interval).
@@ -55,7 +56,7 @@ DEFAULTS: dict = {
         "map": {"twitter": "twitter", "reddit": "reddit", "youtube": "youtube",
                 "github": "github", "broker_communities": "community_forum",
                 "app_reviews": "app_review", "instagram": "instagram",
-                "linkedin": "linkedin"},
+                "linkedin": "linkedin", "reddit_apify": "reddit_apify"},
         "max_age_hours": {"twitter": 10, "reddit": 12, "default": 30},
         "volume_sources": ["twitter"],
         "volume_max_age_hours": 10,
@@ -73,8 +74,11 @@ DEFAULTS: dict = {
         "disk_warn_pct": 80, "disk_crit_pct": 90,
         "disk_eta_warn_days": 21, "disk_eta_crit_days": 7,
         "mem_warn_pct": 20, "mem_crit_pct": 10, "mem_crit_samples": 3,
-        "load_warn_per_core": 2.0, "swap_warn_pct": 50,
-        "cron_log_warn_mb": 500, "backup_crit_hours": 30,
+        "load_warn_per_core": 2.0,
+        # swap is judged with swap-in/out activity (pages/min), not by percentage alone
+        "swap_active_warn_pct": 50, "swap_idle_warn_pct": 75, "swap_crit_pct": 90,
+        "swap_active_pages_per_min": 1000,
+        "cron_log_warn_mb": 500, "backup_warn_hours": 26, "backup_crit_hours": 36,
         "restart_crit_count": 2,
     },
 }

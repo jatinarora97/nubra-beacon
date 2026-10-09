@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import os
+import pathlib
+import re
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from community.dispatch import slack
-from community.health import notify
+from community.health import icons, notify
 from community.health.model import CRIT, Result
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
@@ -22,17 +24,19 @@ def _settings(mode="prod"):
 class FormatTests(unittest.TestCase):
     def test_alert_has_tag_key_detail_and_hint(self):
         text = notify.fmt_alert(Result("disk", CRIT, "93% used", "free space on the VM"))
-        self.assertTrue(text.startswith("[CRITICAL] disk: 93% used"))
+        self.assertTrue(text.startswith(f"{icons.CRITICAL} [CRITICAL] disk: 93% used"))
         self.assertIn("What to check: free space on the VM", text)
 
     def test_alert_without_hint_is_one_line(self):
         self.assertNotIn("\n", notify.fmt_alert(Result("disk", CRIT, "93% used")))
 
-    def test_messages_are_emoji_free_ascii(self):
-        for text in (notify.fmt_alert(Result("a", CRIT, "d", "h")),
-                     notify.fmt_remind(Result("a", CRIT, "d"), NOW - timedelta(hours=7), NOW),
-                     notify.fmt_resolved("a", NOW - timedelta(minutes=45), NOW)):
-            self.assertTrue(all(ord(c) < 128 for c in text), text)
+    def test_each_message_leads_with_its_icon_and_keeps_the_plain_tag(self):
+        alert = notify.fmt_alert(Result("a", CRIT, "d", "h"))
+        remind = notify.fmt_remind(Result("a", CRIT, "d"), NOW - timedelta(hours=7), NOW)
+        resolved = notify.fmt_resolved("a", NOW - timedelta(minutes=45), NOW)
+        self.assertTrue(alert.startswith(icons.CRITICAL) and "[CRITICAL] a:" in alert)
+        self.assertTrue(remind.startswith(icons.REMINDER) and "[CRITICAL, still failing]" in remind)
+        self.assertTrue(resolved.startswith(icons.OK) and "[RESOLVED]" in resolved)
 
     def test_remind_says_still_failing_with_duration(self):
         text = notify.fmt_remind(Result("a", CRIT, "d"), NOW - timedelta(hours=7), NOW)
@@ -41,7 +45,7 @@ class FormatTests(unittest.TestCase):
 
     def test_resolved_reports_how_long(self):
         self.assertEqual(notify.fmt_resolved("a", NOW - timedelta(minutes=45), NOW),
-                         "[RESOLVED] a (was critical for 45 min)")
+                         f"{icons.OK} [RESOLVED] a (was critical for 45 min)")
 
 
 class PostTests(unittest.TestCase):
@@ -116,3 +120,24 @@ class SlackSendWebhookTests(unittest.TestCase):
             result = slack.send("hello", "S", webhook_env="SLACK_ALERTS_WEBHOOK_URL")
         self.assertIn("skipped (local mode", result)
         post.assert_not_called()
+
+
+class IconsTests(unittest.TestCase):
+    """Emoji are allowed in Slack health messages ONLY (user decision 2026-10-09; CLAUDE.md
+    keeps UI / logs / CLI / config emoji-free). They all live in icons.py."""
+
+    EMOJI = re.compile("[\u2600-\u27BF\uFE0F\U0001F000-\U0001FAFF]")
+
+    def test_every_icon_is_a_real_emoji(self):
+        names = [n for n in dir(icons) if n.isupper()]
+        self.assertGreater(len(names), 10)
+        for name in names:
+            self.assertRegex(getattr(icons, name), self.EMOJI, name)
+
+    def test_no_other_health_module_contains_an_emoji(self):
+        health = pathlib.Path(icons.__file__).parent
+        for path in sorted(health.glob("*.py")):
+            if path.name == "icons.py":
+                continue
+            found = self.EMOJI.findall(path.read_text(encoding="utf-8"))
+            self.assertEqual(found, [], f"{path.name} must take emoji from icons.py")

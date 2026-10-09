@@ -169,7 +169,10 @@ def health_digest(dry_run: bool = False, no_live: bool = False) -> None:
         get_logger("runner").exception("health-digest FAILED")
         raise SystemExit(1)
     if dry_run:
-        typer.echo(summary["text"])
+        try:
+            typer.echo(summary["text"])
+        except UnicodeEncodeError:  # a legacy console (cp1252) cannot print the Slack emoji
+            typer.echo(summary["text"].encode("ascii", "replace").decode("ascii"))
     typer.echo(json.dumps({k: v for k, v in summary.items() if k != "text"}, default=str))
 
 

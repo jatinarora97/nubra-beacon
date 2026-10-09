@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import runner
-from community.health import engine
+from community.health import engine, icons
 from community.health.model import CRIT, OK, WARN, Result, owns
 from community.health.state import Row
 
@@ -60,7 +60,7 @@ class BuildPlanTests(unittest.TestCase):
     def test_new_critical_produces_an_alert_line(self):
         plan = self.plan([Result("fake:x", CRIT, "boom", "look here")])
         self.assertEqual([d.action for d in plan.decisions], ["alert"])
-        self.assertTrue(plan.message.startswith("[CRITICAL] fake:x: boom"))
+        self.assertTrue(plan.message.startswith(f"{icons.CRITICAL} [CRITICAL] fake:x: boom"))
 
     def test_warnings_never_produce_a_message(self):
         self.assertEqual(self.plan([Result("other:y", WARN, "meh")]).message, "")
@@ -78,8 +78,8 @@ class BuildPlanTests(unittest.TestCase):
     def test_alerts_are_listed_before_resolves(self):
         plan = self.plan([Result("fake:new", CRIT, "bad")], {"fake:old": crit_prev("fake:old", ok=1)})
         lines = plan.message.splitlines()
-        self.assertTrue(lines[0].startswith("[CRITICAL] fake:new"))
-        self.assertTrue(lines[-1].startswith("[RESOLVED] fake:old"))
+        self.assertTrue(lines[0].startswith(f"{icons.CRITICAL} [CRITICAL] fake:new"))
+        self.assertTrue(lines[-1].startswith(f"{icons.OK} [RESOLVED] fake:old"))
 
 
 class WatchdogRunTests(unittest.TestCase):
@@ -108,7 +108,7 @@ class WatchdogRunTests(unittest.TestCase):
     def test_new_critical_is_posted_and_its_state_saved(self):
         summary, post = self.run_with([check_fake_crit])
         post.assert_called_once()
-        self.assertTrue(post.call_args.args[0].startswith("[CRITICAL] fake:x"))
+        self.assertTrue(post.call_args.args[0].startswith(f"{icons.CRITICAL} [CRITICAL] fake:x"))
         self.assertEqual(summary["posted"], "sent")
         self.assertEqual(summary["critical"], ["fake:x"])
         self.assertEqual(summary["actions"], {"fake:x": "alert"})
@@ -152,7 +152,7 @@ class WatchdogRunTests(unittest.TestCase):
         with patch.object(engine.notify, "post", return_value="sent") as post:
             summary = engine.run_watchdog(test_message=True, now=NOW)
         self.assertEqual(summary, {"test_message": "sent"})
-        self.assertTrue(post.call_args.args[0].startswith("[TEST]"))
+        self.assertTrue(post.call_args.args[0].startswith(f"{icons.TEST} [TEST]"))
         engine._db_up.assert_not_called()
 
     def test_database_down_posts_once_then_stays_quiet_inside_the_reminder_window(self):
@@ -196,3 +196,8 @@ class WatchdogCommandTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 runner.watchdog(dry_run=False, test_message=False, verbose=False)
         self.assertEqual(ctx.exception.code, 1)
+
+
+class RegisteredChecksTests(unittest.TestCase):
+    def test_the_digest_staleness_check_runs_in_the_watchdog(self):
+        self.assertIn(engine.checks_jobs.check_digest_stale, engine.CRITICAL_CHECKS)

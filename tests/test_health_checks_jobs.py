@@ -133,3 +133,33 @@ class DigestOnlyChecksTests(unittest.TestCase):
         fresh = checks_jobs.check_watchdog_heartbeat(
             {"_prev": {"watchdog_heartbeat": Row("watchdog_heartbeat", "ok", "", now, now - timedelta(minutes=10))}}, now)[0]
         self.assertEqual((missing.level, stale.level, fresh.level), (WARN, WARN, OK))
+
+
+class DigestStaleTests(unittest.TestCase):
+    """The watchdog watches the daily digest, so a silently dead 08:05 cron raises an alert."""
+    NOW = ist(8, 12, 0)
+
+    def check(self, heartbeat_age_h, epoch_age_h):
+        prev = {}
+        if heartbeat_age_h is not None:
+            seen = self.NOW - timedelta(hours=heartbeat_age_h)
+            prev["digest_heartbeat"] = Row("digest_heartbeat", "ok", "posted=sent", seen, seen)
+        cfg = {**config.load({}), "_prev": prev}
+        with patch.object(checks_jobs.state, "get_epoch",
+                          return_value=self.NOW - timedelta(hours=epoch_age_h)):
+            return checks_jobs.check_digest_stale(cfg, self.NOW)[0]
+
+    def test_a_recent_digest_is_fine(self):
+        self.assertEqual(self.check(heartbeat_age_h=24, epoch_age_h=200).level, OK)
+
+    def test_a_digest_older_than_26_hours_is_critical(self):
+        res = self.check(heartbeat_age_h=30, epoch_age_h=200)
+        self.assertEqual((res.key, res.level), ("digest_stale", CRIT))
+        self.assertIn("30 h ago", res.detail)
+        self.assertIn("cron", res.hint)
+
+    def test_a_digest_that_never_ran_is_only_critical_after_the_grace_period(self):
+        self.assertEqual(self.check(None, epoch_age_h=10).level, OK)      # monitoring just started
+        late = self.check(None, epoch_age_h=30)
+        self.assertEqual(late.level, CRIT)
+        self.assertIn("never run", late.detail)

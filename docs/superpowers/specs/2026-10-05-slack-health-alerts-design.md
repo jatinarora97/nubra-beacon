@@ -36,7 +36,9 @@ Success criteria:
   buttons, `read_api.py:1646`). Health alerts must not land there by default. They use a separate
   `SLACK_ALERTS_WEBHOOK_URL`; there is no automatic fallback to the approvals webhook (a registry
   switch `health.fallback_to_default_webhook`, default false, exists for those who want it).
-- **Locked decisions respected:** emoji-free system chrome (messages use plain text tags such as
+- **Locked decisions respected:** emoji-free system chrome everywhere EXCEPT the Slack health messages, which
+  use emoji by explicit user decision (2026-10-09; all emoji live in `community/health/icons.py`, and the
+  plain tags stay in the text) (messages use plain text tags such as
   `[CRITICAL]`), prod-only sending (the existing `MODE=prod` gate in `slack.send`), one codebase.
 - `delivery.slack_digests: off` gates only the roundup/heads-up call sites in
   `dispatch/local.py`; health alerts call the sender directly and are not affected by it.
@@ -106,7 +108,8 @@ only. Thresholds live in a new `health:` block in `registry.yaml` with in-code d
 | `disk` | Used >= 90%, or projected full in under 7 days (linear fit over the last 7 days of samples; needs 24h+ of history). |
 | `memory` | Available < 10% for 3 consecutive samples (the 02:30 IST whisper run spikes by design; one sample never alerts). |
 | `crash_loop` | api or Postgres start time changed 2+ times within an hour. A single restart (every release) is only a morning-message note. |
-| `backup` | `out/.backup_ok` exists and is older than 30 hours. If the file does not exist: warn only (until the one-time cron edit is made). |
+| `backup` | `out/.backup_ok` older than 36 hours (two nights missed) is critical; older than 26 hours (one night missed) is a warning. If the file does not exist: warn only (until the one-time cron edit is made). |
+| `digest_stale` | The daily health digest has not run for 26 hours (`digest_heartbeat` in `health_state`; written by every successful `./cm health-digest`), or has never run 26 hours after monitoring started. The watchdog watches the digest so a silently dead 08:05 cron is noticed. |
 | `db_unreachable` | Watchdog cannot connect to Postgres: posts directly, bypassing the DB-backed state. |
 
 ### Warning (morning message)
@@ -122,8 +125,9 @@ only. Thresholds live in a new `health:` block in `registry.yaml` with in-code d
 - Freshness: no `topic_daily` rows since yesterday (UTC date) after 08:00 IST; no daily `roundups` row
   for today after 07:45 IST; the most recent Saturday's weekly roundup missing (judged from Saturday
   11:00 IST through Monday, because the digest runs at 08:05 IST, before the Saturday 10:00 compose).
-- Resources: disk >= 80% or ETA under 21 days; memory < 20%; swap heavily used; load per core > 2
-  sustained; `out/cron.log` over 500 MB; DB size and top 5 tables by size; any restart noted.
+- Resources: disk >= 80% or ETA under 21 days; memory < 20%; swap (judged with swap-in/out activity from
+  `/proc/vmstat`: warning at 75% in use, or 50% while pages are moving; critical at 90% only while actively
+  swapping; a box idling at 69% is fine); load per core > 2 sustained; `out/cron.log` over 500 MB; DB size and top 5 tables by size; any restart noted.
 - Watchdog heartbeat older than 2h (the watchdog itself stopped).
 - Muted checks (`health.muted`, default `[reddit]`, parked per commit 9f3134e) show as one
   "muted (known broken)" line and never alert.
@@ -137,9 +141,12 @@ only. Thresholds live in a new `health:` block in `registry.yaml` with in-code d
 - warn never posts on its own.
 - The watchdog prints nothing when everything is fine, so the 72 runs a day add no lines to
   `out/cron.log`.
-- Morning message: first line `Beacon health: N checks, X critical, Y warnings, Z muted`, then
-  Critical, Warnings, Jobs (each job: last status and age), Sources, LLM, Resources, Freshness.
-  Problems first. Plain text, no emoji.
+- Morning message (plain text plus Slack emoji from `icons.py`): first line `Overall: HEALTHY | DEGRADED | CRITICAL - N checks, X critical,
+  Y warnings (muted ...)`, then `Top actions` (up to 3: criticals first, then warnings in a fixed urgency order),
+  Critical, Warnings, `Changes since yesterday` (new / resolved / unchanged open issues, from a snapshot stored
+  after each digest), Jobs (each job: last status and age), Sources, LLM (yesterday's calls and cost against the
+  7-day average), Resources (disk, memory, swap and DB size with the change since yesterday), and a footer with
+  the previous digest's time and whether it posted.
 
 ## 8. Resource collection (container-visible only, no Docker socket)
 

@@ -82,6 +82,7 @@ def run(daily: bool = False, **_) -> dict:
         if last and (repo.now_utc() - last).total_seconds() < (every_h - 0.25) * 3600:
             reddit_due = False
     reddit_items, reddit_health = [], []
+    sorts: list[str] = []  # stays empty when the cadence gate skips reddit (the return uses it)
     if not reddit_due:
         log.info("reddit: skipped — cadence fetch_every_hours=%d, last run %s",
                  every_h, last.isoformat())

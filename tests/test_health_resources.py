@@ -16,8 +16,10 @@ NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 R = {
     "disk_warn_pct": 80, "disk_crit_pct": 90, "disk_eta_warn_days": 21, "disk_eta_crit_days": 7,
     "mem_warn_pct": 20, "mem_crit_pct": 10, "mem_crit_samples": 3,
-    "load_warn_per_core": 2.0, "swap_warn_pct": 50, "cron_log_warn_mb": 500,
-    "backup_crit_hours": 30, "restart_crit_count": 2,
+    "load_warn_per_core": 2.0, "cron_log_warn_mb": 500,
+    "swap_active_warn_pct": 50, "swap_idle_warn_pct": 75, "swap_crit_pct": 90,
+    "swap_active_pages_per_min": 1000,
+    "backup_warn_hours": 26, "backup_crit_hours": 36, "restart_crit_count": 2,
 }
 
 
@@ -62,6 +64,7 @@ class CollectHostTests(unittest.TestCase):
             (proc / "1").mkdir(parents=True)
             out.mkdir()
             (proc / "meminfo").write_text("MemTotal: 1000 kB\nMemAvailable: 250 kB\n")
+            (proc / "vmstat").write_text("pgfault 7\npswpin 10\npswpout 32\n")
             (proc / "loadavg").write_text("0.50 0.40 0.30 1/200 999\n")
             (proc / "stat").write_text("cpu 1 2 3\nbtime 1700000000\n")
             (proc / "1" / "stat").write_text("1 (cm) S 0 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 5000 0 0")
@@ -71,6 +74,7 @@ class CollectHostTests(unittest.TestCase):
         self.assertAlmostEqual(m["mem_available_pct"], 25.0)
         self.assertAlmostEqual(m["load_per_core"], 0.5 / (os.cpu_count() or 1))
         self.assertAlmostEqual(m["cron_log_mb"], 2.0)
+        self.assertEqual(m["swap_io_pages"], 42.0)
         self.assertLess(m["backup_age_h"], 0.1)
         if hasattr(os, "sysconf"):
             self.assertIn("api_start_epoch", m)
@@ -117,11 +121,9 @@ class EvaluatorTests(unittest.TestCase):
         self.assertEqual(resources.eval_memory(R, [15]).level, WARN)
         self.assertEqual(resources.eval_memory(R, [50]).level, OK)
 
-    def test_load_and_swap_and_cron_log_warn_only(self):
+    def test_load_and_cron_log_warn_only(self):
         self.assertEqual(resources.eval_load(R, [3, 3, 3]).level, WARN)
         self.assertEqual(resources.eval_load(R, [3, 1, 3]).level, OK)
-        self.assertEqual(resources.eval_swap(R, 60).level, WARN)
-        self.assertEqual(resources.eval_swap(R, 10).level, OK)
         self.assertEqual(resources.eval_cron_log(R, 600).level, WARN)
         self.assertEqual(resources.eval_cron_log(R, 10).level, OK)
 
@@ -141,7 +143,49 @@ class EvaluatorTests(unittest.TestCase):
     def test_backup_heartbeat(self):
         self.assertEqual(resources.eval_backup(None, R).level, WARN)  # file not created yet
         self.assertEqual(resources.eval_backup(5.0, R).level, OK)
-        self.assertEqual(resources.eval_backup(31.0, R).level, CRIT)
+        self.assertEqual(resources.eval_backup(25.0, R).level, OK)    # nightly backup: up to ~24 h old is normal
+        self.assertEqual(resources.eval_backup(27.0, R).level, WARN)  # one night missed
+        self.assertEqual(resources.eval_backup(37.0, R).level, CRIT)  # two nights missed
+
+
+class SwapTests(unittest.TestCase):
+    """Swap percentage alone misleads: Linux parks cold pages in swap and a box can sit at
+    69% forever without swapping. Judge it together with swap-in/out activity."""
+
+    def test_vmstat_swap_counters_are_summed(self):
+        text = "nr_free_pages 100\npswpin 40\npswpout 60\npgfault 9\n"
+        self.assertEqual(resources.parse_vmstat_swap(text), 100.0)
+        self.assertIsNone(resources.parse_vmstat_swap("nr_free_pages 100\n"))
+
+    def test_rate_is_pages_per_minute_between_the_first_and_last_sample(self):
+        hist = [(NOW - timedelta(minutes=40), 1000.0), (NOW - timedelta(minutes=20), 3000.0),
+                (NOW, 5000.0)]
+        self.assertAlmostEqual(resources.swap_rate_pages_per_min(hist), 100.0)
+
+    def test_rate_is_unknown_without_enough_history_or_after_a_counter_reset(self):
+        self.assertIsNone(resources.swap_rate_pages_per_min([(NOW, 5.0)]))
+        self.assertIsNone(resources.swap_rate_pages_per_min(
+            [(NOW - timedelta(minutes=3), 1.0), (NOW, 9.0)]))            # under 10 minutes
+        self.assertIsNone(resources.swap_rate_pages_per_min(
+            [(NOW - timedelta(minutes=30), 9000.0), (NOW, 10.0)]))       # a reboot reset the counter
+
+    def test_high_but_idle_swap_is_not_alarming_in_the_middle_range(self):
+        res = resources.eval_swap(R, 69.0, rate=0.0)
+        self.assertEqual(res.level, OK)
+        self.assertIn("no swapping activity", res.detail)
+
+    def test_swap_in_the_middle_range_warns_only_when_pages_are_moving(self):
+        self.assertEqual(resources.eval_swap(R, 69.0, rate=5000.0).level, WARN)
+        self.assertEqual(resources.eval_swap(R, 40.0, rate=5000.0).level, OK)
+
+    def test_swap_over_75_percent_warns_even_when_idle(self):
+        self.assertEqual(resources.eval_swap(R, 80.0, rate=0.0).level, WARN)
+        self.assertEqual(resources.eval_swap(R, 80.0, rate=None).level, WARN)
+
+    def test_swap_over_90_percent_is_critical_only_while_actively_swapping(self):
+        self.assertEqual(resources.eval_swap(R, 95.0, rate=5000.0).level, CRIT)
+        self.assertEqual(resources.eval_swap(R, 95.0, rate=0.0).level, WARN)
+        self.assertEqual(resources.eval_swap(R, 95.0, rate=None).level, WARN)
 
 
 class CheckResourcesTests(unittest.TestCase):
@@ -149,7 +193,7 @@ class CheckResourcesTests(unittest.TestCase):
         data = {
             "disk_used_pct": [(NOW, 40.0)], "disk_free_gb": free_series(100, 0),
             "mem_available_pct": [(NOW, 60.0)], "load_per_core": [(NOW, 0.2)],
-            "swap_used_pct": [(NOW, 1.0)], "cron_log_mb": [(NOW, 3.0)],
+            "swap_used_pct": [(NOW, 1.0)], "swap_io_pages": [], "cron_log_mb": [(NOW, 3.0)],
             "api_start_epoch": [(NOW - timedelta(hours=2), 1.0), (NOW, 1.0)],
             "pg_start_epoch": [(NOW - timedelta(hours=2), 1.0), (NOW, 1.0)],
             "backup_age_h": [(NOW, 3.0)],

@@ -115,6 +115,23 @@ sources:
     sort_types_daily_extra: [top, hot, rising]  # 1×/day in the morning build
     budget:
       max_items_per_run: 2000
+  reddit_apify:                 # Reddit via Apify trudax/reddit-scraper-lite (user decision 2026-10-09).
+    enabled: false              # DORMANT. The old `reddit` block above is untouched; flip this on in the
+                                # VM's registry.yaml for the shadow run (no image release needed).
+    cadence: nightly            # own cron slot: ./cm source reddit_apify  (daily = the 06:00 morning build)
+    actor: trudax~reddit-scraper-lite
+    sort: new
+    max_posts_per_sub: 10       # per subreddit and per keyword search
+    comments_per_post: 5
+    max_items_per_run: 300      # cap PER ACTOR RUN (posts + comments + community rows); raise after a measured run
+    subs_per_run: 5             # one run for all 20 subs + 16 searches timed out at 15 min (2026-10-09):
+    queries_per_run: 4          # the work is split into balanced runs of about this many subs / searches
+    proxy_groups: [RESIDENTIAL] # same group as the console test; try DATACENTER to compare cost
+    skip_community: false       # false = the exact input the console accepted; true saves item budget (untested)
+    include_media_links: true
+    timeout_s: 900
+    memory_mb: 1024
+    skip_authors: [AutoModerator]
   youtube:
     enabled: true
     cadence: daily              # daily = morning build only; hourly = every run
@@ -475,4 +492,5 @@ health:                            # Slack health alerts: docs/superpowers/specs
     disk_eta_crit_days: 7
     mem_crit_pct: 10
     cron_log_warn_mb: 500
-    backup_crit_hours: 30
+    backup_warn_hours: 26         # nightly backup: one night missed
+    backup_crit_hours: 36         # two nights missed

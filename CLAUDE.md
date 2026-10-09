@@ -20,7 +20,9 @@ actions and content — humans post. Pipeline packages map 1:1 to stages:
   `./cm morning-build`. ALWAYS `./cm`, never bare python (deps live in `.venv/`).
 - Health alerts to Slack: `./cm watchdog` (cron */20, critical only) · `./cm health-digest`
   (cron 08:05 IST) — spec `docs/superpowers/specs/2026-10-05-slack-health-alerts-design.md`;
-  needs `SLACK_ALERTS_WEBHOOK_URL` (separate channel from the SSO-approvals webhook).
+  needs `SLACK_ALERTS_WEBHOOK_URL` (separate channel from the SSO-approvals webhook). These Slack
+  health messages (only) use emoji, all in `community/health/icons.py` (user decision 2026-10-09);
+  every other surface stays emoji-free.
 - Config: `.env` (secrets; template `community/config/env.example`) +
   `community/config/registry.yaml` (thresholds, taxonomy, cadences — calibrations are
   commented with dates). Collection sources are DB-managed (`watch_sources`, UI Sources

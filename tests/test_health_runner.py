@@ -9,7 +9,19 @@ import typer
 import runner
 
 
-class WithPipelineLockLedgerTests(unittest.TestCase):
+class NoDatabaseTestCase(unittest.TestCase):
+    """Unit tests must never reach a real database (it may be down and a connect can hang).
+    Every db helper fails fast; tests that care patch their own behaviour on top of this."""
+
+    def setUp(self):
+        failing = lambda: MagicMock(side_effect=RuntimeError("no database in unit tests"))  # noqa: E731
+        guard = patch.multiple("community.store.db", one=failing(), query=failing(),
+                               execute=failing(), executemany=failing())
+        guard.start()
+        self.addCleanup(guard.stop)
+
+
+class WithPipelineLockLedgerTests(NoDatabaseTestCase):
     def test_lock_busy_records_a_skip_and_exits_zero(self):
         with patch.object(runner, "_acquire_pipeline_lock", return_value=None), \
              patch("community.health.ledger.record_skipped") as skipped, \
@@ -69,7 +81,7 @@ class WithPipelineLockLedgerTests(unittest.TestCase):
         self.assertEqual(ran, [1])
 
 
-class AbandonedRunReapingTests(unittest.TestCase):
+class AbandonedRunReapingTests(NoDatabaseTestCase):
     def test_dead_runs_are_reaped_after_the_lock_is_won_and_before_the_new_run_starts(self):
         calls = []
         with patch.object(runner, "_acquire_pipeline_lock", return_value=MagicMock()),              patch("community.health.ledger.reap_pipeline_runs", side_effect=lambda: calls.append("reap")),              patch("community.health.ledger.start_job", side_effect=lambda j: calls.append("start") or 1),              patch("community.health.ledger.finish_job"):
@@ -88,7 +100,7 @@ class AbandonedRunReapingTests(unittest.TestCase):
         reap.assert_called_once_with("stage:compose")
 
 
-class StageAndSourceCommandTests(unittest.TestCase):
+class StageAndSourceCommandTests(NoDatabaseTestCase):
     def test_stage_success_is_recorded(self):
         with patch.object(runner, "_run_stage", return_value={}), \
              patch("community.health.ledger.start_job", return_value=3) as start, \
