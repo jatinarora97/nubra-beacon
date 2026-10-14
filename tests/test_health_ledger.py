@@ -93,3 +93,19 @@ class ReapAndLockTests(unittest.TestCase):
     def test_lock_key_matches_the_runner(self):
         import runner
         self.assertEqual(ledger._PIPELINE_LOCK_KEY, runner._PIPELINE_LOCK_KEY)
+
+
+class FirstRunAtTests(unittest.TestCase):
+    def test_returns_the_earliest_run_that_actually_started(self):
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+        first = datetime(2026, 10, 12, 8, 0, tzinfo=timezone.utc)
+        with patch("community.store.db.one", return_value={"t": first}) as one:
+            self.assertEqual(ledger.first_run_at("source:reddit_apify"), first)
+        self.assertIn("skipped_locked", one.call_args[0][0])    # a skipped slot is not a run
+        self.assertEqual(one.call_args[0][1], ("source:reddit_apify",))
+
+    def test_a_job_that_never_ran_is_none(self):
+        from unittest.mock import patch
+        with patch("community.store.db.one", return_value={"t": None}):
+            self.assertIsNone(ledger.first_run_at("source:reddit_apify"))

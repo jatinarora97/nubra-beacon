@@ -39,8 +39,9 @@ actions and content — humans post. Pipeline packages map 1:1 to stages:
 
 180d retention for ALL data incl. compliance_audit · Gmail SMTP not SES · grounding =
 `context-v1` (real product doc, swapped 2026-07-17; edits publish v2+ via Grounding page) ·
-vendored zanshash scraper is
-the ONLY Reddit transport (no JSON fallback) · one prod-grade codebase, no local/prod
+Reddit transport = Apify
+(`harshmaur~reddit-scraper-pro`, `sources.reddit_apify`; user decision 2026-10-09, built 2026-10-11) — the
+vendored zanshash scraper is retired while that is enabled, and there is no JSON fallback · one prod-grade codebase, no local/prod
 forks · React UI (Streamlit rejected) · emoji-free system chrome · centroid τ=0.86 and
 action bar 60 are measured calibrations (re-tune only with prod feedback data —
 no shadow run; straight to prod was the 2026-07-08 decision).

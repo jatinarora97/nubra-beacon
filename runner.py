@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Annotated, Optional
 
 import typer
 
@@ -59,6 +60,7 @@ def _run_stage(name: str, **kwargs) -> dict:
 # advisory lock and SKIP (exit 0) when another run holds it. The lock dies with
 # the connection, so a killed run can never wedge the next one.
 _PIPELINE_LOCK_KEY = 0x6E756272  # "nubr"
+_UNSET = object()
 
 
 def _acquire_pipeline_lock():
@@ -257,14 +259,34 @@ def morning_build() -> None:
 
 
 @app.command()
-def source(name: str) -> None:
+def source(name: str,
+           days: Annotated[Optional[int], typer.Option(
+               "--days", help="widen this run's date window to N days (reddit_apify backfill); "
+                              "the registry value is left unchanged")] = None,
+           posts: Annotated[Optional[int], typer.Option(
+               "--posts", help="posts to read per subreddit in this run only (reddit_apify backfill; "
+                               "the 10-post default only covers the newest posts of a busy subreddit)")] = None
+           ) -> None:
     """Run ONE add-on collector standalone (e.g. the 02:00 IST instagram+
     whisper slot — cadence: nightly sources). Takes the pipeline lock so it
     never overlaps a run-local/morning-build."""
     from community.scrape import extra_sources
 
     def _one() -> dict:
-        out = extra_sources.run(daily=True, only=[name])
+        overrides = {k: v for k, v in (("date_limit_days", days), ("max_posts_per_sub", posts)) if v}
+        block, before = None, {}
+        if overrides:   # one-off registry overrides for this run only; restored in `finally`
+            block = settings.registry.setdefault("sources", {}).setdefault(name, {})
+            before = {k: block.get(k, _UNSET) for k in overrides}
+            block.update(overrides)
+        try:
+            out = extra_sources.run(daily=True, only=[name])
+        finally:
+            for key, old in before.items():
+                if old is _UNSET:
+                    block.pop(key, None)
+                else:
+                    block[key] = old
         stats = out.get(name, {"error": f"unknown source {name!r}"})
         typer.echo(json.dumps(stats, default=str))
         return {name: stats}

@@ -18,6 +18,10 @@ PATH=/usr/local/bin:/usr/bin:/bin
 0 7-23 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm run-local >> out/cron.log 2>&1
 0 0 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm run-local >> out/cron.log 2>&1
 
+# 01:00 Reddit via Apify (cadence: nightly in the registry; needs sources.reddit_apify.enabled: true).
+# No flock: `./cm source` takes the pipeline lock itself and records a skipped run if it is busy.
+0 1 * * * cd $APP_DIR && docker compose exec -T api ./cm source reddit_apify >> out/cron.log 2>&1
+
 # 02:00 instagram + whisper transcription — its own slot (cadence: nightly in
 # the registry): the AV models are the RAM peak, isolated from everything else
 0 2 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm source instagram >> out/cron.log 2>&1

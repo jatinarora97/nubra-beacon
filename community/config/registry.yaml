@@ -115,23 +115,48 @@ sources:
     sort_types_daily_extra: [top, hot, rising]  # 1×/day in the morning build
     budget:
       max_items_per_run: 2000
-  reddit_apify:                 # Reddit via Apify trudax/reddit-scraper-lite (user decision 2026-10-09).
-    enabled: false              # DORMANT. The old `reddit` block above is untouched; flip this on in the
-                                # VM's registry.yaml for the shadow run (no image release needed).
+  reddit_apify:                 # Reddit via Apify (user decision 2026-10-09). Actors compared 2026-10-11:
+                                # harshmaur/reddit-scraper-pro: ~10x faster, native date filters, $0.01 per run +
+                                # ~$0.0014 per result (full probe: $2.75 for 2,332 rows) | trudax/reddit-scraper-lite:
+                                # $0.004 per result, ~10 items/min.
+    enabled: false              # DORMANT. The old `reddit` block above is untouched. Turn it on with
+                                # REDDIT_APIFY_ENABLED=true in .env (the prod VM mounts no registry file).
     cadence: nightly            # own cron slot: ./cm source reddit_apify  (daily = the 06:00 morning build)
-    actor: trudax~reddit-scraper-lite
-    sort: new
-    max_posts_per_sub: 10       # per subreddit and per keyword search
+    actor: harshmaur~reddit-scraper-pro   # or trudax~reddit-scraper-lite (keys marked [trudax] apply only to it)
+    max_posts_per_sub: 10       # per subreddit (harshmaur also uses it x number of search terms as the search total)
     comments_per_post: 5
-    max_items_per_run: 300      # cap PER ACTOR RUN (posts + comments + community rows); raise after a measured run
-    subs_per_run: 5             # one run for all 20 subs + 16 searches timed out at 15 min (2026-10-09):
-    queries_per_run: 4          # the work is split into balanced runs of about this many subs / searches
-    proxy_groups: [RESIDENTIAL] # same group as the console test; try DATACENTER to compare cost
-    skip_community: false       # false = the exact input the console accepted; true saves item budget (untested)
-    include_media_links: true
+    listing_subs_per_run: 1     # harshmaur: its post cap is ONE total per run, so with several subreddits in a run the
+                                # busiest takes it all (probe 2026-10-11: 16 of 20 subs came back empty). 1 = each sub
+                                # gets its own budget; costs the $0.01 start fee per sub. Keep at 1.
+    queries_per_run: 4          # keyword searches per run (harshmaur: searches run separately from listings)
+    subs_per_run: 5             # [trudax] one run for all 20 subs + 16 searches timed out at 15 min (2026-10-09)
+    max_charge_usd: 2.0         # hard spend cap PER ACTOR RUN (Apify stops the run at it) - a safety net, not a budget
+    post_overrides:             # harshmaur: a bigger per-run post budget for the very busy subreddits (the probe's four
+      IndianStockMarket: 25     # busiest all hit the 10-post cap). Only ever RAISES max_posts_per_sub; ~$0.13 more per sub per night
+      IndiaAlgoTrading: 25
+      NSEbets: 25
+      algotrading: 25
+    priority_categories: [brokers, fno_algo]   # harshmaur: when a budget stops the job part-way, these subreddit
+                                # categories have already run (keyword searches always run first)
+    account_stop_pct: 85        # Reddit shares ONE Apify account (and monthly limit) with Instagram/LinkedIn: it never
+                                # starts a run once the account is this far into its limit (null = off)
+    nightly_budget_usd: 2.5     # ... and stops launching runs once one job has spent this much (null = off).
+                                # A full night measured ~$1.7-2.0 (2026-10-14); 1.5 cut every night short.
+    keyword_india_only: true    # keyword-search hits (unwatched subreddits) must also show an India signal in the text or
+                                # the subreddit name; the generic market gate alone let crypto/forex/spam through
+    refresh_max_threads: 20     # harshmaur: engagement refresh of suggested-opportunity threads, once a day (morning build)
+    max_post_age_days: 30       # drop pinned/sticky old posts a `new` listing also returns (a 2019 post appeared)
+    # date_limit_days: 2       # harshmaur: only posts/comments newer than this (default 2 = the post's own night + the next,
+                                # which re-reads it for late comments; every extra day is billed again each night.
+                                # Raise it for a backfill). [trudax]: sends postDateLimit - OPT-IN, untested.
     timeout_s: 900
     memory_mb: 1024
     skip_authors: [AutoModerator]
+    sort: new                   # [trudax] harshmaur listings have no sort (one pass over the date window)
+    max_items_per_run: 300      # [trudax] cap PER ACTOR RUN (posts + comments + community rows)
+    proxy_groups: [RESIDENTIAL] # [trudax] same group as the console test; try DATACENTER to compare cost
+    skip_community: false       # [trudax] false = the exact input the console accepted; true saves item budget (untested)
+    include_media_links: true   # [trudax]
   youtube:
     enabled: true
     cadence: daily              # daily = morning build only; hourly = every run

@@ -163,3 +163,57 @@ class DigestStaleTests(unittest.TestCase):
         late = self.check(None, epoch_age_h=30)
         self.assertEqual(late.level, CRIT)
         self.assertIn("never run", late.detail)
+
+
+class OptInSourceJobTests(unittest.TestCase):
+    """source:reddit_apify is expected only once the source is enabled, and only from its first run:
+    otherwise enabling it mid-day (or releasing the image before the cron line exists) would count the
+    01:00 slots already behind us as missed and page a critical alert."""
+    KEY = "job_overdue:source:reddit_apify"
+
+    def check(self, rows, now, *, enabled=True, first=None):
+        from types import SimpleNamespace
+        registry = {"sources": {"reddit_apify": {"enabled": enabled}}}
+        cfg = {**config.load({}), "_prev": {}}
+        with patch.object(checks_jobs.ledger, "recent_runs", return_value=rows), \
+             patch.object(checks_jobs.ledger, "pipeline_lock_held", return_value=True), \
+             patch.object(checks_jobs.ledger, "first_run_at", return_value=first), \
+             patch.object(checks_jobs.state, "get_epoch", return_value=ist(5, 0)), \
+             patch.object(checks_jobs, "settings", SimpleNamespace(registry=registry)):
+            return {r.key: r for r in checks_jobs.check_jobs(cfg, now)}
+
+    def test_a_disabled_source_is_not_expected_at_all(self):
+        res = self.check([], ist(7, 3), enabled=False)
+        self.assertFalse([k for k in res if "reddit_apify" in k], res.keys())
+
+    def test_an_enabled_source_that_never_ran_waits_for_its_first_run_instead_of_alerting(self):
+        res = self.check([], ist(7, 3), first=None)
+        self.assertEqual(res[self.KEY].level, OK)
+        self.assertIn("first run", res[self.KEY].detail)
+
+    def test_slots_before_the_first_run_are_not_counted_as_missed(self):
+        # first run at 14:00; the 01:00 slot of the same day came BEFORE it
+        res = self.check([row("source:reddit_apify", "ok", ist(7, 14), ist(7, 14, 12))], ist(7, 15, 0),
+                         first=ist(7, 14))
+        self.assertEqual(res[self.KEY].level, OK)
+
+    def test_after_the_first_run_a_skipped_nightly_slot_is_critical(self):
+        res = self.check([row("source:reddit_apify", "ok", ist(6, 14), ist(6, 14, 12))], ist(7, 1, 30),
+                         first=ist(6, 14))
+        self.assertEqual(res[self.KEY].level, CRIT)
+
+    def test_a_nightly_run_that_started_on_time_is_ok(self):
+        rows = [row("source:reddit_apify", "ok", ist(6, 14), ist(6, 14, 12)),
+                row("source:reddit_apify", "ok", ist(7, 1), ist(7, 1, 12))]
+        res = self.check(rows, ist(7, 3, 0), first=ist(6, 14))
+        self.assertEqual(res[self.KEY].level, OK)
+
+    def test_an_enabled_source_still_gets_the_failed_and_slow_checks(self):
+        res = self.check([], ist(7, 3), first=None)
+        self.assertIn("job_failed:source:reddit_apify", res)
+        self.assertIn("job_slow:source:reddit_apify", res)
+
+    def test_other_jobs_are_unaffected_by_the_reddit_setting(self):
+        res = self.check([], ist(7, 3), enabled=False)
+        self.assertIn("job_overdue:source:instagram", res)
+        self.assertIn("job_overdue:run-local", res)

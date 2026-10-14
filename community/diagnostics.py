@@ -44,8 +44,15 @@ def _migrations():
     return f"{rows[0]['n']} applied"
 
 
+def _apify_reddit_enabled() -> bool:
+    from community.config.settings import settings
+    return bool((settings.registry.get("sources", {}).get("reddit_apify") or {}).get("enabled"))
+
+
 @_check("reddit (old.reddit reachable + real listing)")
 def _reddit():
+    if _apify_reddit_enabled():
+        raise _Skip("old.reddit scraper is retired: reddit now comes from reddit_apify")
     from community.scrape.reddit import _preflight
     if not _preflight():
         raise RuntimeError("old.reddit is blocked or unreachable from this network "
@@ -200,6 +207,16 @@ def _live_probe(name: str) -> dict:
             r = httpx.get("https://itunes.apple.com/in/rss/customerreviews/id=6746636699/json",
                           timeout=12, follow_redirects=True)
             return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}"}
+        if name == "reddit_apify":
+            tok = os.getenv("APIFY_TOKEN")
+            if not tok:
+                return {"live": "no_key"}
+            from community.config.settings import settings
+            from community.scrape import reddit_apify
+            actor = reddit_apify._actor(settings.registry.get("sources", {}).get("reddit_apify") or {})
+            r = httpx.get(f"https://api.apify.com/v2/acts/{actor}",     # reads the actor, starts no run
+                          headers={"Authorization": f"Bearer {tok}"}, timeout=12)
+            return {"live": "ok" if r.status_code == 200 else f"http_{r.status_code}", "detail": actor}
         if name == "instagram":
             tok = os.getenv("APIFY_TOKEN")
             if not tok:
@@ -266,6 +283,16 @@ def _appstores():
     return msg
 
 
+@_check("reddit via Apify (token + actor)")
+def _reddit_apify():
+    if not _apify_reddit_enabled():
+        raise _Skip("reddit_apify not enabled")
+    status, msg = _collector_check("reddit_apify")
+    if status == "FAIL" or status == "SKIP":     # enabled, so a missing token is a real gap
+        raise RuntimeError(msg if status == "FAIL" else "APIFY_TOKEN not set but reddit_apify is enabled")
+    return msg
+
+
 @_check("instagram (Apify token + credits)")
 def _instagram():
     status, msg = _collector_check("instagram")
@@ -277,7 +304,7 @@ def _instagram():
 
 
 def run_doctor() -> int:
-    checks = [_db, _migrations, _grounding, _sources, _reddit, _chromium,
+    checks = [_db, _migrations, _grounding, _sources, _reddit, _reddit_apify, _chromium,
               _anthropic, _x, _youtube, _github, _forums, _appstores,
               _instagram, _langfuse, _slack, _email]
     for c in checks:

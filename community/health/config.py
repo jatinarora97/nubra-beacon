@@ -37,6 +37,12 @@ DEFAULTS: dict = {
         "source:instagram": {"hours": [2], "minute": 0,
                              "start_window_min": 10, "grace_min": 20,
                              "crit_after_missed": 1, "max_run_min": 180},
+        # Reddit via Apify: 01:00 IST (19:30 UTC). Expected only while sources.reddit_apify is
+        # enabled, and only from its first run (see checks_jobs.check_jobs).
+        "source:reddit_apify": {"hours": [1], "minute": 0,
+                                "enabled_by": "reddit_apify", "since_first_run": True,
+                                "start_window_min": 10, "grace_min": 20,
+                                "crit_after_missed": 1, "max_run_min": 90},
         "stage:compose": {"hours": [10], "minute": 0, "weekdays": [5],
                           "start_window_min": 10, "grace_min": 15,
                           "crit_after_missed": 1, "max_run_min": 45},

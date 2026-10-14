@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from community.config.log import IST
+from community.config.settings import settings
 from community.health import ledger, schedule, state
 from community.health.model import CRIT, OK, WARN, Result, owns
 
@@ -79,8 +80,24 @@ def check_jobs(cfg: dict, now: datetime) -> list[Result]:
     rows = ledger.recent_runs(48)
     runs = [schedule.Run(r["job"], r["status"], r["started_at"], r["finished_at"]) for r in rows]
     results: list[Result] = []
+    sources = settings.registry.get("sources", {})
     for job, jcfg in cfg["jobs"].items():
-        results.append(_overdue(job, jcfg, runs, now, epoch, cfg))
+        # opt-in jobs (a cadence: nightly source) are expected only while their source is enabled ...
+        enabled_by = jcfg.get("enabled_by")
+        if enabled_by and not (sources.get(enabled_by) or {}).get("enabled", False):
+            continue
+        job_epoch = epoch
+        if jcfg.get("since_first_run"):
+            # ... and only from the first time they ran: enabling the source mid-day (or releasing the
+            # image before the cron line exists) must not count the slots already behind us as missed
+            first = ledger.first_run_at(job)
+            if first is None:
+                results.append(Result(f"job_overdue:{job}", OK, "enabled; waiting for its first run"))
+                results.append(_slow(job, jcfg, rows, now))
+                results.append(_failed(job, rows, cfg["job_failing_runs"]))
+                continue
+            job_epoch = max(epoch, first)
+        results.append(_overdue(job, jcfg, runs, now, job_epoch, cfg))
         results.append(_slow(job, jcfg, rows, now))
         results.append(_failed(job, rows, cfg["job_failing_runs"]))
     results.extend(_stage_failing(rows, cfg["stage_failing_runs"]))

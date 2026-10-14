@@ -107,6 +107,15 @@ def pipeline_lock_held() -> bool | None:
         return None
 
 
+def first_run_at(job: str):
+    """When this job first actually started (None = it never has). A skipped slot is not a run.
+    Used by checks (may raise)."""
+    from community.store import db
+    row = db.one("SELECT min(started_at) AS t FROM job_runs "
+                 "WHERE job = %s AND status <> 'skipped_locked'", (job,))
+    return row["t"] if row else None
+
+
 def recent_runs(hours: float) -> list[dict]:
     """Runs started in the last `hours`, oldest first. Used by checks (may raise)."""
     from community.store import db

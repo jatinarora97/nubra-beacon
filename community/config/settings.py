@@ -18,9 +18,18 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 load_dotenv(ROOT / ".env")
 
 
+_TRUE, _FALSE = ("1", "true", "yes", "on"), ("0", "false", "no", "off")
+
+
 def _registry() -> dict:
     p = pathlib.Path(__file__).parent / "registry.yaml"
-    return yaml.safe_load(p.read_text()) if p.exists() else {}
+    reg = yaml.safe_load(p.read_text()) if p.exists() else {}
+    # The prod VM runs the registry baked into the image (its compose file mounts none), so .env is its
+    # only host-side switch: REDDIT_APIFY_ENABLED=true turns the dormant Reddit-via-Apify source on.
+    flag = os.getenv("REDDIT_APIFY_ENABLED", "").strip().lower()
+    if flag in _TRUE or flag in _FALSE:
+        reg.setdefault("sources", {}).setdefault("reddit_apify", {})["enabled"] = flag in _TRUE
+    return reg
 
 
 @dataclass(frozen=True)

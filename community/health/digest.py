@@ -17,7 +17,8 @@ from community.config.log import IST
 from community.health import icons, resources
 from community.health.model import CRIT, OK, RANK, WARN, Result
 
-_PROBE_NAMES = ("twitter", "youtube", "github", "broker_communities", "app_reviews", "instagram")
+_PROBE_NAMES = ("twitter", "youtube", "github", "broker_communities", "app_reviews", "instagram",
+                "reddit_apify")
 _PROBE_OK = ("ok", "no_probe")
 
 # What to fix first: lower index = more urgent (prefix match on the check key).

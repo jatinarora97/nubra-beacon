@@ -15,6 +15,11 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # 00:00 IST = 18:30 UTC
 30 18 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm run-local >> out/cron.log 2>&1
 
+# 01:00 IST Reddit via Apify (own slot; needs sources.reddit_apify.enabled: true) = 19:30 UTC
+# No flock: `./cm source` takes the pipeline lock itself and records a skipped run if it is busy.
+# Logs to the home dir: out/ is root-owned on this VM, so a host-side redirect there fails before the command runs.
+30 19 * * * cd $APP_DIR && docker compose exec -T api ./cm source reddit_apify >> /home/zanskar/logs/nubra-beacon/cron.log 2>&1
+
 # 02:00 IST instagram + whisper (own slot, RAM-isolated) = 20:30 UTC
 # (requires the release carrying `./cm source`)
 30 20 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm source instagram >> out/cron.log 2>&1

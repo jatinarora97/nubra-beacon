@@ -281,10 +281,10 @@ def _freshness() -> dict:
     reg_sources = settings_registry_sources()
     cadence_by_cfg = {k: str((reg_sources.get(k) or {}).get("cadence", "daily")).lower()
                       for k in ("youtube", "github", "broker_communities", "app_reviews",
-                                "instagram", "linkedin")}
+                                "instagram", "linkedin", "reddit_apify")}
     stored_to_cfg = {"youtube": "youtube", "github": "github",
                      "community_forum": "broker_communities", "app_review": "app_reviews",
-                     "instagram": "instagram", "linkedin": "linkedin"}
+                     "instagram": "instagram", "linkedin": "linkedin", "reddit_apify": "reddit_apify"}
     # reddit is cadence-gated since 2026-08-19 (metered residential proxy):
     # every fetch_every_hours, not hourly — the Overview must say so
     reddit_every = int((reg_sources.get("reddit") or {}).get("fetch_every_hours", 1))
@@ -1441,6 +1441,7 @@ def source_health(live: bool = False):
         ("broker_communities", "community_forum", None, False),
         ("app_reviews", "app_review", None, False),
         ("instagram", "instagram", "APIFY_TOKEN", True),
+        ("reddit_apify", "reddit_apify", "APIFY_TOKEN", True),
     )
     states = {
         row["source"]: row
@@ -1466,6 +1467,8 @@ def source_health(live: bool = False):
     for config_name, stored_source, credential, credential_required in specs:
         cfg = configured.get(config_name, {}) or {}
         enabled = bool(cfg.get("enabled", True if config_name in ("twitter", "reddit") else False))
+        if config_name == "reddit" and (configured.get("reddit_apify") or {}).get("enabled"):
+            enabled = False     # the vendored scraper is retired while reddit_apify is on
         state = states.get(stored_source, {})
         credential_present = bool(credential and os.getenv(credential))
         if credential is None:

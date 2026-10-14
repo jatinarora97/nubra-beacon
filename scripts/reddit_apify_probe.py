@@ -14,6 +14,7 @@ runs with --yes:
     docker compose exec -T api python scripts/reddit_apify_probe.py --full
     docker compose exec -T api python scripts/reddit_apify_probe.py --full --yes
     docker compose exec -T api python scripts/reddit_apify_probe.py --full --yes --sorts new,hot,rising,top --top-time day
+    docker compose exec -T api python scripts/reddit_apify_probe.py --full --actor harshmaur~reddit-scraper-pro --date-limit-days 7 --yes
 
 Each sort is a separate actor run; a sort the actor rejects is reported, not fatal.
 """
@@ -61,6 +62,9 @@ def _print_report(items, stats) -> None:
     print(f"dropped: {json.dumps(stats['skipped'])}")
     if summary["oldest"]:
         print(f"post/comment dates: {summary['oldest']:%Y-%m-%d %H:%M} -> {summary['newest']:%Y-%m-%d %H:%M} UTC")
+        print("oldest items (old pinned posts show up here):")
+        for i in sorted(items, key=lambda x: x.created_at)[:3]:
+            print(f"  {i.created_at:%Y-%m-%d} {i.source_type:<7} r/{i.raw.get('subreddit')}  {i.external_id}")
     print("\nby category (posts / comments):")
     for cat, n in sorted(summary["by_category"].items(), key=lambda kv: -kv[1]["posts"]):
         print(f"  {cat:<18} {n['posts']:>4} / {n['comments']:<5}")
@@ -87,10 +91,21 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--subs", default="IndianStockMarket,IndiaInvestments",
                     help="quick mode: comma-separated subreddits")
-    ap.add_argument("--max-posts", type=int, default=3, help="quick mode: posts per subreddit")
-    ap.add_argument("--comments", type=int, default=3, help="quick mode: comments per post")
+    ap.add_argument("--max-posts", type=int, default=None,
+                    help="posts per subreddit (quick mode default 3; --full default: the old reddit limits)")
+    ap.add_argument("--comments", type=int, default=None,
+                    help="comments per post (quick mode default 3; --full default: the old reddit limits, 15 "
+                         "- the nightly job's own registry value is lower, pass it here to mirror production)")
     ap.add_argument("--keywords", action="store_true", help="quick mode: also run keyword searches")
-    ap.add_argument("--proxy", default=None, help="Apify proxy group instead of the registry's")
+    ap.add_argument("--actor", default=None,
+                    help="Apify actor instead of the registry's, e.g. harshmaur~reddit-scraper-pro")
+    ap.add_argument("--max-charge-usd", type=float, default=2.0,
+                    help="hard spend cap PER actor run (Apify stops the run at it)")
+    ap.add_argument("--proxy", default=None, help="[trudax] Apify proxy group instead of the registry's")
+    ap.add_argument("--skip-community", action="store_true",
+                    help="ask the actor not to return community rows (saves ~$0.004 each)")
+    ap.add_argument("--date-limit-days", type=int, default=None,
+                    help="send postDateLimit/commentDateLimit = today minus N days (tests the actor's date limit)")
     ap.add_argument("--full", action="store_true",
                     help="real scope: all watched subreddits + keyword searches + the old limits")
     ap.add_argument("--yes", action="store_true", help="--full: actually run (this costs money)")
@@ -109,14 +124,22 @@ def main() -> int:
         return 1
 
     reg = {**(settings.registry.get("sources", {}).get("reddit_apify") or {}), "enabled": True}
+    if args.actor:
+        reg["actor"] = args.actor
+    reg["max_charge_usd"] = args.max_charge_usd
     if args.proxy:
         reg["proxy_groups"] = [args.proxy]
+    if args.skip_community:
+        reg["skip_community"] = True
+    if args.date_limit_days:
+        reg["date_limit_days"] = args.date_limit_days
     print("Actor:", reddit_apify._actor(reg))
 
     if args.full:
         old = settings.registry.get("sources", {}).get("reddit", {}) or {}
-        reg.update(max_posts_per_sub=int(old.get("max_posts_per_sub", 10)),
-                   comments_per_post=int(old.get("comments_per_post", 15)),
+        reg.update(max_posts_per_sub=args.max_posts or int(old.get("max_posts_per_sub", 10)),
+                   comments_per_post=args.comments if args.comments is not None
+                   else int(old.get("comments_per_post", 15)),
                    max_items_per_run=args.max_items)
         if args.top_time:
             reg["top_time"] = args.top_time
@@ -130,18 +153,21 @@ def main() -> int:
         subs = reddit_apify._subreddits(reg)
         keywords = reddit_apify._active_keywords()
         queries = [q for _kw, q, _gate in keywords]
-        plan = reddit_apify.plan_runs(reg, list(subs), queries)
-        per_run_items = [reddit_apify.build_payload(reg, a, b)["maxItems"] for a, b in plan]
+        plan = reddit_apify.make_plan(reg, list(subs), queries, subs)
+        if reddit_apify._profile(reddit_apify._actor(reg)) == "harshmaur":
+            sorts = ["new"]     # its listings have no sort: one pass covers the date window
+        run_inputs = [p for a, b in plan for _suffix, p in reddit_apify.build_payloads(reg, a, b)]
+        per_run_items = [reddit_apify.worst_case_items(p) for p in run_inputs]
         print(f"\nFULL SCOPE: {len(subs)} subreddits, {len(queries)} keyword searches, "
               f"{reg['max_posts_per_sub']} posts each, {reg['comments_per_post']} comments per post")
         for cat in sorted(set(subs.values())):
             print(f"  {cat}: {', '.join(sorted(s for s, c in subs.items() if c == cat))}")
         print(f"  keywords: {', '.join(kw for kw, _q, _g in keywords) or '(none)'}")
         worst = sum(per_run_items) * len(sorts)
-        print(f"sorts: {sorts}; each sort = {len(plan)} actor runs of about "
+        print(f"sorts: {sorts}; each sort = {len(run_inputs)} actor runs of about "
               f"{max(len(a) for a, _ in plan)} subreddits + {max(len(b) for _, b in plan)} searches "
               f"(each run may take up to {reg.get('timeout_s', 900)} s)")
-        print(f"worst case: {worst} items over {len(plan) * len(sorts)} actor runs")
+        print(f"worst case: {worst} items over {len(run_inputs) * len(sorts)} actor runs")
         if args.price_per_1000 is not None:
             print(f"estimated worst-case cost: ${worst / 1000 * args.price_per_1000:.2f}")
         else:
@@ -154,15 +180,18 @@ def main() -> int:
         _print_report(items, stats)
         return 0
 
+    quick_posts = args.max_posts or 3
+    quick_comments = 3 if args.comments is None else args.comments
     subs = [s.strip() for s in args.subs.split(",") if s.strip()]
     queries = ["<active keyword searches from watch_sources>"] if args.keywords else []
     print("Input sent (searches shown as a placeholder):")
-    print(json.dumps(reddit_apify.build_payload(
-        {**reg, "max_posts_per_sub": args.max_posts, "comments_per_post": args.comments}, subs, queries),
-        indent=2))
+    for suffix, payload in reddit_apify.build_payloads(
+            {**reg, "max_posts_per_sub": quick_posts, "comments_per_post": quick_comments}, subs, queries):
+        print(f"[run{suffix or ' listing'}]")
+        print(json.dumps(payload, indent=2))
     print("\nRunning the actor (usually 1-5 minutes)...", flush=True)
     items, stats = reddit_apify.collect(reg, only_subs=subs, with_keywords=args.keywords,
-                                        max_posts=args.max_posts, comments=args.comments)
+                                        max_posts=quick_posts, comments=quick_comments)
     _print_report(items, stats)
     for kind in ("post", "comment"):
         sample = [i for i in items if i.source_type == kind][:3]

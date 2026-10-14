@@ -72,6 +72,10 @@ def run(daily: bool = False, **_) -> dict:
     # per GB, so reddit runs every fetch_every_hours instead of hourly; the
     # morning build always runs and carries the daily-extra feeds)
     r_reg = settings.registry["sources"]["reddit"]
+    # Reddit now comes from Apify (its own nightly cron slot: ./cm source reddit_apify). While that is
+    # enabled the vendored old.reddit scraper, the old.reddit engagement refresh and the old keyword
+    # search are retired; switching it off restores them unchanged.
+    apify_on = bool((settings.registry["sources"].get("reddit_apify") or {}).get("enabled"))
     every_h = int(r_reg.get("fetch_every_hours", 1))
     reddit_due = True
     if every_h > 1 and not daily:
@@ -83,7 +87,11 @@ def run(daily: bool = False, **_) -> dict:
             reddit_due = False
     reddit_items, reddit_health = [], []
     sorts: list[str] = []  # stays empty when the cadence gate skips reddit (the return uses it)
-    if not reddit_due:
+    if apify_on:
+        reddit_due = False      # no ingest/reddit state stamp: that source is retired while reddit_apify is on
+        log.info("reddit: vendored scraper skipped - superseded by reddit_apify (own nightly slot)")
+        reddit_health = ["superseded by reddit_apify"]
+    elif not reddit_due:
         log.info("reddit: skipped — cadence fetch_every_hours=%d, last run %s",
                  every_h, last.isoformat())
         reddit_health = [f"cadence skip (every {every_h}h)"]
@@ -124,7 +132,7 @@ def run(daily: bool = False, **_) -> dict:
     try:
         from community.scrape import refresh
         log.info("engagement refresh: starting")
-        refresh_stats = refresh.run()
+        refresh_stats = refresh.run(daily=daily)
         log.info("engagement refresh: %s", refresh_stats)
     except Exception:  # noqa: BLE001
         log.exception("engagement refresh failed — scrape stage continues")
@@ -132,14 +140,17 @@ def run(daily: bool = False, **_) -> dict:
 
     # reddit keyword search (2026-07-08) — watched keywords fetch across ALL of
     # reddit, not just watched subs; same never-break-the-stage contract
-    try:
-        from community.scrape import keyword_search
-        log.info("keyword search: starting")
-        keyword_stats = keyword_search.run()
-        log.info("keyword search: %s", keyword_stats)
-    except Exception:  # noqa: BLE001
-        log.exception("keyword search failed — scrape stage continues")
-        keyword_stats = {"error": "see traceback in log"}
+    if apify_on:        # the Apify collector runs the keyword searches itself
+        keyword_stats = {"skipped": "superseded by reddit_apify"}
+    else:
+        try:
+            from community.scrape import keyword_search
+            log.info("keyword search: starting")
+            keyword_stats = keyword_search.run()
+            log.info("keyword search: %s", keyword_stats)
+        except Exception:  # noqa: BLE001
+            log.exception("keyword search failed — scrape stage continues")
+            keyword_stats = {"error": "see traceback in log"}
 
     # Optional add-on sources (YouTube, GitHub, broker communities, app reviews).
     # Config-gated and failure-isolated: existing Reddit/X collection must keep

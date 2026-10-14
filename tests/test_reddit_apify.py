@@ -6,7 +6,7 @@ plus a reply, a search hit from a non-watched subreddit and a deleted author.
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -17,6 +17,7 @@ from community.health import config as health_config
 from community.scrape import extra_sources, reddit_apify
 
 CATEGORIES = {"IndianStockMarket": "market_trading", "IndiaInvestments": "investing_pf"}
+TRUDAX = "trudax~reddit-scraper-lite"   # these tests cover the trudax input/field dialect
 
 COMMUNITY = {
     "url": "https://www.reddit.com/r/IndianStockMarket/", "dataType": "community",
@@ -61,8 +62,8 @@ def search_hit(post_id, sub, title, body=""):
             "url": f"https://www.reddit.com/r/{sub}/comments/{post_id}/x/"}
 
 
-def collect(rows, *, since=None, keywords=(), subs=None, **kw):
-    reg = {"enabled": True, "actor": "trudax~reddit-scraper-lite"}
+def collect(rows, *, since=None, keywords=(), subs=None, reg_extra=None, **kw):
+    reg = {"enabled": True, "actor": "trudax~reddit-scraper-lite", **(reg_extra or {})}
     subs = CATEGORIES if subs is None else subs
     with patch.object(reddit_apify, "_run_actor", return_value=rows), \
          patch.object(reddit_apify, "_token", return_value="tok"), \
@@ -173,13 +174,13 @@ class CollectTests(unittest.TestCase):
     def test_nothing_is_fetched_without_an_apify_token(self):
         with patch.object(reddit_apify, "_token", return_value=""), \
              patch.object(reddit_apify, "_run_actor") as run:
-            items, stats = reddit_apify.collect({"enabled": True})
+            items, stats = reddit_apify.collect({"enabled": True, "actor": TRUDAX})
         run.assert_not_called()
         self.assertEqual((items, stats["rows"]), ([], 0))
 
     def test_fetch_is_an_iterator_over_the_collected_items(self):
         with patch.object(reddit_apify, "collect", return_value=(["a", "b"], {})):
-            self.assertEqual(list(reddit_apify.fetch({"enabled": True})), ["a", "b"])
+            self.assertEqual(list(reddit_apify.fetch({"enabled": True, "actor": TRUDAX})), ["a", "b"])
 
 
 class RestrictedRunTests(unittest.TestCase):
@@ -187,7 +188,7 @@ class RestrictedRunTests(unittest.TestCase):
 
     def run_with(self, **kw):
         with patch.object(reddit_apify, "_run_actor", return_value=[]) as run,              patch.object(reddit_apify, "_token", return_value="tok"),              patch.object(reddit_apify, "_subreddits", return_value=CATEGORIES),              patch.object(reddit_apify, "_active_keywords", return_value=[("nubra", "nubra", False)]):
-            reddit_apify.collect({"enabled": True}, **kw)
+            reddit_apify.collect({"enabled": True, "actor": TRUDAX}, **kw)
         return run.call_args.args[1]
 
     def test_only_subs_runs_just_those_subreddits_without_keyword_searches(self):
@@ -223,7 +224,7 @@ class MultiSortTests(unittest.TestCase):
              patch.object(reddit_apify, "_token", return_value="tok"), \
              patch.object(reddit_apify, "_subreddits", return_value=CATEGORIES), \
              patch.object(reddit_apify, "_active_keywords", return_value=[]):
-            items, stats = reddit_apify.collect({"enabled": True}, sorts=sorts, **kw)
+            items, stats = reddit_apify.collect({"enabled": True, "actor": TRUDAX}, sorts=sorts, **kw)
         return calls, items, stats
 
     def test_one_actor_run_per_sort_and_the_same_post_or_comment_is_kept_once(self):
@@ -249,7 +250,7 @@ class MultiSortTests(unittest.TestCase):
              patch.object(reddit_apify, "_token", return_value="tok"), \
              patch.object(reddit_apify, "_subreddits", return_value=CATEGORIES), \
              patch.object(reddit_apify, "_active_keywords", return_value=[]):
-            reddit_apify.collect({"enabled": True, "sort": "rising"})
+            reddit_apify.collect({"enabled": True, "actor": TRUDAX, "sort": "rising"})
         self.assertEqual(run.call_count, 1)
         self.assertEqual(run.call_args.args[1]["sort"], "rising")
 
@@ -258,7 +259,7 @@ class MultiSortTests(unittest.TestCase):
              patch.object(reddit_apify, "_token", return_value="tok"), \
              patch.object(reddit_apify, "_subreddits", return_value=CATEGORIES), \
              patch.object(reddit_apify, "_active_keywords", return_value=[]):
-            reddit_apify.collect({"enabled": True, "sorts": ["new", "hot"]})
+            reddit_apify.collect({"enabled": True, "actor": TRUDAX, "sorts": ["new", "hot"]})
         self.assertEqual([c.args[1]["sort"] for c in run.call_args_list], ["new", "hot"])
 
     def test_the_time_filter_is_only_sent_for_the_top_sort_and_only_when_configured(self):
@@ -365,7 +366,7 @@ class ChunkingTests(unittest.TestCase):
              patch.object(reddit_apify, "_token", return_value="tok"), \
              patch.object(reddit_apify, "_subreddits", return_value={f"sub{i}": "x" for i in range(subs)}), \
              patch.object(reddit_apify, "_active_keywords", return_value=keywords):
-            items, stats = reddit_apify.collect({"enabled": True, **(reg or {})})
+            items, stats = reddit_apify.collect({"enabled": True, "actor": TRUDAX, **(reg or {})})
         return calls, stats
 
     def shape(self, calls):
@@ -420,7 +421,7 @@ class ChunkingTests(unittest.TestCase):
              patch.object(reddit_apify, "_token", return_value="tok"), \
              patch.object(reddit_apify, "_subreddits", return_value={"a": "x", "b": "x", "c": "x"}), \
              patch.object(reddit_apify, "_active_keywords", return_value=[("k", "k", False)]):
-            _items, stats = reddit_apify.collect({"enabled": True, "subs_per_run": 2, "queries_per_run": 1})
+            _items, stats = reddit_apify.collect({"enabled": True, "actor": TRUDAX, "subs_per_run": 2, "queries_per_run": 1})
         self.assertEqual([r["label"] for r in stats["runs"]], ["new: run 1/2", "new: run 2/2"])
 
 
@@ -432,6 +433,40 @@ class PlanRunsTests(unittest.TestCase):
 
     def test_an_empty_scope_is_one_empty_run_not_a_crash(self):
         self.assertEqual(reddit_apify.plan_runs({}, [], []), [([], [])])
+
+
+class DateLimitTests(unittest.TestCase):
+    """Billing is per item (~$0.004), and a `new` listing returns the same latest posts every night.
+    postDateLimit would stop the actor at a date so only fresh posts are billed (opt-in: the console
+    once rejected an input carrying date limits, so it is tested separately before use)."""
+
+    def test_date_limits_are_only_sent_when_configured(self):
+        self.assertNotIn("postDateLimit", reddit_apify.build_payload({}, ["a"], []))
+        payload = reddit_apify.build_payload({"date_limit_days": 2}, ["a"], [])
+        expected = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
+        self.assertEqual((payload["postDateLimit"], payload["commentDateLimit"]), (expected, expected))
+
+    def test_the_time_filter_stays_out_even_with_date_limits(self):
+        self.assertNotIn("time", reddit_apify.build_payload({"date_limit_days": 2, "sort": "new"}, ["a"], []))
+
+
+class AgeFilterTests(unittest.TestCase):
+    """A `new` listing also returns pinned/sticky posts of any age (a 2019 item came back on 2026-10-11)."""
+
+    OLD = {**POST, "id": "t3_old001", "parsedId": "old001", "createdAt": "2019-03-20T20:45:00.000Z"}
+
+    def test_posts_older_than_the_age_limit_are_dropped_with_their_comments(self):
+        old_comment = {**COMMENT, "id": "t1_oldc1", "parsedId": "oldc1", "postId": "t3_old001"}
+        fresh = {**POST, "createdAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")}
+        items, stats = collect([self.OLD, old_comment, fresh], reg_extra={"max_post_age_days": 30})
+        self.assertEqual([i.external_id for i in items], ["t3_1x1enu2"])
+        self.assertEqual(stats["skipped"]["older_than_since"], 1)
+
+    def test_the_age_limit_is_off_unless_configured_and_an_explicit_since_wins(self):
+        self.assertEqual(len(collect([self.OLD])[0]), 1)
+        since = datetime(2019, 1, 1, tzinfo=timezone.utc)
+        items, _ = collect([self.OLD], since=since, reg_extra={"max_post_age_days": 30})
+        self.assertEqual(len(items), 1)  # backfills pass an explicit `since`
 
 
 class PayloadTests(unittest.TestCase):
@@ -476,9 +511,11 @@ class DormantByDefaultTests(unittest.TestCase):
         path = Path(__file__).resolve().parent.parent / "community" / "config" / "registry.yaml"
         block = yaml.safe_load(path.read_text(encoding="utf-8"))["sources"]["reddit_apify"]
         self.assertIs(block["enabled"], False)
-        self.assertEqual(block["actor"], "trudax~reddit-scraper-lite")
+        self.assertEqual(block["actor"], "harshmaur~reddit-scraper-pro")   # compared 2026-10-11; trudax stays selectable
+        self.assertEqual(block["max_charge_usd"], 2.0)                    # hard per-run spend cap
         self.assertEqual(block["cadence"], "nightly")  # own cron slot, not the morning build
-        self.assertEqual((block["subs_per_run"], block["queries_per_run"]), (5, 4))  # small runs: one big run timed out
+        self.assertEqual((block["subs_per_run"], block["queries_per_run"]), (5, 4))
+        self.assertEqual(block["max_post_age_days"], 30)  # drops pinned/sticky old posts  # small runs: one big run timed out
 
     def test_health_knows_the_source_name_so_staleness_is_judged_once_it_is_enabled(self):
         self.assertEqual(health_config.load({})["sources"]["map"]["reddit_apify"], "reddit_apify")

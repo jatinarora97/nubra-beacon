@@ -156,6 +156,55 @@ ships in the image; the VM needs these one-time manual edits, in this order:
 5. Optional: copy the `health:` block from `community/config/registry.yaml` into the
    VM's own `registry.yaml` to tune thresholds (defaults apply without it).
 
+## Reddit via Apify (go-live)
+
+Reddit comes from Apify (actor `harshmaur~reddit-scraper-pro`; the vendored old.reddit scraper is dead).
+The code ships in the image and is OFF until switched on. The prod VM mounts NO registry file (its compose
+file has none, so the container uses the registry baked into the image), so the switch is in `.env`; three
+host-side edits (`.env` and crontab are manual):
+
+1. `.env`: `APIFY_TOKEN` set (already there if Instagram/LinkedIn run). Reddit shares the Apify credits;
+   the existing `credits:apify_*` health alert covers the monthly cap.
+2. `.env`: add `REDDIT_APIFY_ENABLED=true`. The baked-in `sources.reddit_apify` block already carries the
+   actor, post budgets, India filter and spend cap; changing those means a new image, or optionally
+   mounting a registry file: copy it out (`docker compose cp api:/app/community/config/registry.yaml
+   community/config/registry.yaml`), add `- ./community/config/registry.yaml:/app/community/config/registry.yaml:ro`
+   under the api `volumes:` as the repo's `docker-compose.yml` does, and `docker compose up -d`.
+3. crontab: the `source reddit_apify` line from `crontab.prod` / `crontab.prod.utc` (01:00 IST = 19:30 UTC).
+   Do this AFTER `make pull-prod` (an older image has no such source).
+4. First run by hand, then `./cm doctor` and the Sources page. The nightly default (2-day window, 10 posts per
+   subreddit, 25 for the `post_overrides` ones) reads only the newest posts, so a real backfill needs both flags:
+   `docker compose exec -T api ./cm source reddit_apify --days 14 --posts 100` (one-off, the registry is untouched;
+   roughly $5-10 - the per-run cap `max_charge_usd` still applies). Check the Apify headroom first
+   (`./cm doctor`, the Instagram line: "$X of $Y used this cycle"): the backfill stops by itself at the
+   account line below, so on a nearly full plan it will only get part of the way.
+
+What switching on does: the hourly ingest stops calling the vendored scraper, the old.reddit engagement
+refresh and the old keyword search (they were no-ops/failures); the engagement refresh of suggested
+threads runs once a day in the morning build through Apify; `./cm doctor`, the health digest and the
+Source-health page gain a `reddit_apify` row. The health monitor expects the 01:00 job only from its first
+run, so enabling it mid-day cannot page a false alert.
+
+Cost: $0.01 per run + about $0.0014 per row; one run per watched subreddit (the actor's post cap is one total
+per run, so batching starves the busy subreddit's neighbours) + a few search runs. Ceiling about $2-2.5 a
+night (about $60-75 a month; typically less, most subreddits are quiet); every run is capped by
+`max_charge_usd` (default 2.0). Levers: `comments_per_post`, `max_posts_per_sub`, `post_overrides`,
+`date_limit_days` (default 2), `listing_subs_per_run`. Keyword hits must show an India signal
+(`keyword_india_only`, default on).
+
+Shared Apify account: Reddit, Instagram and LinkedIn draw on ONE monthly usage limit (on 2026-10-11 the
+account showed $21.27 of $29 used). Reddit therefore refuses to start a run once the account is 85% into its
+limit (`account_stop_pct`, leaving the rest for the others) and stops a job after `nightly_budget_usd` (2.5;
+a full night measured about $1.7-2.0).
+A job stopped part-way keeps what it fetched and is recorded as an error, so the digest and the Source page
+show it; a job that could not start at all fails with the reason. Reddit at the full scope (~$60-75 a month)
+needs a larger Apify monthly limit; at $29 it can only run a reduced scope (e.g. `comments_per_post: 0`).
+Both guards take `null` to switch them off. Because a budget can stop a job part-way, the order is fixed by
+value: keyword searches first, then the `priority_categories` subreddits (default brokers, fno_algo), then the rest.
+
+Rollback: remove `REDDIT_APIFY_ENABLED` from `.env` (or set it to false) and `docker compose up -d`: the old
+path comes back unchanged; remove the cron line.
+
 Useful: `./cm watchdog --dry-run` / `./cm health-digest --dry-run` print what would be
 sent without posting or saving. The watchdog is silent when everything is healthy.
 If you roll back to an older `RELEASE_TAG`, comment out the two health cron lines: the
