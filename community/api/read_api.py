@@ -213,6 +213,8 @@ def _decorate_opportunity(r: dict, labels: dict, caps: list) -> dict:
     return r
 
 
+TOP_ACTIONS = 5     # the Overview's "Top actions right now"; webapp/app/page.tsx slices to the same number
+
 _OPP_SELECT = """
     SELECT o.id, o.source, o.thread_id, o.day, o.priority, o.matched_insight AS insight,
            o.brand_reply, o.rep_reply, o.recommended_timing, o.status,
@@ -222,6 +224,11 @@ _OPP_SELECT = """
     LEFT JOIN conversations c ON (c.source, c.thread_id) = (o.source, o.thread_id)
     LEFT JOIN social_items si ON si.item_id = c.root_item_id
 """
+
+
+def _top_action_rows() -> list[dict]:
+    return db.query(_OPP_SELECT + " WHERE o.status='suggested' ORDER BY o.priority DESC LIMIT %s",
+                    (TOP_ACTIONS,))
 
 
 def _sample_items(item_ids: list[int], cap: int) -> list[dict]:
@@ -392,8 +399,7 @@ def overview(window: str | None = None,
 
     top_actions = [
         _decorate_opportunity(r, labels, caps)
-        for r in db.query(_OPP_SELECT + " WHERE o.status='suggested' "
-                          "ORDER BY o.priority DESC LIMIT 3")
+        for r in _top_action_rows()
     ]
     for a in top_actions:
         a["title"] = (a.get("title") or "").replace("\n", " ")[:140]

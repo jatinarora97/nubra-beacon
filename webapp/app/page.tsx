@@ -193,7 +193,7 @@ export default async function Home({
             </Link>
           </div>
           <div className="space-y-2.5">
-            {ov.top_actions!.slice(0, 3).map((a, i) => (
+            {ov.top_actions!.slice(0, 5).map((a, i) => (
               <SectionCard key={a.id} className="flex items-start gap-4">
                 <div className="mt-0.5 text-[13px] font-semibold text-muted">
                   {i + 1}

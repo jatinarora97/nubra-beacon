@@ -53,4 +53,4 @@ class GeneratedRecommendation(BaseModel):
 
 
 class GenerationEnvelope(BaseModel):
-    recommendations: list[GeneratedRecommendation] = Field(min_length=1, max_length=8)
+    recommendations: list[GeneratedRecommendation] = Field(min_length=1, max_length=10)

@@ -7,6 +7,7 @@ proposal passes the compliance gate; failures regenerate ≤2 then drop the draf
 from __future__ import annotations
 
 import json
+import pathlib
 from datetime import datetime, timezone, timedelta
 
 from community.config.settings import settings
@@ -20,7 +21,7 @@ log = get_logger("draft")
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-DISCLOSURE = "Full disclosure — I'm part of the team at Nubra."
+DISCLOSURE = "Full disclosure — I'm part not of the team at Nubra."
 
 _DRAFT_SYSTEM = f"""You draft social replies for Nubra, a SEBI-regulated Indian stock broker.
 HARD RULES:
@@ -40,6 +41,36 @@ BRAND = official Nubra voice: crisp, factual, USP-led.
 REP   = human persona: curious, peer-to-peer, helpful, soft pull; MUST include the
         disclosure line verbatim: "{DISCLOSURE}"
 """
+
+# ── per-source prompts ───────────────────────────────────────────────────
+# `_DRAFT_SYSTEM` above is the DEFAULT, used by every source that has no prompt of its own (X today).
+# A source listed in `_SOURCE_PROMPTS` is drafted from its own plain-text file instead, so editing that file
+# changes that source and nothing else. To change how REDDIT replies read, edit
+# community/llm/prompts/reply_reddit.txt (no Python quoting; `{DISCLOSURE}` is the only placeholder and is
+# replaced by the DISCLOSURE sentence). The JSON shape at the end of the prompt is what the parser reads: keep it.
+# The validator below and the compliance judge apply to every source: a style they reject is regenerated twice
+# and then dropped.
+_PROMPTS_DIR = pathlib.Path(__file__).resolve().parent.parent / "llm" / "prompts"
+_SOURCE_PROMPTS = {"reddit": "reply_reddit"}
+
+
+def _load_prompt(name: str) -> str:
+    text = (_PROMPTS_DIR / f"{name}.txt").read_text(encoding="utf-8")
+    return text.replace("{DISCLOSURE}", DISCLOSURE)
+
+
+def _system_for(source: str) -> str:
+    """The drafting prompt for one source; a missing/unreadable file falls back to the default (and says so)
+    rather than stopping the whole draft stage."""
+    name = _SOURCE_PROMPTS.get(source)
+    if not name:
+        return _DRAFT_SYSTEM
+    try:
+        return _load_prompt(name)
+    except OSError:
+        log.warning("prompt file %s.txt for source %r is unreadable - using the default prompt", name, source)
+        return _DRAFT_SYSTEM
+
 
 _WINDOWS = {"pre_open": "08:30–09:15 IST", "open": "09:15–10:00 IST",
             "post_close": "15:30–17:00 IST", "evening": "20:00–22:30 IST"}
@@ -120,18 +151,24 @@ def _validate_drafts(data: dict, valid_ids: set[str]) -> list[str]:
     return problems
 
 
-def _draft_one(opp: dict, catalog: list[dict]) -> tuple[dict | None, dict]:
-    """Returns (drafts | None, gate_stats)."""
-    valid_ids = {c["id"] for c in catalog}
+def _user_message(opp: dict, catalog: list[dict]) -> str:
+    """What the model is given besides the system prompt (shared by the real stage and the preview tool)."""
     excerpt = _thread_excerpt(opp["source"], opp["thread_id"])
-    user = (f"NUBRA_FEATURES (is_current=true):\n{json.dumps(catalog, indent=1)}\n\n"
+    return (f"NUBRA_FEATURES (is_current=true):\n{json.dumps(catalog, indent=1)}\n\n"
             f"CONVERSATION (root + top replies):\n{excerpt}\n\n"
             f"MATCHED_INSIGHT: {json.dumps(opp.get('matched_insight') or {})}\n"
             "TASK: produce a BRAND reply and a REP reply per the JSON schema.")
+
+
+def _draft_one(opp: dict, catalog: list[dict]) -> tuple[dict | None, dict]:
+    """Returns (drafts | None, gate_stats)."""
+    valid_ids = {c["id"] for c in catalog}
+    user = _user_message(opp, catalog)
     gate = {"passed": 0, "regenerated": 0, "dropped": 0}
     feedback = ""
+    system = _system_for(opp["source"])
     for attempt in range(3):  # initial + 2 regenerations (D4)
-        raw, _u = complete(settings.draft_model, _DRAFT_SYSTEM, user + feedback, max_tokens=1200)
+        raw, _u = complete(settings.draft_model, system, user + feedback, max_tokens=1200)
         try:
             data = _parse_json(raw)
         except (ValueError, json.JSONDecodeError):
@@ -194,6 +231,49 @@ def _repeat_flags(cands: list[dict], recent: list[dict]) -> list[bool]:
         return [False] * len(cands)
 
 
+# Daily content briefs. The model is asked for more candidates than are kept, because the taxonomy check, the
+# per-family cap, the repeat-judge and the compliance gate each drop some (the table's rank rule: migration 0024).
+MAX_PROPOSALS = 5
+CANDIDATES_ASKED = 8
+CONTENT_MAX_TOKENS = 13000      # ~1,600 tokens per candidate brief
+
+
+def _content_system(fams: list[str], plats: list[str]) -> str:
+    return (
+        "You are a senior creative strategist writing CONTENT BRIEFS for Nubra's content "
+        "creators and community managers (Nubra = SEBI-regulated Indian stock broker). "
+        "NOT buy/sell content — relevant, useful presence around what traders discuss "
+        "today. Ground any Nubra claim ONLY in NUBRA_FEATURES. "
+        "HARD CONSTRAINTS (a compliance gate rejects violations): never anchor content "
+        "on a named competitor or their bad news; no directional/predictive market "
+        "claims; no trade setups, levels, targets or stop-losses — not even as chart "
+        "examples; no urgency/FOMO/social-proof pressure. NO EMOJIS anywhere. "
+        "Safe angles: educational explainers, process/tooling walkthroughs, myth-busting "
+        "with public facts, feature demos, community questions. "
+        "ANTI-REPETITION: RECENT_BRIEFS lists what we already published. A topic "
+        "covered there may be revisited AT MOST once more within a week and ONLY "
+        "with a genuinely different angle AND a different format_family — never "
+        "another variation of the same idea. When today's top signal is already "
+        "well covered, prefer the next-best uncovered signal instead. "
+        "Invent the creative TREATMENT freely — do not limit yourself to generic "
+        "formats; propose the specific creative vehicle (e.g. 'split-screen myth-vs-"
+        "reality reel with on-screen calculator', 'founder-voice teardown thread'). "
+        f"Pick format_family from {fams} and platform from {plats} — say WHY that "
+        "platform fits this audience/signal. Each brief must be executable without "
+        "follow-up questions: concrete beats a creator can shoot/write directly "
+        "(video: shot-by-shot with on-screen text; threads: tweet-by-tweet with the "
+        "first two written; image/carousel: exact data points and layout). Reference "
+        "the actual signal from TODAY'S SIGNAL. Return ONLY JSON: "
+        '{"candidates": [{"format_family": "...", "platform": "...", '
+        '"treatment": "one-line creative vehicle", "platform_why": "...", '
+        '"hook": "exact opening line/cover text", "brief": {"beats": ["..."], '
+        '"caption": "ready-to-paste", "hashtags": ["#tag"], "cta": "one CTA", '
+        '"visual_direction": "..."}, "why": "tied to the signal", '
+        '"recommended_window": "HH:MM-HH:MM IST", "scores": {"impact":0.0,'
+        '"reach_fit":0.0,"timeliness":0.0,"effort_inv":0.0,"on_brand":0.0}}]} '
+        f"(exactly {CANDIDATES_ASKED} candidates)")
+
+
 def _content_proposals(catalog: list[dict]) -> int:
     today = datetime.now(timezone.utc).date()
     # Once per day: briefs regenerate with the morning build only. The hourly
@@ -232,39 +312,7 @@ def _content_proposals(catalog: list[dict]) -> int:
         (today, rep_days, today))
     fams = settings.registry["content"]["format_families"]
     plats = settings.registry["content"]["platforms"]
-    system = (
-        "You are a senior creative strategist writing CONTENT BRIEFS for Nubra's content "
-        "creators and community managers (Nubra = SEBI-regulated Indian stock broker). "
-        "NOT buy/sell content — relevant, useful presence around what traders discuss "
-        "today. Ground any Nubra claim ONLY in NUBRA_FEATURES. "
-        "HARD CONSTRAINTS (a compliance gate rejects violations): never anchor content "
-        "on a named competitor or their bad news; no directional/predictive market "
-        "claims; no trade setups, levels, targets or stop-losses — not even as chart "
-        "examples; no urgency/FOMO/social-proof pressure. NO EMOJIS anywhere. "
-        "Safe angles: educational explainers, process/tooling walkthroughs, myth-busting "
-        "with public facts, feature demos, community questions. "
-        "ANTI-REPETITION: RECENT_BRIEFS lists what we already published. A topic "
-        "covered there may be revisited AT MOST once more within a week and ONLY "
-        "with a genuinely different angle AND a different format_family — never "
-        "another variation of the same idea. When today's top signal is already "
-        "well covered, prefer the next-best uncovered signal instead. "
-        "Invent the creative TREATMENT freely — do not limit yourself to generic "
-        "formats; propose the specific creative vehicle (e.g. 'split-screen myth-vs-"
-        "reality reel with on-screen calculator', 'founder-voice teardown thread'). "
-        f"Pick format_family from {fams} and platform from {plats} — say WHY that "
-        "platform fits this audience/signal. Each brief must be executable without "
-        "follow-up questions: concrete beats a creator can shoot/write directly "
-        "(video: shot-by-shot with on-screen text; threads: tweet-by-tweet with the "
-        "first two written; image/carousel: exact data points and layout). Reference "
-        "the actual signal from TODAY'S SIGNAL. Return ONLY JSON: "
-        '{"candidates": [{"format_family": "...", "platform": "...", '
-        '"treatment": "one-line creative vehicle", "platform_why": "...", '
-        '"hook": "exact opening line/cover text", "brief": {"beats": ["..."], '
-        '"caption": "ready-to-paste", "hashtags": ["#tag"], "cta": "one CTA", '
-        '"visual_direction": "..."}, "why": "tied to the signal", '
-        '"recommended_window": "HH:MM-HH:MM IST", "scores": {"impact":0.0,'
-        '"reach_fit":0.0,"timeliness":0.0,"effort_inv":0.0,"on_brand":0.0}}]} '
-        "(exactly 5 candidates)")
+    system = _content_system(fams, plats)
     recent_summary = [{"day": str(r["day"]), "treatment": r["treatment"],
                        "format_family": r["format_family"]} for r in recent]
     user = (f"NUBRA_FEATURES: {json.dumps(catalog)}\n\nTODAY'S SIGNAL:\n"
@@ -273,7 +321,7 @@ def _content_proposals(catalog: list[dict]) -> int:
             f"feature requests: {json.dumps(feats, default=str)}\n\n"
             f"RECENT_BRIEFS (already published — do not repeat): "
             f"{json.dumps(recent_summary)}")
-    raw, _u = complete(settings.draft_model, system, user, max_tokens=8000)
+    raw, _u = complete(settings.draft_model, system, user, max_tokens=CONTENT_MAX_TOKENS)
     try:
         cands = _parse_json(raw)["candidates"]
     except (ValueError, KeyError, json.JSONDecodeError) as e:
@@ -307,7 +355,7 @@ def _content_proposals(catalog: list[dict]) -> int:
             continue
         chosen.append(c)
         per_family[fam] = per_family.get(fam, 0) + 1
-        if len(chosen) == 3:
+        if len(chosen) == MAX_PROPOSALS:
             break
 
     db.execute("DELETE FROM content_proposals WHERE day=%s", (today,))

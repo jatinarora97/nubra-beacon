@@ -68,7 +68,7 @@ Return ONLY one JSON object:
   "priority_score":0
 }]}
 
-Create at most six recommendations. Prefer three retail and three API when both
+Create at most ten recommendations. Prefer five retail and five API when both
 segments have enough evidence. Every recommendation must stand alone and be
 immediately copyable."""
 
@@ -233,6 +233,9 @@ def _persist(run_id: int, recs: list[GeneratedRecommendation], payload: dict[str
     return rows
 
 
+MAX_TOKENS = 16000      # room for up to ten full recommendations (was 9000 for six)
+
+
 def run(days: int = 30, *, strict: bool = False, force: bool = False) -> dict[str, Any]:
     """Generate and store a recommendation set.
 
@@ -284,7 +287,7 @@ def run(days: int = 30, *, strict: bool = False, force: bool = False) -> dict[st
             SYSTEM_PROMPT,
             "Create the social recommendations from this evidence pack:\n"
             + json.dumps(payload, ensure_ascii=False, default=str),
-            max_tokens=9000,
+            max_tokens=MAX_TOKENS,
         )
         envelope = GenerationEnvelope.model_validate(_json_object(raw))
         grounded = _validate_grounding(envelope, payload)

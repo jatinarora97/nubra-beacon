@@ -126,6 +126,22 @@ def _rising_topics() -> list[dict]:
     )
 
 
+TOP_STANDING = 5    # "top standing actions" in the ops summary of the heads-up
+
+
+def _top_standing(kind_labels: dict) -> list[dict]:
+    rows = db.query(
+        "SELECT o.priority, o.matched_insight->>'kind' AS kind, left(si.text, 110) AS title, si.url "
+        "FROM opportunities o "
+        "LEFT JOIN conversations c ON (c.source, c.thread_id) = (o.source, o.thread_id) "
+        "LEFT JOIN social_items si ON si.item_id = c.root_item_id "
+        "WHERE o.status='suggested' ORDER BY o.priority DESC LIMIT %s", (TOP_STANDING,))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+        r["kind_label"] = kind_labels.get(r["kind"], r["kind"] or "thread")
+    return rows
+
+
 def _ops_block(all_stats: dict) -> dict:
     """The 'what we did in the last hour' framework — human-facing, no pipeline
     internals: sources fetched, volume analyzed, actions identified per platform
@@ -186,15 +202,7 @@ def _ops_block(all_stats: dict) -> dict:
         + " · ".join(f"{r['n']} {kind_labels.get(r['kind'], r['kind'])}" for r in by_kind if r["kind"])
     ) if total_opps else "no actions identified yet"
 
-    top_standing = db.query(
-        "SELECT o.priority, o.matched_insight->>'kind' AS kind, left(si.text, 110) AS title, si.url "
-        "FROM opportunities o "
-        "LEFT JOIN conversations c ON (c.source, c.thread_id) = (o.source, o.thread_id) "
-        "LEFT JOIN social_items si ON si.item_id = c.root_item_id "
-        "WHERE o.status='suggested' ORDER BY o.priority DESC LIMIT 3")
-    for i, r in enumerate(top_standing, 1):
-        r["rank"] = i
-        r["kind_label"] = kind_labels.get(r["kind"], r["kind"] or "thread")
+    top_standing = _top_standing(kind_labels)
 
     return {"fetched": fetched_line, "analyzed": analyzed_line,
             "identified": identified_line, "top_standing": top_standing}
