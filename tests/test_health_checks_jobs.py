@@ -165,6 +165,43 @@ class DigestStaleTests(unittest.TestCase):
         self.assertIn("never run", late.detail)
 
 
+class OverdueHintTests(unittest.TestCase):
+    """2026-10-14: the reddit line was installed as `0 2 * * *` on a UTC box (= 07:30 IST), so the 01:00 IST slot never
+    fired. The alert now says the expected time in UTC too, because a UTC box's crontab must be written in UTC."""
+
+    def hint_for(self, job_key, rows=(), now=None, enabled=True, first=None):
+        from types import SimpleNamespace
+        registry = {"sources": {"reddit_apify": {"enabled": enabled}}}
+        cfg = {**config.load({}), "_prev": {}}
+        with patch.object(checks_jobs.ledger, "recent_runs", return_value=list(rows)), \
+             patch.object(checks_jobs.ledger, "pipeline_lock_held", return_value=True), \
+             patch.object(checks_jobs.ledger, "first_run_at", return_value=first), \
+             patch.object(checks_jobs.state, "get_epoch", return_value=ist(5, 0)), \
+             patch.object(checks_jobs, "settings", SimpleNamespace(registry=registry)):
+            res = {r.key: r for r in checks_jobs.check_jobs(cfg, now or ist(7, 3))}
+        return res[f"job_overdue:{job_key}"]
+
+    def test_the_reddit_alert_names_its_slot_in_ist_and_in_utc(self):
+        res = self.hint_for("source:reddit_apify", first=ist(6, 14))
+        self.assertEqual(res.level, CRIT)
+        self.assertIn("01:00 IST = 19:30 UTC", res.hint)
+        self.assertIn("UTC", res.hint)
+
+    def test_other_single_slot_jobs_show_theirs(self):
+        self.assertIn("02:00 IST = 20:30 UTC", self.hint_for("source:instagram").hint)
+        self.assertIn("06:00 IST = 00:30 UTC", self.hint_for("morning-build", now=ist(5, 7, 0)).hint)
+
+    def test_a_job_with_many_slots_does_not_get_an_unreadable_list(self):
+        res = self.hint_for("run-local", rows=[], now=ist(5, 11, 30))
+        self.assertNotIn("expected", res.hint)
+        self.assertIn("crontab", res.hint)
+
+    def test_the_original_advice_is_still_there(self):
+        hint = self.hint_for("source:reddit_apify", first=ist(6, 14)).hint
+        for needle in ("crontab -l", "docker compose ps", "cron.log", "hold the lock"):
+            self.assertIn(needle, hint)
+
+
 class OptInSourceJobTests(unittest.TestCase):
     """source:reddit_apify is expected only once the source is enabled, and only from its first run:
     otherwise enabling it mid-day (or releasing the image before the cron line exists) would count the

@@ -36,7 +36,9 @@ Prompts are chosen **per source** by `_system_for(source)` in `draft.py`:
 
 - **Reddit** has its own plain-text file, `community/llm/prompts/reply_reddit.txt`. Editing it changes Reddit
   replies and nothing else. `{DISCLOSURE}` is the only placeholder (replaced by the `DISCLOSURE` sentence); the
-  JSON shape at the end is what the parser reads, so keep it. Today its text is identical to the default below.
+  JSON shape at the end is what the parser reads, so keep it. The current file is the team's own prompt (style
+  rules plus four example replies). A rules-based alternative, with no examples, is kept for comparison in
+  `docs/reply-reddit-prompt-proposal-2026-10-14.txt`; it is not wired in.
 - **Every other source** (X included) uses `_DRAFT_SYSTEM` in `draft.py` (the constant `DISCLOSURE` is just above
   it), unchanged.
 - `_SOURCE_PROMPTS` maps a source to its prompt file; add an entry and a file to give another source its own.
@@ -53,8 +55,14 @@ context, Hinglish if the thread is); the JSON output schema; and the two voices:
 Up to 3 attempts (initial + 2 regenerations, each told why the last one failed); then the drafts are dropped
 (the opportunity is kept, undrafted).
 
-1. `_validate_drafts()`: both texts non-empty, `features_cited` ids exist, and the **rep text contains
-   the `DISCLOSURE` sentence**.
+1. `_validate_drafts(data, valid_ids, source)`: both texts non-empty and `features_cited` ids exist, then by source:
+   - **Sources without their own prompt** (X, ...): the rep text must contain the exact `DISCLOSURE` sentence.
+   - **Sources with their own prompt (Reddit)**: a short natural disclosure ("I work at Nubra", "I'm part of the
+     team at Nubra", "I'm on the Nubra team", a Hinglish form) is **required whenever the rep reply names Nubra or
+     cites a feature**, and a reply that never mentions Nubra needs none. A disclosure that says the opposite or is
+     garbled ("part not of the team", "not affiliated with Nubra") is rejected as contradicting itself. Plain-voice
+     rules apply to both voices: no bold markdown, links, emoji or hashtags, no marketing phrases ("check out",
+     "seamless", ...), and at most 200 words (rep) / 100 (brand).
 2. `compliance.check()` (`community/recommend/compliance.py`), per voice:
    - **L1 regex** (`_L1_RULES`: guaranteed returns, tips, targets/stop-loss numbers, "sure shot", PII, shaming a
      named broker) plus the vendored `community/lib/comms_guardrails/*` (fear phrases, buy/sell call patterns,
@@ -127,11 +135,17 @@ It costs one model call per thread (two more per thread with `--judge`).
 
 ## 10. Disclosure, as currently designed
 
-Rep replies carry an affiliation disclosure. It is enforced in three places: the prompt, `_validate_drafts`, and
-the L2 judge checklist. This is part of the compliance design for a SEBI-regulated broker (and of Reddit's and
-X's rules on brand accounts), so any change to it needs Nubra's compliance owner to sign off first. A reply
-that does not mention Nubra, its products or comparisons involving it has nothing to disclose; that is the
-route to "generic person" replies that stays consistent with the rule.
+A rep reply that mentions Nubra, its products or a comparison involving it carries a plain statement of the
+connection. It is enforced in three places: the prompt, `_validate_drafts` and the L2 judge checklist ("a reply
+that mentions Nubra ... must say in plain words that the writer is connected to Nubra; a reply that never
+mentions Nubra needs no such line; a disclosure that contradicts itself or denies the connection is a
+violation"). This is part of the compliance design for a SEBI-regulated broker (and of Reddit's and X's rules on
+brand accounts); any change to it needs Nubra's compliance owner to sign off first. A reply that never mentions
+Nubra has nothing to disclose; that is the route to "generic person" replies that stays consistent with the rule.
+
+The `DISCLOSURE` constant in `draft.py` is the sentence the model is told to write verbatim (and, for sources
+without their own prompt, the one the validator requires). It must be a true statement of the connection.
+`tests/test_draft_reddit_rules.py::HouseDisclosureTests` fails if it ever denies it.
 
 ## 11. Target voice (from the team's own examples)
 

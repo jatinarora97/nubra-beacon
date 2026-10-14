@@ -195,6 +195,10 @@ def _why_engage(insight: dict, velocity: float | None, labels: dict[str, str],
 
 
 def _decorate_opportunity(r: dict, labels: dict, caps: list) -> dict:
+    from community.compose.render import strip_feature_refs   # "(f_57)" is an audit trail, not reader text
+    for key in ("brand_reply", "rep_reply"):
+        if r.get(key):
+            r[key] = strip_feature_refs(r[key])
     insight = r.get("insight") or {}
     kind = insight.get("kind", "topic")
     timing = r.pop("recommended_timing", None) or {}

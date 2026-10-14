@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 from datetime import datetime, timezone, timedelta
 
 from community.config.settings import settings
@@ -135,7 +136,79 @@ def _next_window() -> str:
     return _WINDOWS["pre_open"]
 
 
-def _validate_drafts(data: dict, valid_ids: set[str]) -> list[str]:
+# ── rules for sources that have their own prompt (Reddit) ─────────────────
+# Those replies are written in a plain human voice and disclose the Nubra connection only when Nubra is actually
+# mentioned (or a Nubra feature is cited), in a short natural line ("I work at Nubra"). Every other source keeps the
+# exact-sentence rule in `_validate_drafts`. `REPLY_MAX_WORDS` leaves headroom over the team's own example replies
+# (86-159 words).
+REPLY_MAX_WORDS = {"rep": 200, "brand": 100}
+
+_NUBRA = re.compile(r"(?<![a-z])nubra(?![a-z])", re.I)
+_DISCLOSURE_FORMS = re.compile(
+    r"\bI\s+work\s+(?:at|for|with)\s+Nubra\b"
+    r"|\bI(?:['\u2019]m|\s+am)\s+(?:on|with|part\s+of)\s+(?:the\s+)?(?:team\s+at\s+)?Nubra(?:\s+team)?\b"
+    r"|\bmain\s+Nubra\s+(?:mein|me|se)\b"
+    r"|\bNubra\s+(?:team\s+)?se\s+(?:hoon|hu|hun)\b", re.I)
+# a "disclosure" that says the opposite (or is garbled into saying it) is not a disclosure
+_DENIAL = re.compile(
+    r"\bpart\s+not\b"
+    r"|\bnot\s+(?:really\s+)?(?:a\s+)?(?:part\s+of|on|with|from|affiliated\s+with|connected\s+(?:to|with)"
+    r"|working\s+(?:at|for|with))\s+(?:the\s+)?(?:team\s+at\s+)?Nubra\b"
+    r"|\b(?:don['\u2019]t|do\s+not|doesn['\u2019]t)\s+work\s+(?:at|for|with)\s+Nubra\b"
+    r"|\bunaffiliated\s+with\s+Nubra\b|\bno\s+(?:connection|affiliation)\s+(?:to|with)\s+Nubra\b", re.I)
+_BOLD = re.compile(r"\*\*[^*\n]+\*\*")
+_URL = re.compile(r"https?://|\bwww\.", re.I)
+_HASHTAG = re.compile(r"(?<![\w&])#[A-Za-z]\w+")
+_EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF]")
+_PROMO = re.compile(
+    r"\b(?:game[- ]?changer|seamless(?:ly)?|best[- ]in[- ]class|cutting[- ]edge|world[- ]class"
+    r"|check\s+(?:it|us|them)?\s*out|sign\s*up|download\s+our|join\s+us|we(?:'re|\s+are)\s+excited"
+    r"|limited[- ]time|don'?t\s+miss|supercharge|revolutioni[sz]e|one[- ]stop)\b", re.I)
+
+
+def _disclosure_problems(rep: str, cited: list) -> list[str]:
+    out = []
+    has = bool(_DISCLOSURE_FORMS.search(rep))
+    mentions = bool(_NUBRA.search(_DISCLOSURE_FORMS.sub(" ", rep)))     # Nubra named beyond the disclosure itself
+    if _NUBRA.search(rep) and _DENIAL.search(rep):
+        out.append("rep: the affiliation line contradicts itself")
+    if (mentions or cited) and not has:
+        out.append("rep: mentions Nubra without a disclosure of the affiliation")
+    return out
+
+
+def _style_problems(text: str, voice: str) -> list[str]:
+    out = []
+    if _BOLD.search(text):
+        out.append(f"{voice}: uses **bold** markdown")
+    if _URL.search(text):
+        out.append(f"{voice}: contains a link")
+    if _EMOJI.search(text):
+        out.append(f"{voice}: contains emoji")
+    if _HASHTAG.search(text):
+        out.append(f"{voice}: contains a hashtag")
+    hit = _PROMO.search(text)
+    if hit:
+        out.append(f"{voice}: marketing phrasing ({hit.group(0)!r})")
+    words = len(text.split())
+    if words > REPLY_MAX_WORDS[voice]:
+        out.append(f"{voice}: too long ({words} words, max {REPLY_MAX_WORDS[voice]})")
+    return out
+
+
+def _own_prompt_problems(data: dict) -> list[str]:
+    rep = (data.get("rep") or {}).get("text", "")
+    brand = (data.get("brand") or {}).get("text", "")
+    cited = (data.get("rep") or {}).get("features_cited") or []
+    out: list[str] = []
+    if rep:
+        out += _disclosure_problems(rep, cited) + _style_problems(rep, "rep")
+    if brand:
+        out += _style_problems(brand, "brand")      # the official voice needs no disclosure line
+    return out
+
+
+def _validate_drafts(data: dict, valid_ids: set[str], source: str = "") -> list[str]:
     problems = []
     for voice in ("brand", "rep"):
         d = data.get(voice) or {}
@@ -146,7 +219,9 @@ def _validate_drafts(data: dict, valid_ids: set[str]) -> list[str]:
         if bad:
             problems.append(f"{voice}: unknown features_cited {bad}")
     rep = (data.get("rep") or {}).get("text", "")
-    if rep and DISCLOSURE not in rep:
+    if source in _SOURCE_PROMPTS:
+        problems += _own_prompt_problems(data)
+    elif rep and DISCLOSURE not in rep:
         problems.append("rep: disclosure line missing")
     return problems
 
@@ -177,7 +252,7 @@ def _draft_one(opp: dict, catalog: list[dict]) -> tuple[dict | None, dict]:
             continue
         if data.get("skip_reason"):
             return None, gate
-        problems = _validate_drafts(data, valid_ids)
+        problems = _validate_drafts(data, valid_ids, opp["source"])
         if not problems:
             reasons_all = []
             for voice in ("brand", "rep"):

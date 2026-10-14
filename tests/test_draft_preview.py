@@ -14,10 +14,10 @@ OPP = {"id": 7, "source": "reddit", "thread_id": "t3_x", "priority": 80, "matche
 CATALOG = [{"id": "f_1"}]
 
 
-def answer(rep=None, brand="A plain factual reply.", skip=None):
-    rep = rep if rep is not None else f"A peer reply. {draft.DISCLOSURE}"
+def answer(rep=None, brand="A plain factual reply.", skip=None, rep_cited=("f_1",)):
+    rep = rep if rep is not None else "A peer reply. (I work at Nubra)"
     return json.dumps({"brand": {"text": brand, "features_cited": ["f_1"]},
-                       "rep": {"text": rep, "features_cited": ["f_1"], "disclosure_included": True},
+                       "rep": {"text": rep, "features_cited": list(rep_cited), "disclosure_included": True},
                        "skip_reason": skip})
 
 
@@ -52,8 +52,22 @@ class PreviewOneTests(unittest.TestCase):
         self.assertEqual(r["l1"], {"brand": [], "rep": []})
 
     def test_the_real_validator_decides_what_counts_as_a_problem(self):
-        r, _, _ = run(answer(rep="A peer reply with no disclosure line."))
+        r, _, _ = run(answer(rep="Nubra shows max loss before you place the order."))
+        self.assertTrue(any("without a disclosure" in p for p in r["problems"]), r["problems"])
+
+    def test_a_reddit_reply_with_no_nubra_mention_is_clean_without_a_disclosure(self):
+        r, _, _ = run(answer(rep="A peer reply with no product mention at all.", rep_cited=()))
+        self.assertEqual(r["problems"], [])
+
+    def test_other_sources_are_judged_by_their_own_rule(self):
+        with patch.object(preview, "complete", return_value=(answer(rep="A reply, no disclosure."), {})), \
+             patch.object(draft, "_thread_excerpt", return_value="- a thread"):
+            r = preview.preview_one({**OPP, "source": "twitter"}, CATALOG, "SYSTEM")
         self.assertIn("rep: disclosure line missing", r["problems"])
+
+    def test_feature_citations_are_hidden_in_the_rendered_preview_like_in_production(self):
+        r, _, _ = run(answer(brand="Nubra offers digital KYC (f_57) today."))
+        self.assertNotIn("(f_57)", preview.render([r], "x"))
 
     def test_regex_rule_hits_are_shown_per_voice(self):
         r, _, _ = run(answer(brand="This one has guaranteed returns on every trade."))
@@ -117,10 +131,10 @@ class PickTests(unittest.TestCase):
 
 class RenderTests(unittest.TestCase):
     def test_the_text_says_nothing_was_saved_and_shows_drafts_and_checks(self):
-        r, _, _ = run(answer(rep="A peer reply with no disclosure line."), judge=True)
+        r, _, _ = run(answer(rep="Nubra shows max loss before you place the order."), judge=True)
         text = preview.render([r], "reply_reddit.txt")
         for needle in ("PREVIEW ONLY", "nothing was saved", "reply_reddit.txt", OPP["url"], "BRAND", "REP",
-                       "A plain factual reply.", "disclosure line missing", "judge"):
+                       "A plain factual reply.", "without a disclosure", "judge"):
             self.assertIn(needle, text)
 
     def test_errors_and_skips_render_too(self):

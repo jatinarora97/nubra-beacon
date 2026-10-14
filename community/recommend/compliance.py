@@ -46,8 +46,11 @@ Checklist (SEBI/ASCI):
 - No inducement: no guaranteed/assured returns, no urgency or fear language.
 - No unsubstantiated claims about Nubra or competitors.
 - Comparative statements must be factual and fair; never disparage a competitor.
-- Representative replies must disclose Nubra affiliation.
-- Tone: educational, factual, conversational.
+- Affiliation (kind=rep_reply): a reply that mentions Nubra, its products or features, or compares Nubra with
+  others, you must never associate yourself with Nubra (for example there should not be "I work at Nubra"). A reply
+  that never mentions Nubra needs no such line.
+- Tone: plain, human and conversational. Marketing language, slogans, calls to action and promotional framing
+  are violations.
 
 Return: {"verdict": "pass"|"fail", "violations": [{"rule": "...", "excerpt": "...", "reason": "..."}]}"""
 

@@ -16,10 +16,13 @@ OPP = {"id": 1, "thread_id": "t3_x", "matched_insight": {}}
 CATALOG = [{"id": "f_1"}]
 
 
-def valid_answer():
+def valid_answer(source="reddit"):
+    # Reddit is judged by the conditional rule (a short natural disclosure when Nubra is cited); every other source by
+    # the exact house sentence
+    line = "(I work at Nubra)" if source == "reddit" else draft.DISCLOSURE
     return json.dumps({
         "brand": {"text": "A factual reply.", "features_cited": ["f_1"]},
-        "rep": {"text": f"A peer reply. {draft.DISCLOSURE}", "features_cited": ["f_1"],
+        "rep": {"text": f"A peer reply. {line}", "features_cited": ["f_1"],
                 "disclosure_included": True},
         "skip_reason": None})
 
@@ -32,10 +35,9 @@ class PromptSelectionTests(unittest.TestCase):
         for source in ("twitter", "youtube", "github", "community_forum", "app_review", "linkedin", "instagram"):
             self.assertEqual(draft._system_for(source), draft._DRAFT_SYSTEM, source)
 
-    def test_the_disclosure_placeholder_is_filled_in(self):
-        text = draft._system_for("reddit")
-        self.assertNotIn("{DISCLOSURE}", text)
-        self.assertIn(draft.DISCLOSURE, text)
+    def test_no_disclosure_placeholder_is_left_unfilled(self):
+        self.assertNotIn("{DISCLOSURE}", draft._system_for("reddit"))
+        self.assertIn(draft.DISCLOSURE, draft._DRAFT_SYSTEM)       # the default prompt still carries the sentence
 
     def test_the_reddit_prompt_keeps_the_json_contract_the_parser_needs(self):
         # a functional contract, not a style rule: lose these and every draft becomes unparsable
@@ -73,7 +75,7 @@ class IsolationTests(unittest.TestCase):
 
 class DraftOneUsesTheRightPromptTests(unittest.TestCase):
     def run_draft(self, source: str):
-        with patch.object(draft, "complete", return_value=(valid_answer(), {})) as llm, \
+        with patch.object(draft, "complete", return_value=(valid_answer(source), {})) as llm, \
              patch.object(draft, "_thread_excerpt", return_value="- a thread"), \
              patch.object(draft.compliance, "check", return_value=(True, [])):
             drafts, gate = draft._draft_one({**OPP, "source": source}, CATALOG)

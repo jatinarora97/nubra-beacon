@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import pathlib
 
+from community.compose.render import strip_feature_refs
 from community.config.settings import settings
 from community.llm.client import complete
 from community.recommend import compliance, draft
@@ -54,7 +55,7 @@ def preview_one(opp: dict, catalog: list[dict], system: str, judge: bool = False
     if data.get("skip_reason"):
         return {"opp": opp, "skipped": data["skip_reason"]}
     texts = {voice: (data.get(voice) or {}).get("text", "") for voice in ("brand", "rep")}
-    result = {"opp": opp, "drafts": texts, "problems": draft._validate_drafts(data, valid_ids),
+    result = {"opp": opp, "drafts": texts, "problems": draft._validate_drafts(data, valid_ids, opp["source"]),
               "l1": {voice: compliance.l1_check(text) for voice, text in texts.items() if text}}
     for voice in texts:
         result["l1"].setdefault(voice, [])
@@ -75,7 +76,8 @@ def render(results: list[dict], prompt_label: str) -> str:
         if "skipped" in r:
             out.append(f"skipped: {r['skipped']}")
             continue
-        out.append(f"\nBRAND:\n{r['drafts']['brand']}\n\nREP:\n{r['drafts']['rep']}\n")
+        out.append(f"\nBRAND:\n{strip_feature_refs(r['drafts']['brand'])}\n\n"
+                   f"REP:\n{strip_feature_refs(r['drafts']['rep'])}\n")
         out.append("validator: " + ("OK" if not r["problems"] else "; ".join(r["problems"])))
         for voice in ("brand", "rep"):
             hits = r["l1"].get(voice) or []

@@ -22,6 +22,17 @@ def _ist(ts: datetime) -> str:
     return ts.astimezone(IST).strftime("%d %b %H:%M")
 
 
+def _expected_slots(jcfg: dict) -> str:
+    """"01:00 IST = 19:30 UTC": a UTC box's crontab must be written in UTC (IST = UTC+5:30), and a line copied
+    from the IST version fires at the wrong hour. Omitted for jobs with too many slots to read."""
+    hours, minute = jcfg["hours"], jcfg.get("minute", 0)
+    if len(hours) > 4:
+        return ""
+    ist = ", ".join(f"{h:02d}:{minute:02d}" for h in hours)
+    utc = ", ".join("{:02d}:{:02d}".format(*divmod((h * 60 + minute - 330) % 1440, 60)) for h in hours)
+    return f"expected {ist} IST = {utc} UTC"
+
+
 def _overdue(job: str, jcfg: dict, runs: list, now: datetime, epoch: datetime, cfg: dict) -> Result:
     key = f"job_overdue:{job}"
     missed = schedule.trailing_missed(job, jcfg, runs, now, epoch=epoch,
@@ -31,7 +42,9 @@ def _overdue(job: str, jcfg: dict, runs: list, now: datetime, epoch: datetime, c
     level = CRIT if len(missed) >= jcfg["crit_after_missed"] else WARN
     return Result(key, level,
                   f"{len(missed)} scheduled run(s) did not start, since {_ist(missed[0])} IST",
-                  "check crontab -l, docker compose ps and out/cron.log; a stuck run can also hold the lock")
+                  "check crontab -l" + (f" ({_expected_slots(jcfg)}; on a UTC box write the line in UTC)"
+                                        if _expected_slots(jcfg) else "")
+                  + ", docker compose ps and out/cron.log; a stuck run can also hold the lock")
 
 
 def _slow(job: str, jcfg: dict, rows: list[dict], now: datetime) -> Result:
