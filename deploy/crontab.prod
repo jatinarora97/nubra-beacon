@@ -22,6 +22,11 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # No flock: `./cm source` takes the pipeline lock itself and records a skipped run if it is busy.
 0 1 * * * cd $APP_DIR && docker compose exec -T api ./cm source reddit_apify >> out/cron.log 2>&1
 
+# 20:45 Reddit brand pass: finds posts and comments that mention Nubra (own slot; same switch as above). Once a day,
+# so the next morning's roundup carries the whole day's mentions. About $0.2 a pass (~$6 a month); the hourly
+# pipeline runs at :00, so :45 keeps clear of it.
+45 20 * * * cd $APP_DIR && docker compose exec -T api ./cm source reddit_brand >> out/cron.log 2>&1
+
 # 02:00 instagram + whisper transcription — its own slot (cadence: nightly in
 # the registry): the AV models are the RAM peak, isolated from everything else
 0 2 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm source instagram >> out/cron.log 2>&1

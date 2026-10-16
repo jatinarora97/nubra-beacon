@@ -1,6 +1,7 @@
-"""Per-source reply prompts: Reddit has its own prompt file, every other source keeps the default.
+"""Per-source reply prompts: Reddit and Twitter each have their own prompt file, every other source keeps the default.
 
-The point is isolation: editing community/llm/prompts/reply_reddit.txt must change Reddit replies and nothing else.
+The point is isolation: editing community/llm/prompts/reply_reddit.txt must change Reddit replies and nothing else,
+and the same for reply_twitter.txt and Twitter.
 """
 from __future__ import annotations
 
@@ -17,9 +18,9 @@ CATALOG = [{"id": "f_1"}]
 
 
 def valid_answer(source="reddit"):
-    # Reddit is judged by the conditional rule (a short natural disclosure when Nubra is cited); every other source by
-    # the exact house sentence
-    line = "(I work at Nubra)" if source == "reddit" else draft.DISCLOSURE
+    # Reddit and Twitter are judged by the conditional rule (a short natural disclosure when Nubra is cited); every
+    # other source by the exact house sentence
+    line = "(I work at Nubra)" if source in ("reddit", "twitter") else draft.DISCLOSURE
     return json.dumps({
         "brand": {"text": "A factual reply.", "features_cited": ["f_1"]},
         "rep": {"text": f"A peer reply. {line}", "features_cited": ["f_1"],
@@ -31,8 +32,13 @@ class PromptSelectionTests(unittest.TestCase):
     def test_reddit_uses_its_own_prompt_file(self):
         self.assertEqual(draft._system_for("reddit"), draft._load_prompt("reply_reddit"))
 
+    def test_twitter_uses_its_own_prompt_file(self):
+        self.assertEqual(draft._system_for("twitter"), draft._load_prompt("reply_twitter"))
+        self.assertNotEqual(draft._system_for("twitter"), draft._system_for("reddit"))
+        self.assertNotEqual(draft._system_for("twitter"), draft._DRAFT_SYSTEM)
+
     def test_every_other_source_keeps_the_default_prompt(self):
-        for source in ("twitter", "youtube", "github", "community_forum", "app_review", "linkedin", "instagram"):
+        for source in ("youtube", "github", "community_forum", "app_review", "linkedin", "instagram"):
             self.assertEqual(draft._system_for(source), draft._DRAFT_SYSTEM, source)
 
     def test_no_disclosure_placeholder_is_left_unfilled(self):
@@ -47,17 +53,28 @@ class PromptSelectionTests(unittest.TestCase):
 
 
 class IsolationTests(unittest.TestCase):
-    def with_reddit_prompt(self, body: str):
+    def with_prompts(self, **bodies: str):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        (Path(tmp.name) / "reply_reddit.txt").write_text(body, encoding="utf-8")
+        for name, body in bodies.items():
+            (Path(tmp.name) / f"{name}.txt").write_text(body, encoding="utf-8")
         return patch.object(draft, "_PROMPTS_DIR", Path(tmp.name))
+
+    def with_reddit_prompt(self, body: str):
+        return self.with_prompts(reply_reddit=body, reply_twitter="TWITTER PROMPT")
 
     def test_editing_the_reddit_prompt_changes_reddit_only(self):
         with self.with_reddit_prompt("EDITED REDDIT PROMPT {DISCLOSURE}"):
             self.assertEqual(draft._system_for("reddit"), "EDITED REDDIT PROMPT " + draft.DISCLOSURE)
-            self.assertEqual(draft._system_for("twitter"), draft._DRAFT_SYSTEM)
+            self.assertEqual(draft._system_for("twitter"), "TWITTER PROMPT")
+            self.assertEqual(draft._system_for("youtube"), draft._DRAFT_SYSTEM)
             self.assertNotIn("EDITED", draft._system_for("youtube"))
+
+    def test_editing_the_twitter_prompt_changes_twitter_only(self):
+        with self.with_prompts(reply_reddit="REDDIT PROMPT", reply_twitter="EDITED TWITTER PROMPT"):
+            self.assertEqual(draft._system_for("twitter"), "EDITED TWITTER PROMPT")
+            self.assertEqual(draft._system_for("reddit"), "REDDIT PROMPT")
+            self.assertEqual(draft._system_for("instagram"), draft._DRAFT_SYSTEM)
 
     def test_the_edit_is_picked_up_without_a_code_change(self):
         with self.with_reddit_prompt("first"):
@@ -66,11 +83,12 @@ class IsolationTests(unittest.TestCase):
             self.assertEqual(draft._system_for("reddit"), "second")
 
     def test_a_missing_prompt_file_falls_back_to_the_default_and_says_so(self):
-        with patch.object(draft, "_PROMPTS_DIR", Path(tempfile.gettempdir()) / "no_such_prompt_dir"):
-            with self.assertLogs("beacon.draft", level="WARNING") as logs:
-                system = draft._system_for("reddit")
-        self.assertEqual(system, draft._DRAFT_SYSTEM)
-        self.assertIn("reply_reddit", " ".join(logs.output))
+        for source, name in (("reddit", "reply_reddit"), ("twitter", "reply_twitter")):
+            with patch.object(draft, "_PROMPTS_DIR", Path(tempfile.gettempdir()) / "no_such_prompt_dir"):
+                with self.assertLogs("beacon.draft", level="WARNING") as logs:
+                    system = draft._system_for(source)
+            self.assertEqual(system, draft._DRAFT_SYSTEM)
+            self.assertIn(name, " ".join(logs.output))
 
 
 class DraftOneUsesTheRightPromptTests(unittest.TestCase):
@@ -86,8 +104,13 @@ class DraftOneUsesTheRightPromptTests(unittest.TestCase):
         self.assertIsNotNone(drafts)
         self.assertEqual(llm.call_args.args[1], draft._system_for("reddit"))
 
-    def test_a_twitter_opportunity_is_drafted_with_the_default_prompt(self):
+    def test_a_twitter_opportunity_is_drafted_with_the_twitter_prompt(self):
         drafts, _, llm = self.run_draft("twitter")
+        self.assertIsNotNone(drafts)
+        self.assertEqual(llm.call_args.args[1], draft._system_for("twitter"))
+
+    def test_an_opportunity_from_another_source_is_drafted_with_the_default_prompt(self):
+        drafts, _, llm = self.run_draft("youtube")
         self.assertIsNotNone(drafts)
         self.assertEqual(llm.call_args.args[1], draft._DRAFT_SYSTEM)
 

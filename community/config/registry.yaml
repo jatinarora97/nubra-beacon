@@ -157,6 +157,17 @@ sources:
     proxy_groups: [RESIDENTIAL] # [trudax] same group as the console test; try DATACENTER to compare cost
     skip_community: false       # [trudax] false = the exact input the console accepted; true saves item budget (untested)
     include_media_links: true   # [trudax]
+    brand:                      # the brand pass (./cm source reddit_brand, own cron slot, ~$0.2 a pass): finds posts and
+                                # comments that mention Nubra. Searches for the brand INSIDE each watched subreddit of
+                                # these categories (comments too), plus one global search. Every key has a code default.
+      categories: [brokers, market_trading, fno_algo]
+      communities: []           # extra subreddits to search inside, beyond the watched ones
+      global_search: true       # one unscoped search too (mentions in subreddits we do not watch; mostly Ladakh travel
+                                # posts, which is_brand_mention drops)
+      days: 3                   # look-back window of each pass (items already stored are skipped)
+      max_posts: 25             # per search
+      max_comments: 100         # per search
+      max_charge_usd: 0.5       # hard spend cap per actor run
   youtube:
     enabled: true
     cadence: daily              # daily = morning build only; hourly = every run

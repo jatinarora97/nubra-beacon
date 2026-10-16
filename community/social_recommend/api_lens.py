@@ -34,7 +34,7 @@ log = get_logger("social_recommend.api_lens")
 # contract, same compliance.
 LENS = "api_trading"
 GENERAL_LENS = "general_marketing"
-PROMPT_VERSION = "api-lens-copy-v2"
+PROMPT_VERSION = "api-lens-copy-v3"
 
 _AUDIENCE = {
     LENS: ("Nubra's API/algo-trading audience: Indian traders who trade via "
@@ -49,6 +49,13 @@ API_EXTRA_PLATFORMS = ("stackoverflow",)  # dev venue — api lens only
 # feedback 2026-09-23: linkedin wants more supply; seed venues need 1)
 DEFAULT_MIN_OVERRIDES = {"github": 1, "forum": 1, "stackoverflow": 1,
                          "linkedin": 4}
+# X is a seed venue too (2026-10-15): a reply into one specific tweet, shown on the card as "Target thread". A reply
+# is only worth posting while the tweet is fresh, so X targets come from a short window whatever the evidence window
+# is, and are added ON TOP of the normal evidence (never instead of it) so a busy Reddit/forum window cannot crowd
+# them out. A reply is one tweet.
+X_SEED_MAX_AGE_DAYS = 3
+X_SEED_EXTRA = 8
+X_REPLY_MAX_CHARS = 280
 
 
 def _platforms(lens: str = LENS) -> tuple[str, ...]:
@@ -111,7 +118,7 @@ interns — every piece must be finished, publishable copy with zero rewriting.
 
 Two content types:
 - "seed_reply": a genuinely helpful reply posted INTO the given community
-  thread (seed_url). It must answer the thread's actual question first, in a
+  thread (seed_url; on X, a reply to that one tweet). It must answer the thread's actual question first, in a
   practitioner's voice, and disclose the Nubra affiliation naturally (e.g.
   "(I work at Nubra)"). Mention Nubra only where its supplied feature honestly
   answers the question. Never more than one soft Nubra mention.
@@ -121,8 +128,11 @@ Two content types:
 Platform norms (format per platform):
 - reddit: format seed_reply or text_post. Plain text, no hashtags, no marketing
   tone, disclosure mandatory, markdown ok. Being useful IS the content.
-- x: format text_post or thread. <= 260 chars per post (thread: separate tweets
-  with a line containing only "---"). At most 2 hashtags.
+- x: format text_post, thread or seed_reply. Standalone posts: <= 260 chars per
+  post (thread: separate tweets with a line containing only "---"), at most 2
+  hashtags. seed_reply: a reply to the given tweet (seed_url) — ONE tweet, at
+  most 280 characters in total, plain text, no hashtags, no links, answer first,
+  same disclosure and one-soft-mention rules as reddit seed replies.
 - linkedin: format text_post, image_post or carousel. 80-180 words,
   professional but concrete, max 3 hashtags.
 - youtube: format short_video — a 30-60s video idea (Shorts-friendly).
@@ -188,7 +198,8 @@ Return ONLY one JSON object:
 
 def _evidence(days: int = 21, limit: int = 40, lens: str = LENS) -> list[dict]:
     """Fresh evidence: seedable threads (question/complaint with a url on
-    reddit/forums where a reply is possible) + inspiration items."""
+    reddit/forums where a reply is possible, plus fresh X posts: _x_seed_evidence)
+    + inspiration items."""
     if lens == LENS:
         rows = db.query(
             """
@@ -230,6 +241,59 @@ def _evidence(days: int = 21, limit: int = 40, lens: str = LENS) -> list[dict]:
             LIMIT %s
             """,
             (days, limit))
+    rows = [dict(r) for r in rows]
+    by_id = {r["item_id"]: r for r in rows}
+    for ev in _x_seed_evidence(lens):
+        if ev["item_id"] in by_id:
+            by_id[ev["item_id"]]["seedable"] = True      # already in the window, as inspiration: now also a target
+        else:
+            rows.append(ev)
+    return rows
+
+
+def _x_seed_evidence(lens: str = LENS, limit: int = X_SEED_EXTRA) -> list[dict]:
+    """Fresh X posts a reply can go into: the same question/friction kinds as the Reddit and forum targets, with a
+    url, no mention of Nubra, newest window only. Same row shape as `_evidence`."""
+    if lens == LENS:
+        rows = db.query(
+            """
+            SELECT a.item_id, si.source, si.url, a.stage, a.kind, a.gist,
+                   to_char(si.created_at, 'YYYY-MM-DD') AS posted,
+                   a.friction_theme, a.working_theme, left(si.text, 500) AS text,
+                   coalesce((si.engagement->>'score')::float, 0) AS engagement,
+                   true AS seedable
+            FROM api_trader_items a
+            JOIN social_items si ON si.item_id = a.item_id
+            WHERE a.stage NOT IN ('irrelevant') AND si.duplicate_of IS NULL
+              AND si.source = 'twitter' AND si.url IS NOT NULL
+              AND a.kind IN ('friction','guidance_seeking')
+              AND si.created_at >= now() - make_interval(days => %s)
+              AND si.text !~* '\\ynubra\\y'
+            ORDER BY (si.engagement->>'score')::float DESC NULLS LAST
+            LIMIT %s
+            """,
+            (X_SEED_MAX_AGE_DAYS, limit))
+    else:
+        rows = db.query(
+            """
+            SELECT si.item_id, si.source, si.url, e.intent AS kind,
+                   to_char(si.created_at, 'YYYY-MM-DD') AS posted,
+                   e.topic_key AS gist, left(si.text, 500) AS text,
+                   coalesce((si.engagement->>'score')::float, 0) AS engagement,
+                   true AS seedable
+            FROM social_items si
+            JOIN item_enrichment e ON e.item_id = si.item_id
+            LEFT JOIN api_trader_items a ON a.item_id = si.item_id
+            WHERE si.duplicate_of IS NULL AND NOT e.is_noise
+              AND a.item_id IS NULL  -- retail corpus: not already the API lens
+              AND si.source = 'twitter' AND si.url IS NOT NULL
+              AND e.intent IN ('question','complaint','feature_request')
+              AND si.created_at >= now() - make_interval(days => %s)
+              AND si.text !~* '\\ynubra\\y'
+            ORDER BY (si.engagement->>'score')::float DESC NULLS LAST
+            LIMIT %s
+            """,
+            (X_SEED_MAX_AGE_DAYS, limit))
     return [dict(r) for r in rows]
 
 
@@ -388,12 +452,17 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
         feat_by_id = {f["id"]: f for f in features}
         stored, rejected = 0, 0
         today = datetime.now(timezone.utc).date()
+        def reject(rec: ApiLensRec, why: str) -> None:
+            log.warning("api-lens brief rejected: %s — %s", rec.title, why)
+
         for rec in envelope.recommendations[:total_need]:
             if any(i not in ev_by_id for i in rec.evidence_item_ids):
                 rejected += 1
+                reject(rec, "it cites an evidence id that was not in the pack")
                 continue
             if any(f not in feat_by_id for f in rec.feature_ids):
                 rejected += 1
+                reject(rec, "it cites a feature id that was not supplied for this lens")
                 continue
             if rec.content_type == "seed_reply":
                 # the seed target must be a real evidence thread, not invented —
@@ -404,17 +473,27 @@ def top_up(min_ready_per_platform: int = 2, max_new: int = 8,
                 target = by_url.get(rec.seed_url)
                 if target is None:
                     rejected += 1
+                    reject(rec, f"seed_url {rec.seed_url!r} is not one of its evidence threads")
                     continue
                 venue = {"reddit": "reddit", "community_forum": "forum",
-                         "stackoverflow": "stackoverflow"}.get(target["source"])
+                         "stackoverflow": "stackoverflow", "twitter": "x"}.get(target["source"])
                 if venue is None:
                     rejected += 1
+                    reject(rec, f"its target is on {target['source']!r}, which is not a seed venue")
                     continue
                 rec.platform = venue
+                if venue == "x":
+                    rec.hashtags = []                    # a reply into a tweet carries no hashtags
+                    if len(rec.exact_copy) > X_REPLY_MAX_CHARS:
+                        rejected += 1                    # more than one tweet
+                        reject(rec, f"the X reply is {len(rec.exact_copy)} characters, max {X_REPLY_MAX_CHARS}")
+                        continue
             else:
                 rec.seed_url = None
-            if _public_copy_issue(rec.exact_copy):
+            issue = _public_copy_issue(rec.exact_copy)
+            if issue:
                 rejected += 1
+                reject(rec, f"internal or meta phrase in the public copy: {issue!r}")
                 continue
             ok, reasons = compliance_check(
                 rec.exact_copy, "social_recommendation",

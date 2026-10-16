@@ -90,6 +90,9 @@ def run(daily: bool = False, only: list[str] | None = None, **_) -> dict:
         ("instagram", "instagram", instagram.fetch),
         ("linkedin", "linkedin", linkedin.fetch),
         ("reddit_apify", "reddit_apify", reddit_apify.fetch),   # OFF unless enabled in the registry
+        # Nubra mentions on Reddit: same switch and nightly-style cadence as reddit_apify (its settings are the
+        # `brand` sub-block), own cron slot: ./cm source reddit_brand
+        ("reddit_brand", "reddit_apify", reddit_apify.fetch_brand),
     ):
         cfg = sources.get(cfg_key, {}) or {}
         cadence = str(cfg.get("cadence", "daily")).lower()

@@ -685,3 +685,158 @@ def fetch(reg: dict, **kw) -> Iterator[SocialItem]:
         # raised AFTER the items are stored: extra_sources records the run as an error (so health and the
         # Source page show it, and last_success_at is not advanced) without losing what was fetched
         raise RuntimeError("reddit apify stopped early: " + stats["budget_stopped"])
+
+
+# ── brand pass: Nubra mentions ────────────────────────────────────────────
+# The nightly run cannot see most mentions of the brand. Its search skips comments (searchComments is off), a mention
+# inside a thread that is not collected is never read, and a bare global search for "nubra" is mostly Nubra Valley
+# travel posts (2026-10-15: 19 of 20 rows), which crowd the real mentions out of the result window. This pass searches
+# for the brand INSIDE each finance subreddit (the actor's `withinCommunity`: no travel noise, comments searched too)
+# plus one global search for the subreddits we do not watch. It has its own cron slot (`./cm source reddit_brand`),
+# its settings live under sources.reddit_apify.brand (every key has a default here, because the VM's registry may
+# lack the block), and it stores a brand comment even when its thread was never collected.
+BRAND_WORD = re.compile(r"(?<![a-z])nubra(?![a-z])", re.I)
+_TRAVEL = re.compile(
+    r"(?<![a-z])(ladakh|leh|pangong|turtuk|diskit|hunder|khardung|shyok|nubra valley|trek|trekking|itinerary|"
+    r"homestay|road ?trip|bike ?trip|tour packages?)(?![a-z])", re.I)
+_FINANCE = re.compile(
+    r"(?<![a-z])(nifty|banknifty|sensex|nse|bse|mcx|f&o|fno|sebi|demat|broker|brokerage|zerodha|groww|upstox|dhan|"
+    r"algo|trading|option|options|futures|intraday|sdk|api|stock|stocks)(?![a-z])", re.I)
+BRAND_DEFAULTS = {"categories": ["brokers", "market_trading", "fno_algo"], "communities": [], "global_search": True,
+                  "days": 3, "max_posts": 25, "max_comments": 100, "max_charge_usd": 0.5}
+
+
+def _brand_cfg(reg: dict) -> dict:
+    return {**BRAND_DEFAULTS, **(reg.get("brand") or {})}
+
+
+def is_brand_mention(text: str) -> bool:
+    """The text names Nubra, and is not one of the Nubra-valley (Ladakh) travel posts. A text with travel words that
+    also talks about markets or brokers is kept; enrichment's noise flag is the final filter."""
+    if not BRAND_WORD.search(text or ""):
+        return False
+    return not (_TRAVEL.search(text) and not _FINANCE.search(text))
+
+
+def brand_queries(reg: dict) -> list[str]:
+    """What to search for: the active keyword rows of category 'brand' with the Reddit lens on (Sources page),
+    else plain 'nubra'."""
+    out: list[str] = []
+    try:
+        for row in db.query("SELECT value, config FROM watch_sources WHERE kind='keyword' AND active "
+                            "AND category='brand' AND COALESCE((config->>'reddit')::boolean, false) ORDER BY value"):
+            out.append(str((row["config"] or {}).get("reddit_query") or row["value"]))
+    except Exception:  # noqa: BLE001 - a DB hiccup must not stop the pass; fall back to the plain brand name
+        pass
+    return out or ["nubra"]
+
+
+def brand_communities(reg: dict) -> list[str]:
+    """Subreddits to search INSIDE: the watched ones in the brand categories, plus any `brand.communities`."""
+    cfg = _brand_cfg(reg)
+    wanted = {str(c).lower() for c in cfg["categories"]}
+    subs = [s for s, cat in _subreddits(reg).items() if str(cat).lower() in wanted]
+    extra = [str(c).removeprefix("r/") for c in cfg["communities"]]
+    seen: set[str] = set()
+    out: list[str] = []
+    for sub in subs + extra:
+        if sub.lower() not in seen:
+            seen.add(sub.lower())
+            out.append(sub)
+    return out
+
+
+def build_brand_payloads(reg: dict, queries: list[str], communities: list[str]) -> list[tuple[str, dict]]:
+    """One actor run per community (the actor scopes a search to a single subreddit per run), then the global one."""
+    cfg = _brand_cfg(reg)
+    days = int(cfg["days"])
+    since = _since(days)
+    base = {"searchTerms": list(queries), "searchPosts": True, "searchComments": True, "searchCommunities": False,
+            "searchSort": "new", "searchTime": _search_time(days), "postedAfter": since, "commentedAfter": since,
+            "crawlCommentsPerPost": False, "maxPostsCount": int(cfg["max_posts"]),
+            "maxCommentsCount": int(cfg["max_comments"]), "includeNSFW": False}
+    runs = [(f"brand r/{c}", {**base, "withinCommunity": c}) for c in communities]
+    if cfg["global_search"]:
+        runs.append(("brand all", dict(base)))
+    return runs
+
+
+def collect_brand(reg: dict) -> tuple[list[SocialItem], dict]:
+    """Run the brand searches and map what really mentions Nubra. A comment is kept even if its post was not found."""
+    stats: dict = {"rows": 0, "posts": 0, "comments": 0, "skipped": {}, "errors": {}, "runs": []}
+    if not _token():
+        log.warning("APIFY_TOKEN not set - reddit brand pass skipped")
+        return [], stats
+    if _profile(_actor(reg)) != "harshmaur":
+        raise RuntimeError("the reddit brand pass needs the harshmaur actor (withinCommunity); set actor: harshmaur~reddit-scraper-pro")
+    cfg = _brand_cfg(reg)
+    plan = build_brand_payloads(reg, brand_queries(reg), brand_communities(reg))
+    if not plan:
+        return [], stats
+    run_kw = {"timeout_s": int(reg.get("timeout_s", 900)), "memory_mb": int(reg.get("memory_mb", 1024))}
+    if cfg["max_charge_usd"] is not None:
+        run_kw["max_charge_usd"] = float(cfg["max_charge_usd"])
+    budget = Budget(reg)
+    log_start = len(run_log)
+    rows: list[dict] = []
+    ok = 0
+    for label, payload in plan:
+        why = budget.why_stop()
+        if why:
+            stats["budget_stopped"] = why
+            log.warning("reddit brand pass stopped before [%s]: %s", label, why)
+            break
+        before = len(run_log)
+        try:
+            got = _run_actor(_actor(reg), payload, **run_kw)
+        except Exception as e:  # noqa: BLE001 - one failed search must not lose the others
+            stats["errors"][label] = f"{type(e).__name__}: {str(e)[:200]}"
+            log.warning("reddit brand pass [%s] failed: %s", label, stats["errors"][label])
+            continue
+        ok += 1
+        if len(run_log) > before:
+            run_log[-1]["label"] = label
+        log.info("reddit brand pass [%s]: %d rows", label, len(got))
+        rows.extend(normalize_harshmaur(g) for g in got)
+    stats["runs"] = run_log[log_start:]
+    stats["budget"] = budget.summary()
+    if not ok:
+        if stats.get("budget_stopped") and not stats["errors"]:
+            raise RuntimeError("reddit brand pass: not run - " + stats["budget_stopped"])
+        raise RuntimeError("reddit brand pass: every run failed: " + "; ".join(stats["errors"].values()))
+    stats["rows"] = len(rows)
+
+    skip_authors = {a.lower() for a in (reg.get("skip_authors") or ["AutoModerator"])} | {"[deleted]"}
+    items: list[SocialItem] = []
+    seen: set[str] = set()
+    for row in rows:
+        kind = row.get("dataType")
+        if kind not in ("post", "comment"):
+            continue
+        text = f"{row.get('title') or ''} {row.get('body') or ''}"
+        if not is_brand_mention(text):
+            _skip(stats, "off_brand")
+            continue
+        if str(row.get("username") or "").lower() in skip_authors:
+            _skip(stats, "bot_or_deleted")
+            continue
+        try:
+            item = post_item(row, "brand") if kind == "post" else comment_item(row, "brand")
+        except ValueError:
+            _skip(stats, "no_id")
+            continue
+        if item.external_id in seen:
+            continue
+        seen.add(item.external_id)
+        items.append(item)
+        stats["posts" if kind == "post" else "comments"] += 1
+    log.info("reddit brand pass: %s", {k: v for k, v in stats.items() if k not in ("runs", "budget")})
+    return items, stats
+
+
+def fetch_brand(reg: dict, **kw) -> Iterator[SocialItem]:
+    """extra_sources contract for the brand pass (source name reddit_brand)."""
+    items, stats = collect_brand(reg, **kw)
+    yield from items
+    if stats.get("budget_stopped"):
+        raise RuntimeError("reddit brand pass stopped early: " + stats["budget_stopped"])

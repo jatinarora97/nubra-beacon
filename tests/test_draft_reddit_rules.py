@@ -126,11 +126,11 @@ class DisclosureOnlyWhenNubraIsMentionedTests(unittest.TestCase):
 
 
 class OtherSourcesKeepTheExactSentenceTests(unittest.TestCase):
-    def test_twitter_still_requires_the_exact_disclosure_sentence(self):
-        self.assertIn("rep: disclosure line missing", problems("A reply with no disclosure.", source="twitter"))
+    def test_a_source_without_its_own_prompt_still_requires_the_exact_disclosure_sentence(self):
+        self.assertIn("rep: disclosure line missing", problems("A reply with no disclosure.", source="youtube"))
         self.assertIn("rep: disclosure line missing",
-                      problems("Nubra has X. (I work at Nubra)", source="twitter"))      # natural form: not enough here
-        self.assertEqual(problems(f"A reply. {draft.DISCLOSURE}", source="twitter"), [])
+                      problems("Nubra has X. (I work at Nubra)", source="youtube"))      # natural form: not enough here
+        self.assertEqual(problems(f"A reply. {draft.DISCLOSURE}", source="youtube"), [])
 
     def test_no_source_given_means_the_original_behaviour(self):
         self.assertIn("rep: disclosure line missing", problems("A reply with no disclosure.", source=""))
@@ -180,7 +180,7 @@ class RedditStyleTests(unittest.TestCase):
 
     def test_other_sources_are_not_held_to_the_reddit_style(self):
         text = f"**Bold** \U0001F642 #tag https://x.com {draft.DISCLOSURE}"
-        self.assertEqual(problems(text, source="twitter"), [])
+        self.assertEqual(problems(text, source="youtube"), [])
 
     def test_rupee_sign_and_ordinary_symbols_are_not_emoji(self):
         self.assertEqual(problems("Brokerage is ₹20 a trade, STT extra → check the contract note."), [])

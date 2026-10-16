@@ -4,6 +4,7 @@ import type { Opportunity } from "@/lib/types";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { TimeFilter } from "@/components/time-filter";
 import { pickWindow, windowLabel, windowQuery } from "@/lib/window";
+import { SOURCE_FILTERS, sourceLabel } from "@/lib/sources";
 import { OpportunityCard } from "./opportunity-card";
 
 export default async function OpportunitiesPage({
@@ -13,16 +14,29 @@ export default async function OpportunitiesPage({
 }) {
   const sp = await searchParams;
   const status = (Array.isArray(sp.status) ? sp.status[0] : sp.status) ?? "suggested";
+  // "" = every source; otherwise one of the keys in lib/sources.ts
+  const source = (Array.isArray(sp.source) ? sp.source[0] : sp.source) ?? "";
   // Inventory page: default is ALL open recommendations; the window is opt-in.
   const w = pickWindow(sp, true);
   const qs = windowQuery(w);
+  const sourceParam = source ? `source=${encodeURIComponent(source)}` : "";
   const rows = await get<Opportunity[]>(
-    `/opportunities?status=${encodeURIComponent(status)}&limit=50${qs ? `&${qs}` : ""}`,
+    `/opportunities?status=${encodeURIComponent(status)}&limit=50${sourceParam ? `&${sourceParam}` : ""}${qs ? `&${qs}` : ""}`,
     [],
   );
   const sorted = [...rows].sort((a, b) => b.priority - a.priority);
-  // status tabs keep the active window; window chips keep the active status
-  const tabQs = (s: string) => `status=${s}${qs ? `&${qs}` : ""}`;
+  // status tabs keep the active window and source; source chips keep the active window and status;
+  // window chips keep the active status and source
+  const keep = [sourceParam, qs].filter(Boolean).join("&");
+  const tabQs = (s: string) => `status=${s}${keep ? `&${keep}` : ""}`;
+  const sourceHref = (key: string) =>
+    `/opportunities?status=${status}${key ? `&source=${encodeURIComponent(key)}` : ""}${qs ? `&${qs}` : ""}`;
+  const chipCls = (active: boolean) =>
+    `rounded-md border px-3 py-1 text-[12.5px] font-medium ${
+      active
+        ? "border-opps/50 bg-opps/10 text-opps"
+        : "border-line text-muted hover:text-ink"
+    }`;
 
   return (
     <div>
@@ -32,7 +46,19 @@ export default async function OpportunitiesPage({
         blurb="Conversations worth joining, ranked by a 0-100 relevance score. Every card explains why it's worth engaging and carries pre-gated brand and rep drafts — copy, adapt, post. Low-engagement threads never rank top."
       />
 
-      <TimeFilter current={w} extra={{ status }} allowAll="All open" />
+      <TimeFilter
+        current={w}
+        extra={source ? { status, source } : { status }}
+        allowAll="All open"
+      />
+
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {[{ key: "", label: "All sources" }, ...SOURCE_FILTERS].map((s) => (
+          <Link key={s.key || "all"} href={sourceHref(s.key)} className={chipCls(s.key === source)}>
+            {s.label}
+          </Link>
+        ))}
+      </div>
 
       <div className="mb-4 flex gap-1.5">
         {["suggested", "acted", "dismissed"].map((s) => (
@@ -54,8 +80,8 @@ export default async function OpportunitiesPage({
         <EmptyState
           title={
             w.window || w.from_ts
-              ? `No ${status} opportunities in ${windowLabel(w)}`
-              : `No ${status} opportunities`
+              ? `No ${status}${source ? ` ${sourceLabel(source)}` : ""} opportunities in ${windowLabel(w)}`
+              : `No ${status}${source ? ` ${sourceLabel(source)}` : ""} opportunities`
           }
           body={
             w.window || w.from_ts

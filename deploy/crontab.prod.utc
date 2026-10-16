@@ -20,6 +20,11 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # Logs to the home dir: out/ is root-owned on this VM, so a host-side redirect there fails before the command runs.
 30 19 * * * cd $APP_DIR && docker compose exec -T api ./cm source reddit_apify >> /home/zanskar/logs/nubra-beacon/cron.log 2>&1
 
+# 20:45 IST Reddit brand pass (posts and comments that mention Nubra; same switch as above) = 15:15 UTC. Once a day,
+# so the next morning's roundup carries the whole day's mentions. About $0.2 a pass (~$6 a month); the hourly
+# pipeline runs at :30 UTC, so :15 keeps clear of it.
+15 15 * * * cd $APP_DIR && docker compose exec -T api ./cm source reddit_brand >> /home/zanskar/logs/nubra-beacon/cron.log 2>&1
+
 # 02:00 IST instagram + whisper (own slot, RAM-isolated) = 20:30 UTC
 # (requires the release carrying `./cm source`)
 30 20 * * * cd $APP_DIR && docker compose exec -T api flock -n /tmp/beacon.lock ./cm source instagram >> out/cron.log 2>&1

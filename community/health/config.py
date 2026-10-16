@@ -43,6 +43,11 @@ DEFAULTS: dict = {
                                 "enabled_by": "reddit_apify", "since_first_run": True,
                                 "start_window_min": 10, "grace_min": 20,
                                 "crit_after_missed": 1, "max_run_min": 90},
+        # Reddit brand pass (Nubra mentions): once a day, 20:45 IST (15:15 UTC), same opt-in as reddit_apify.
+        "source:reddit_brand": {"hours": [20], "minute": 45,
+                                "enabled_by": "reddit_apify", "since_first_run": True,
+                                "start_window_min": 10, "grace_min": 20,
+                                "crit_after_missed": 1, "max_run_min": 60},
         "stage:compose": {"hours": [10], "minute": 0, "weekdays": [5],
                           "start_window_min": 10, "grace_min": 15,
                           "crit_after_missed": 1, "max_run_min": 45},

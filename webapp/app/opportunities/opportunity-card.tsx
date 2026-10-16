@@ -4,6 +4,7 @@ import { useState } from "react";
 import { post } from "@/lib/api";
 import type { Opportunity } from "@/lib/types";
 import { DISMISS_REASONS } from "@/lib/types";
+import { sourceLabel } from "@/lib/sources";
 import { Badge, SectionCard, StatInline } from "@/components/ui";
 import { CopyButton, Tabs } from "@/components/client";
 
@@ -52,6 +53,7 @@ export function OpportunityCard({
         <div className="flex items-center gap-2.5">
           <span className="text-[15px] font-semibold">Priority {rank}</span>
           <Badge tone="opps">{opp.kind_label ?? opp.kind ?? "action"}</Badge>
+          {opp.source && <Badge>{sourceLabel(opp.source)}</Badge>}
           <span className="text-[11.5px] text-muted">score {opp.priority}/100</span>
           {resolved && <Badge>{status}</Badge>}
         </div>

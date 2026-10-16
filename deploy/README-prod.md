@@ -205,6 +205,29 @@ value: keyword searches first, then the `priority_categories` subreddits (defaul
 Rollback: remove `REDDIT_APIFY_ENABLED` from `.env` (or set it to false) and `docker compose up -d`: the old
 path comes back unchanged; remove the cron line.
 
+### Reddit brand pass (Nubra mentions)
+
+The Nubra Mentions page counts stored items that mention Nubra. The nightly Reddit run misses most of them (its search
+skips comments, a mention in a thread that is not collected is never read, and a bare search for "nubra" is mostly
+Nubra Valley travel posts), so the brand pass looks for them on its own: `./cm source reddit_brand`. It searches posts AND
+comments for the brand inside each watched subreddit of the brokers, market_trading and fno_algo categories, plus one
+global search, drops the Ladakh travel posts, and stores a brand comment even when its thread was never collected.
+Same switch as `reddit_apify` (`REDDIT_APIFY_ENABLED=true`), settings under `sources.reddit_apify.brand` (all optional),
+the search terms are the active `brand` keyword rows on the Sources page (default `nubra`).
+
+- crontab: the `source reddit_brand` line from `crontab.prod` / `crontab.prod.utc` (20:45 IST = 15:15 UTC, once a day,
+  so the next morning's roundup carries the whole day's mentions). The health monitor expects that slot only once the
+  source has run once; a missed slot is critical.
+- cost: about $0.2 a pass (one run of $0.01 + a few rows per searched subreddit, 14 subreddits + 1 global), about $6
+  a month at one pass a day ($12 at two, $36 every 4 hours); every run is capped by `brand.max_charge_usd` (0.5) and
+  the shared account guard applies. To search only the subreddits your team posts in, set `categories: []` and list
+  them under `communities` (about $0.08 a pass with four).
+- first run / on demand: `docker compose exec -T api ./cm source reddit_brand` prints the counts. A stored mention is on
+  the Nubra Mentions page straight away (no enrichment needed to be counted); enrichment later sets its sentiment and
+  can flag it as noise, which hides it.
+- what it cannot do: find what Reddit's own search does not return. A post or comment removed by a subreddit's
+  automod or Reddit's spam filter, or too new to be indexed, is invisible to every search-based collector.
+
 Useful: `./cm watchdog --dry-run` / `./cm health-digest --dry-run` print what would be
 sent without posting or saving. The watchdog is silent when everything is healthy.
 If you roll back to an older `RELEASE_TAG`, comment out the two health cron lines: the

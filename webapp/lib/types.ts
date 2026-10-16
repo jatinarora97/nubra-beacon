@@ -12,6 +12,7 @@ export type Kpis = {
 
 export type TopAction = {
   id: number;
+  source?: string;
   kind?: string;
   kind_label?: string;
   priority: number;
@@ -198,6 +199,7 @@ export type Voice = {
 
 export type Opportunity = {
   id: number;
+  source?: string;
   priority: number;
   kind?: string;
   kind_label?: string;

@@ -4,6 +4,7 @@ import type { Overview } from "@/lib/types";
 import { Badge, KpiCard, SectionCard } from "@/components/ui";
 import { TimeFilter } from "@/components/time-filter";
 import { pickWindow, windowLabel, windowQuery } from "@/lib/window";
+import { sourceLabel } from "@/lib/sources";
 
 const NAV_CARDS = [
   {
@@ -201,6 +202,7 @@ export default async function Home({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone="opps">{a.kind_label ?? a.kind ?? "action"}</Badge>
+                    {a.source && <Badge>{sourceLabel(a.source)}</Badge>}
                     <span className="text-[11.5px] text-muted">
                       score {a.priority}/100
                       {a.interactions != null &&

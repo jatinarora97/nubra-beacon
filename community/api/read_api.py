@@ -407,7 +407,7 @@ def overview(window: str | None = None,
     ]
     for a in top_actions:
         a["title"] = (a.get("title") or "").replace("\n", " ")[:140]
-        for k in ("brand_reply", "rep_reply", "insight", "day", "thread_id", "source",
+        for k in ("brand_reply", "rep_reply", "insight", "day", "thread_id",       # "source" stays: the card's badge
                   "status", "dismissed_reason", "when_action", "when_window", "when_why"):
             a.pop(k, None)
 
@@ -851,6 +851,7 @@ def opportunities(response: FastResponse,
                   status: str | None = None, min_priority: int = 0,
                   window: str | None = None,
                   from_ts: str | None = None, to_ts: str | None = None,
+                  source: str | None = None,
                   limit: int = 50):
     labels, caps = _taxonomy_labels(), _capabilities()
     w = _window(from_ts, to_ts, window)
@@ -867,6 +868,9 @@ def opportunities(response: FastResponse,
     if status:
         q += " AND o.status = %(status)s"
         params["status"] = status
+    if source:                                   # the Opportunities page's source chips: "twitter", "reddit", ...
+        q += " AND o.source = %(source)s"
+        params["source"] = source
     q += " ORDER BY o.priority DESC LIMIT %(limit)s"
     return [_decorate_opportunity(r, labels, caps) for r in db.query(q, params)]
 

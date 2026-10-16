@@ -62,7 +62,7 @@ class PreviewOneTests(unittest.TestCase):
     def test_other_sources_are_judged_by_their_own_rule(self):
         with patch.object(preview, "complete", return_value=(answer(rep="A reply, no disclosure."), {})), \
              patch.object(draft, "_thread_excerpt", return_value="- a thread"):
-            r = preview.preview_one({**OPP, "source": "twitter"}, CATALOG, "SYSTEM")
+            r = preview.preview_one({**OPP, "source": "youtube"}, CATALOG, "SYSTEM")
         self.assertIn("rep: disclosure line missing", r["problems"])
 
     def test_feature_citations_are_hidden_in_the_rendered_preview_like_in_production(self):
@@ -97,13 +97,43 @@ class PreviewOneTests(unittest.TestCase):
 class PromptChoiceTests(unittest.TestCase):
     def test_by_default_it_uses_the_prompt_the_real_stage_would(self):
         self.assertEqual(preview.system_prompt("reddit"), draft._system_for("reddit"))
-        self.assertEqual(preview.system_prompt("twitter"), draft._DRAFT_SYSTEM)
+        self.assertEqual(preview.system_prompt("twitter"), draft._system_for("twitter"))
+        self.assertEqual(preview.system_prompt("youtube"), draft._DRAFT_SYSTEM)
 
     def test_a_prompt_file_overrides_it_so_an_edit_can_be_tried_before_it_ships(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "try.txt"
             path.write_text("TRIAL PROMPT {DISCLOSURE}", encoding="utf-8")
             self.assertEqual(preview.system_prompt("reddit", str(path)), "TRIAL PROMPT " + draft.DISCLOSURE)
+
+
+class TwitterPreviewTests(unittest.TestCase):
+    """`--source twitter`: the tweet prompt, the tweet length rule and the Twitter opportunities."""
+    TWEET = {**OPP, "id": 8, "source": "twitter", "thread_id": "1700000000000000001",
+             "url": "https://x.com/someone/status/1700000000000000001", "title": "which broker is best for options?"}
+
+    def preview(self, rep, brand="A plain factual reply."):
+        with patch.object(preview, "complete", return_value=(answer(rep=rep, brand=brand, rep_cited=()), {})), \
+             patch.object(draft, "_thread_excerpt", return_value="- a tweet"):
+            return preview.preview_one(self.TWEET, CATALOG, preview.system_prompt("twitter"))
+
+    def test_a_short_tweet_reply_with_no_nubra_mention_is_clean_without_any_disclosure(self):
+        self.assertEqual(self.preview("depends what you trade, check the charges line by line first")["problems"], [])
+
+    def test_a_reply_over_one_tweet_is_flagged_with_its_length(self):
+        out = self.preview("x" * 281)["problems"]
+        self.assertTrue(any("281 characters" in p and "max 280" in p for p in out), out)
+
+    def test_the_twitter_prompt_is_what_the_preview_sends_by_default(self):
+        with patch.object(preview, "complete", return_value=(answer(rep="ok", rep_cited=()), {})) as llm, \
+             patch.object(draft, "_thread_excerpt", return_value="- a tweet"):
+            preview.preview_one(self.TWEET, CATALOG, preview.system_prompt("twitter"))
+        self.assertEqual(llm.call_args.args[1], draft._system_for("twitter"))
+
+    def test_the_picker_reads_twitter_opportunities_when_asked(self):
+        with patch.object(preview.db, "query", return_value=[self.TWEET]) as q:
+            self.assertEqual(preview.pick("twitter", 4), [self.TWEET])
+        self.assertEqual(q.call_args.args[1], ("twitter", 4))
 
 
 class PickTests(unittest.TestCase):

@@ -11,6 +11,7 @@ import pathlib
 import re
 from datetime import datetime, timezone, timedelta
 
+from community.compose.render import strip_feature_refs
 from community.config.settings import settings
 from community.llm.client import complete
 from community.recommend import compliance
@@ -44,15 +45,16 @@ REP   = human persona: curious, peer-to-peer, helpful, soft pull; MUST include t
 """
 
 # ── per-source prompts ───────────────────────────────────────────────────
-# `_DRAFT_SYSTEM` above is the DEFAULT, used by every source that has no prompt of its own (X today).
-# A source listed in `_SOURCE_PROMPTS` is drafted from its own plain-text file instead, so editing that file
-# changes that source and nothing else. To change how REDDIT replies read, edit
-# community/llm/prompts/reply_reddit.txt (no Python quoting; `{DISCLOSURE}` is the only placeholder and is
-# replaced by the DISCLOSURE sentence). The JSON shape at the end of the prompt is what the parser reads: keep it.
-# The validator below and the compliance judge apply to every source: a style they reject is regenerated twice
-# and then dropped.
+# `_DRAFT_SYSTEM` above is the DEFAULT, used by every source that has no prompt of its own (Instagram, YouTube,
+# forums, ...). A source listed in `_SOURCE_PROMPTS` is drafted from its own plain-text file instead, so editing that
+# file changes that source and nothing else. To change how REDDIT replies read, edit
+# community/llm/prompts/reply_reddit.txt; for TWITTER (X), community/llm/prompts/reply_twitter.txt. No Python
+# quoting; `{DISCLOSURE}` is the only placeholder (replaced by the DISCLOSURE sentence) and a prompt that does not use
+# it, like the Twitter one, simply asks for the conditional affiliation line instead. The JSON shape at the end of a
+# prompt is what the parser reads: keep it. The validator below and the compliance judge apply to every source: a
+# style they reject is regenerated twice and then dropped.
 _PROMPTS_DIR = pathlib.Path(__file__).resolve().parent.parent / "llm" / "prompts"
-_SOURCE_PROMPTS = {"reddit": "reply_reddit"}
+_SOURCE_PROMPTS = {"reddit": "reply_reddit", "twitter": "reply_twitter"}
 
 
 def _load_prompt(name: str) -> str:
@@ -136,12 +138,21 @@ def _next_window() -> str:
     return _WINDOWS["pre_open"]
 
 
-# ── rules for sources that have their own prompt (Reddit) ─────────────────
+# ── rules for sources that have their own prompt (Reddit, Twitter) ────────
 # Those replies are written in a plain human voice and disclose the Nubra connection only when Nubra is actually
 # mentioned (or a Nubra feature is cited), in a short natural line ("I work at Nubra"). Every other source keeps the
-# exact-sentence rule in `_validate_drafts`. `REPLY_MAX_WORDS` leaves headroom over the team's own example replies
-# (86-159 words).
+# exact-sentence rule in `_validate_drafts`.
+#
+# Length is per source. Reddit counts words (`REPLY_MAX_WORDS` leaves headroom over the team's own example replies,
+# 86-159 words). Twitter counts characters, because a reply is one tweet (`REPLY_MAX_CHARS`). A source with its own
+# prompt and no entry in `REPLY_MAX_CHARS` is held to the word limits.
+#
+# `_PLAIN_BANS` lists, per source, which plain-voice rules are enforced. To let one source use something the plain
+# voice bans (an emoji on X, say), take that name out of its entry.
 REPLY_MAX_WORDS = {"rep": 200, "brand": 100}
+REPLY_MAX_CHARS = {"twitter": 280}
+_ALL_BANS = ("bold", "link", "emoji", "hashtag", "promo")
+_PLAIN_BANS = {"reddit": _ALL_BANS, "twitter": _ALL_BANS}
 
 _NUBRA = re.compile(r"(?<![a-z])nubra(?![a-z])", re.I)
 _DISCLOSURE_FORMS = re.compile(
@@ -177,34 +188,41 @@ def _disclosure_problems(rep: str, cited: list) -> list[str]:
     return out
 
 
-def _style_problems(text: str, voice: str) -> list[str]:
+def _style_problems(text: str, voice: str, source: str = "reddit") -> list[str]:
+    bans = _PLAIN_BANS.get(source, _ALL_BANS)
     out = []
-    if _BOLD.search(text):
+    if "bold" in bans and _BOLD.search(text):
         out.append(f"{voice}: uses **bold** markdown")
-    if _URL.search(text):
+    if "link" in bans and _URL.search(text):
         out.append(f"{voice}: contains a link")
-    if _EMOJI.search(text):
+    if "emoji" in bans and _EMOJI.search(text):
         out.append(f"{voice}: contains emoji")
-    if _HASHTAG.search(text):
+    if "hashtag" in bans and _HASHTAG.search(text):
         out.append(f"{voice}: contains a hashtag")
-    hit = _PROMO.search(text)
+    hit = _PROMO.search(text) if "promo" in bans else None
     if hit:
         out.append(f"{voice}: marketing phrasing ({hit.group(0)!r})")
-    words = len(text.split())
-    if words > REPLY_MAX_WORDS[voice]:
-        out.append(f"{voice}: too long ({words} words, max {REPLY_MAX_WORDS[voice]})")
+    max_chars = REPLY_MAX_CHARS.get(source)
+    if max_chars:
+        shown = (strip_feature_refs(text) or "").strip()        # the "(f_12)" audit refs are hidden from the reader
+        if len(shown) > max_chars:
+            out.append(f"{voice}: too long ({len(shown)} characters, max {max_chars})")
+    else:
+        words = len(text.split())
+        if words > REPLY_MAX_WORDS[voice]:
+            out.append(f"{voice}: too long ({words} words, max {REPLY_MAX_WORDS[voice]})")
     return out
 
 
-def _own_prompt_problems(data: dict) -> list[str]:
+def _own_prompt_problems(data: dict, source: str = "reddit") -> list[str]:
     rep = (data.get("rep") or {}).get("text", "")
     brand = (data.get("brand") or {}).get("text", "")
     cited = (data.get("rep") or {}).get("features_cited") or []
     out: list[str] = []
     if rep:
-        out += _disclosure_problems(rep, cited) + _style_problems(rep, "rep")
+        out += _disclosure_problems(rep, cited) + _style_problems(rep, "rep", source)
     if brand:
-        out += _style_problems(brand, "brand")      # the official voice needs no disclosure line
+        out += _style_problems(brand, "brand", source)      # the official voice needs no disclosure line
     return out
 
 
@@ -220,7 +238,7 @@ def _validate_drafts(data: dict, valid_ids: set[str], source: str = "") -> list[
             problems.append(f"{voice}: unknown features_cited {bad}")
     rep = (data.get("rep") or {}).get("text", "")
     if source in _SOURCE_PROMPTS:
-        problems += _own_prompt_problems(data)
+        problems += _own_prompt_problems(data, source)
     elif rep and DISCLOSURE not in rep:
         problems.append("rep: disclosure line missing")
     return problems
@@ -449,6 +467,23 @@ def _content_proposals(catalog: list[dict]) -> int:
     return len(chosen)
 
 
+# A thread that ends a run without a draft is remembered (migration 0025) so the next run does not pick it again:
+#   skipped - the model chose not to reply: parked, never retried automatically;
+#   dropped - every attempt failed validation/compliance: retried no sooner than RETRY_AFTER_HOURS later, and parked
+#             once MAX_DRAFT_ATTEMPTS runs have failed.
+# A transient error (the model API down) raises before anything is recorded, so it never counts against a thread.
+# To reopen parked threads, for example after a prompt change, reset the three draft_* columns (see the migration).
+MAX_DRAFT_ATTEMPTS = 3
+RETRY_AFTER_HOURS = 24
+
+
+def _record_failed_attempt(opp_id: int, outcome: str) -> None:
+    # updated_at is left alone: a failed attempt is not a new action for the dashboard's "last hour" counts
+    db.execute(
+        "UPDATE opportunities SET draft_attempts = draft_attempts + 1, draft_last_outcome = %s, "
+        "draft_attempted_at = now() WHERE id = %s", (outcome, opp_id))
+
+
 def run(limit: int | None = None) -> dict:
     catalog = features.catalog_for_prompt()
     stats = {"drafted": 0, "dropped": 0, "skipped": 0, "proposals": 0,
@@ -459,19 +494,25 @@ def run(limit: int | None = None) -> dict:
     n = limit or settings.registry["recommend"]["max_drafted"]
     opps = db.query(
         "SELECT * FROM opportunities WHERE status='suggested' AND priority >= %s "
-        "AND brand_reply IS NULL ORDER BY priority DESC LIMIT %s",
-        (settings.registry["recommend"]["thresholds"]["secondary"], n),
+        "AND brand_reply IS NULL "
+        "AND (draft_last_outcome IS NULL "
+        "     OR (draft_last_outcome = 'dropped' AND draft_attempts < %s "
+        "         AND draft_attempted_at < now() - %s * interval '1 hour')) "
+        "ORDER BY priority DESC LIMIT %s",
+        (settings.registry["recommend"]["thresholds"]["secondary"], MAX_DRAFT_ATTEMPTS, RETRY_AFTER_HOURS, n),
     )
     for opp in opps:
         drafts, gate = _draft_one(opp, catalog)
         for k in stats["compliance"]:
             stats["compliance"][k] += gate[k]
         if drafts is None:
-            stats["dropped" if gate["dropped"] else "skipped"] += 1
+            outcome = "dropped" if gate["dropped"] else "skipped"
+            stats[outcome] += 1
+            _record_failed_attempt(opp["id"], outcome)
             continue
         db.execute(
             "UPDATE opportunities SET brand_reply=%s, rep_reply=%s, recommended_timing=%s, "
-            "updated_at=now() WHERE id=%s",
+            "draft_last_outcome=NULL, updated_at=now() WHERE id=%s",
             (drafts["brand"]["text"], drafts["rep"]["text"],
              db.jsonb(_timing(opp)), opp["id"]),
         )
